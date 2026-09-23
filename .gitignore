@@ -1,0 +1,12 @@
+# Local product records and stock-watch data
+data/*.json
+data/extension-backup-*/
+
+# Browser screenshots and local verification output
+test-output/
+
+# Local secrets and machine-specific settings
+.env
+.env.*
+!.env.example
+node_modules/

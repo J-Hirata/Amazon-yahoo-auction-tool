@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Chrome拡張の登録方法</title><link rel="stylesheet" href="/styles.css"></head>
+<body><main class="shell">
+  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <img src="/extension-logo.png" alt="Amazonからヤフオクへ" width="128" height="128" style="flex:none">
+    <h1>ASIN下書きQ・Chrome拡張</h1>
+  </div>
+  <h2>初回だけの登録</h2>
+  <ol>
+    <li>Chromeのアドレス欄に <code>chrome://extensions/</code> と入力して開きます。</li>
+    <li>右上の「デベロッパーモード」をオンにします。</li>
+    <li>「パッケージ化されていない拡張機能を読み込む」を押します。</li>
+    <li>下の <code>chrome-extension</code> フォルダを選びます。</li>
+  </ol>
+  <p style="overflow-wrap:anywhere">D:\src\codex\02_Amazon出品・販売・在庫返品連携\26,0607,ASINコピーヤフオク!出品\chrome-extension</p>
+  <p>「ASIN下書きQ・Yahoo入力補助」が表示されたら登録完了です。管理画面と、すでに開いているヤフオクのタブを再読み込みしてください。</p>
+  <h2>普段の操作</h2>
+  <ol>
+    <li>これまでどおりASINツールを起動します。</li>
+    <li>管理画面で商品の「下書き文面」を開き、「この商品をヤフオクへ」を押します。</li>
+    <li>Yahoo側で出品フォームに進みます。ログインを求められた場合はログインしてください。</li>
+    <li>右下の「ASIN下書き」を押し、商品を確認して「まとめて入力」を押します。選択した商品のパネルが自動で開いた場合は、そのまま入力できます。</li>
+    <li>画像・カテゴリ・発送条件などを目視確認し、自分で下書き保存・出品します。</li>
+  </ol>
+  <p>ヤフオクから先に開いた場合も、右下の「ASIN下書き」から商品を選べます。複数タブで商品を開いた場合は、タブごとに選んだ商品を保持します（1時間）。出品の確定は自動では行いません。</p>
+  <h2>困ったとき</h2>
+  <ul>
+    <li>接続できない：ASINツールを起動し、<a href="http://localhost:41731/">管理画面</a>が開くか確認してください。</li>
+    <li>ボタンがない：拡張機能がオンになっているか確認し、ヤフオクのページを再読み込みしてください。</li>
+    <li>選んだ商品がない：管理画面で「下書き候補に戻す」を押してから、再度商品を開いてください。</li>
+    <li>拡張機能を更新した：拡張機能一覧の更新ボタンを押し、管理画面とヤフオクのタブを再読み込みしてください。</li>
+  </ul>
+  <p><a href="/">管理画面に戻る</a> · <a href="/yahoo-helper.html">従来のブックマークレット登録</a></p>
+</main></body></html>

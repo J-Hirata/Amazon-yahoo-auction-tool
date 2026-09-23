@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Amazon取込補助</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell helper-page">
+      <section class="toolbar">
+        <div>
+          <h1>Amazon取込補助</h1>
+          <p>Amazonの商品ページで、表示中の商品情報をローカル管理画面へ取り込みます。</p>
+        </div>
+        <a class="button-link" href="/">管理画面へ戻る</a>
+      </section>
+
+      <section class="helper-steps">
+        <h2>使い方</h2>
+        <p>下のボタンをブックマークバーへドラッグします。</p>
+        <p><a class="bookmarklet" id="bookmarklet" href="#">Amazon商品を取り込む</a></p>
+        <textarea id="bookmarkletText" rows="3" readonly></textarea>
+        <button id="copyBookmarklet">ブックマーク用コードをコピー</button>
+        <p>Amazonの商品ページを開き、保存したブックマークを押すと、ページ右下に取込パネルが出ます。</p>
+        <p>中古最安値がページ上で読み取れない場合は、パネルで価格を入力してから取り込みます。</p>
+      </section>
+    </main>
+    <script>
+      const code = `javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:41731/amazon-capture.js?'+Date.now();document.body.appendChild(s);})();`;
+      document.querySelector("#bookmarklet").href = code;
+      document.querySelector("#bookmarkletText").value = code;
+      document.querySelector("#copyBookmarklet").addEventListener("click", async () => {
+        await navigator.clipboard.writeText(code);
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ASIN下書きキュー</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="shell">
+      <section class="toolbar">
+        <div>
+          <h1>ASIN下書きキュー</h1>
+          <p>Amazonの商品情報を取り込み、Yahoo!オークション下書き前の入力作業を補助します。</p>
+        </div>
+        <div class="toolbar-actions">
+          <button id="nextDraft">次の下書き</button>
+          <a class="button-link" href="/amazon-helper.html" target="_blank" rel="noreferrer">Amazon取込補助</a>
+          <a class="button-link" href="/yahoo-helper.html" target="_blank" rel="noreferrer">Yahoo入力補助</a>
+          <a class="button-link" href="/stock-monitor.html">在庫切れ防止確認</a>
+          <a class="button-link" href="/api/export/drafts.csv">CSV出力</a>
+          <button id="refresh">更新</button>
+        </div>
+      </section>
+
+      <section class="yahoo-workflow" aria-labelledby="yahooWorkflowTitle">
+        <div>
+          <h2 id="yahooWorkflowTitle">ヤフオクへ出品する</h2>
+          <p>Chrome拡張を登録すると、ヤフオク画面の右下に「ASIN下書き」が表示されます。</p>
+        </div>
+        <div class="workflow-actions">
+          <button id="extensionNext" type="button">次の商品をヤフオクへ</button>
+          <a class="button-link secondary" href="/extension-helper.html" target="_blank" rel="noreferrer">Chrome拡張の登録方法</a>
+          <a id="openYahooWorkflow" class="button-link" href="https://auctions.yahoo.co.jp/seller/" target="_blank" rel="noreferrer">Yahoo出品ページを開く</a>
+          <a class="button-link secondary" href="/yahoo-helper.html" target="_blank" rel="noreferrer">Yahoo入力補助の登録ページ</a>
+          <button id="copyYahooBookmarklet" type="button">ブックマークレットをコピー</button>
+        </div>
+        <p class="workflow-steps">手順: 商品の下書き文面 → この商品をヤフオクへ → 商品を確認して「まとめて入力」→ 内容を確認して下書き保存。従来のブックマークバーのYahoo入力補助も利用できます。</p>
+      </section>
+
+      <section class="guide">
+        <h2>最初にやること</h2>
+        <p class="mode-note">通常は、ASINを1行ずつ入力して「Amazon情報取得」を押してください。このシステム内の取得エンジンがAmazon商品ページから情報を読み取ります。</p>
+        <div class="guide-grid">
+          <div>
+            <strong>1. Amazon情報を取得</strong>
+            <p>ASINを1行ずつ入力し、「Amazon情報取得」を押します。取れた商品だけ下書き候補に並びます。</p>
+          </div>
+          <div>
+            <strong>2. Yahoo入力補助を起動</strong>
+            <p>Yahoo出品フォームの右下にある「ASIN下書き」を押すと、補助パネルが出ます。</p>
+          </div>
+          <div>
+            <strong>3. 入力して確認</strong>
+            <p>補助パネルの「まとめて入力」を押します。内容を確認してからYahoo側で下書き保存・出品してください。</p>
+          </div>
+        </div>
+        <p class="note">最終の下書き保存・出品確定は自動では押しません。Yahoo側で内容を目視確認してから操作してください。</p>
+      </section>
+
+      <section class="guide">
+        <h2>取得方式の違い</h2>
+        <div class="guide-grid two">
+          <div>
+            <strong>通常: ASIN自動取得エンジン</strong>
+            <p>ASINを1行ずつ入れて「Amazon情報取得」を押すと、このシステムがAmazon商品ページを取得して、商品名・画像・説明・価格を読み取ります。</p>
+          </div>
+          <div>
+            <strong>予備: Amazonページ取込補助</strong>
+            <p>自動取得で取れない商品だけ、あなたが開いたAmazon商品ページから表示中の情報を取り込みます。これは失敗時の予備手段です。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="input-area" id="asin-register">
+        <textarea id="asins" rows="6" placeholder="ASINを1行に1つずつ入力"></textarea>
+        <div class="input-actions">
+          <button id="add">ASINを登録</button>
+          <button id="fetchProducts">Amazon情報取得</button>
+        </div>
+      </section>
+
+      <p class="status" id="status"></p>
+
+      <section class="yahoo-launch-banner" id="yahooLaunchBanner" hidden aria-labelledby="yahooLaunchTitle">
+        <div class="yahoo-launch-mark" aria-hidden="true">Amazon <span>→</span> ヤフオク</div>
+        <div class="yahoo-launch-copy">
+          <h2 id="yahooLaunchTitle">情報取得が完了しました。ヤフオクへ進めます</h2>
+          <p><span id="yahooLaunchCount">下書き候補</span>を確認して、ヤフオクの出品フォームを開きます。</p>
+        </div>
+        <a id="yahooLaunchButton" class="yahoo-launch-button" href="https://auctions.yahoo.co.jp/jp/show/submit?category=0" target="_blank" rel="noreferrer">ヤフオク出品ページへ</a>
+      </section>
+
+      <section class="summary" id="summary"></section>
+
+      <section class="draft-panel" id="draftPanel" hidden>
+        <div>
+          <h2>Yahoo!オークション下書き</h2>
+          <p id="draftTitle"></p>
+        </div>
+        <div class="copy-grid">
+          <label>タイトル
+            <input id="draftName" readonly>
+          </label>
+          <label>価格
+            <input id="draftPrice" readonly>
+          </label>
+          <label>画像URL
+            <textarea id="draftImages" rows="3" readonly></textarea>
+          </label>
+        </div>
+        <textarea id="draftText" rows="12" readonly></textarea>
+        <div class="draft-actions">
+          <button id="extensionSelected" type="button">この商品をヤフオクへ</button>
+          <button id="copyTitle">タイトルをコピー</button>
+          <button id="copyPrice">価格をコピー</button>
+          <button id="copyText">説明をコピー</button>
+          <button id="copyImages">画像URLをコピー</button>
+          <button id="markDraftSaved">下書き保存済み</button>
+          <button id="markListed">出品済み</button>
+          <a id="openYahoo" class="button-link" href="https://auctions.yahoo.co.jp/seller/" target="_blank" rel="noreferrer">Yahooを開く</a>
+          <a class="button-link secondary" href="/yahoo-helper.html" target="_blank" rel="noreferrer">Yahoo入力補助の登録ページ</a>
+          <button id="copyYahooBookmarkletDraft" type="button">ブックマークレットをコピー</button>
+          <button id="closeDraft">閉じる</button>
+        </div>
+      </section>
+
+      <section class="columns">
+        <div>
+          <h2>下書き候補</h2>
+          <div id="active" class="list"></div>
+          <section class="history-section" aria-labelledby="historyTitle">
+            <h2 id="historyTitle">ここから登録履歴（直近20件）</h2>
+            <div id="recentHistory" class="list history-list"></div>
+          </section>
+        </div>
+        <div id="waitingColumn">
+          <h2>待機</h2>
+          <div id="waiting" class="list"></div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

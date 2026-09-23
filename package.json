@@ -1,0 +1,14 @@
+{
+  "name": "asin-yahoo-auction-draft-tool",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "seed": "node src/seed.js",
+    "build:extension": "node scripts/build-extension.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

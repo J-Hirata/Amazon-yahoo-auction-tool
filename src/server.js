@@ -1,0 +1,408 @@
+import http from "node:http";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { buildItemsFromAsins } from "./amazon.js";
+import { findPriceReviewItems, splitDraftQueue } from "./queue.js";
+import { loadItems, saveItems, upsertItems } from "./store.js";
+import { calculateAuctionPrices } from "./pricing.js";
+import { CONFIG } from "./config.js";
+import { buildYahooDraft } from "./draft.js";
+import { fetchProductData } from "./product-provider.js";
+import { buildDraftCsv } from "./csv.js";
+import { loadStockWatch, saveStockWatch, upsertStockWatch } from "./stock-monitor-store.js";
+import { checkStockWatchItem, needsReminder, normalizeWatchAsins } from "./stock-monitor.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.resolve(__dirname, "..", "public");
+const port = Number(process.env.PORT || 41731);
+
+const server = http.createServer(async (req, res) => {
+  try {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, corsHeaders());
+      return res.end();
+    }
+
+    if (req.method === "GET" && url.pathname === "/") {
+      return sendFile(res, path.join(publicDir, "index.html"), "text/html; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/app.js") {
+      return sendFile(res, path.join(publicDir, "app.js"), "text/javascript; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/stock-monitor.html") {
+      return sendFile(res, path.join(publicDir, "stock-monitor.html"), "text/html; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/stock-monitor.js") {
+      return sendFile(res, path.join(publicDir, "stock-monitor.js"), "text/javascript; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/styles.css") {
+      return sendFile(res, path.join(publicDir, "styles.css"), "text/css; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/extension-logo.png") {
+      return sendFile(res, path.join(publicDir, "extension-logo.png"), "image/png");
+    }
+
+    if (req.method === "GET" && url.pathname === "/extension-helper.html") {
+      return sendFile(res, path.join(publicDir, "extension-helper.html"), "text/html; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/yahoo-helper.html") {
+      return sendFile(res, path.join(publicDir, "yahoo-helper.html"), "text/html; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/start-helper.html") {
+      return sendFile(res, path.join(publicDir, "start-helper.html"), "text/html; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/yahoo-fill.js") {
+      return sendFile(res, path.join(publicDir, "yahoo-fill.js"), "text/javascript; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/amazon-helper.html") {
+      return sendFile(res, path.join(publicDir, "amazon-helper.html"), "text/html; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/amazon-capture.js") {
+      return sendFile(res, path.join(publicDir, "amazon-capture.js"), "text/javascript; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/image-proxy") {
+      const imageUrl = url.searchParams.get("url");
+      if (!imageUrl || !/^https?:\/\//i.test(imageUrl)) return sendJson(res, { error: "Invalid image URL" }, 400);
+      const imageResponse = await fetch(imageUrl, {
+        headers: {
+          "User-Agent": "Mozilla/5.0",
+          "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8"
+        }
+      });
+      if (!imageResponse.ok) return sendJson(res, { error: `Image fetch failed: HTTP ${imageResponse.status}` }, 502);
+      const bytes = Buffer.from(await imageResponse.arrayBuffer());
+      res.writeHead(200, {
+        ...corsHeaders(),
+        "Content-Type": imageResponse.headers.get("content-type") || "image/jpeg",
+        "Cache-Control": "no-store"
+      });
+      return res.end(bytes);
+    }
+
+    if (req.method === "GET" && url.pathname === "/test-yahoo-form.html") {
+      return sendFile(res, path.join(publicDir, "test-yahoo-form.html"), "text/html; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/test-amazon-page.html") {
+      return sendFile(res, path.join(publicDir, "test-amazon-page.html"), "text/html; charset=utf-8");
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/items") {
+      const items = await loadItems();
+      return sendJson(res, { items, queue: splitDraftQueue(items), priceReviews: findPriceReviewItems(items), config: CONFIG });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/stock-watch") {
+      const watches = await loadStockWatch();
+      return sendJson(res, { watches, summary: stockWatchSummary(watches) });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/stock-watch") {
+      const body = await readJson(req);
+      const asins = normalizeWatchAsins(body.asins || "");
+      const sellerName = String(body.sellerName || "キャットコーポレーション合同会社").trim();
+      const now = new Date().toISOString();
+      const currentItems = await loadItems();
+      const byAsin = new Map(currentItems.map((item) => [item.asin, item]));
+      const next = await upsertStockWatch(asins.map((asin) => ({
+        asin,
+        sellerName,
+        title: byAsin.get(asin)?.title || asin,
+        amazonUrl: byAsin.get(asin)?.amazonUrl || `https://www.amazon.co.jp/dp/${asin}`,
+        status: "watching",
+        createdAt: now
+      })));
+      return sendJson(res, { watches: next, summary: stockWatchSummary(next) });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/stock-watch/check") {
+      const watches = await loadStockWatch();
+      const targets = watches.filter((item) => !["paused", "resolved"].includes(item.status));
+      const checked = [];
+      for (const item of targets) checked.push(await checkStockWatchItem(item));
+      const byAsin = new Map(checked.map((item) => [item.asin, item]));
+      const next = watches.map((item) => byAsin.get(item.asin) || item);
+      await saveStockWatch(next);
+      return sendJson(res, { watches: next, checked, summary: stockWatchSummary(next), reminders: next.filter((item) => needsReminder(item)) });
+    }
+
+    if (req.method === "PATCH" && url.pathname.startsWith("/api/stock-watch/")) {
+      const asin = decodeURIComponent(url.pathname.replace("/api/stock-watch/", ""));
+      const patch = await readJson(req);
+      const now = new Date().toISOString();
+      const watches = await loadStockWatch();
+      const next = watches.map((item) => item.asin === asin ? normalizeWatchPatch({ ...item, ...patch, updatedAt: now }, patch, now) : item);
+      await saveStockWatch(next);
+      return sendJson(res, { watches: next, summary: stockWatchSummary(next) });
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/stock-watch/")) {
+      const asin = decodeURIComponent(url.pathname.replace("/api/stock-watch/", ""));
+      const watches = await loadStockWatch();
+      const next = watches.filter((item) => item.asin !== asin);
+      await saveStockWatch(next);
+      return sendJson(res, { watches: next, summary: stockWatchSummary(next) });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/export/drafts.csv") {
+      const items = await loadItems();
+      const { active } = splitDraftQueue(items);
+      const csv = buildDraftCsv(active);
+      res.writeHead(200, {
+        ...corsHeaders(),
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": "attachment; filename=\"yahoo-drafts.csv\""
+      });
+      return res.end(`\uFEFF${csv}`);
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/next-draft") {
+      const items = await loadItems();
+      const { active } = splitDraftQueue(items);
+      const item = active.find((entry) => entry.status !== "draft_saved") || active[0];
+      return sendJson(res, { item, draft: item ? buildYahooDraft(item) : null, config: CONFIG });
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/items/") && url.pathname.endsWith("/draft")) {
+      const asin = decodeURIComponent(url.pathname.replace("/api/items/", "").replace("/draft", ""));
+      const items = await loadItems();
+      const item = items.find((entry) => entry.asin === asin);
+      if (!item) return sendJson(res, { error: "Item not found" }, 404);
+      return sendJson(res, { draft: buildYahooDraft(item) });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/asins") {
+      const body = await readJson(req);
+      const asins = normalizeAsins(body.asins || "");
+      const items = await buildItemsFromAsins(asins);
+      const merged = await upsertItems(items);
+      return sendJson(res, { items: merged, queue: splitDraftQueue(merged), priceReviews: findPriceReviewItems(merged) });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/fetch-product-data") {
+      const body = await readJson(req);
+      const requestedAsins = normalizeAsins(body.asins || "");
+      const current = await loadItems();
+      const targets = requestedAsins.length ? requestedAsins : current
+        .filter((item) => item.status === "waiting_for_product_data")
+        .map((item) => item.asin);
+      const results = [];
+      let next = requestedAsins.length
+        ? mergeMissingItems(current, await buildItemsFromAsins(requestedAsins))
+        : current;
+
+      for (const asin of targets) {
+        const result = await fetchProductData(asin);
+        results.push(result);
+        if (result.ok) {
+          const prices = calculateAuctionPrices(result.item.usedLowestPrice, CONFIG);
+          next = next.map((item) => item.asin === asin ? {
+            ...item,
+            ...result.item,
+            startPrice: prices.startPrice,
+            stalePrice: prices.stalePrice,
+            updatedAt: new Date().toISOString()
+          } : item);
+        }
+      }
+
+      await saveItems(next);
+      return sendJson(res, { items: next, queue: splitDraftQueue(next), priceReviews: findPriceReviewItems(next), results });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/import-amazon-page") {
+      const body = await readJson(req);
+      const asin = normalizeAsin(body.asin);
+      if (!asin) return sendJson(res, { error: "ASINが読み取れませんでした。" }, 400);
+
+      const current = await loadItems();
+      const usedLowestPrice = numberOrNull(body.usedLowestPrice ?? body.price);
+      const prices = calculateAuctionPrices(usedLowestPrice, CONFIG);
+      const now = new Date().toISOString();
+      const imported = {
+        asin,
+        title: String(body.title || "").trim(),
+        description: String(body.description || "").trim(),
+        imageUrls: normalizeLines(body.imageUrls),
+        amazonUrl: String(body.amazonUrl || `https://www.amazon.co.jp/dp/${asin}`),
+        usedLowestPrice,
+        startPrice: prices.startPrice,
+        stalePrice: prices.stalePrice,
+        sourceRegion: CONFIG.sourceRegion,
+        shippingIncluded: CONFIG.shippingIncluded,
+        shipAfterDaysMin: CONFIG.shipAfterDaysMin,
+        shipAfterDaysMax: CONFIG.shipAfterDaysMax,
+        status: usedLowestPrice ? "ready_for_draft" : "waiting_for_product_data",
+        updatedAt: now
+      };
+
+      const exists = current.some((item) => item.asin === asin);
+      const next = exists
+        ? current.map((item) => item.asin === asin ? { ...item, ...imported } : item)
+        : [...current, { ...imported, createdAt: now }];
+
+      await saveItems(next);
+      return sendJson(res, { item: next.find((item) => item.asin === asin), queue: splitDraftQueue(next) });
+    }
+
+    if (req.method === "PATCH" && url.pathname.startsWith("/api/items/")) {
+      const asin = decodeURIComponent(url.pathname.replace("/api/items/", ""));
+      const patch = await readJson(req);
+      const items = await loadItems();
+      const next = items.map((item) => {
+        if (item.asin !== asin) return item;
+        const usedLowestPrice = patch.usedLowestPrice === "" ? null : Number(patch.usedLowestPrice ?? item.usedLowestPrice);
+        const prices = calculateAuctionPrices(usedLowestPrice, CONFIG);
+        const nextStatus = patch.status ?? item.status;
+        const timestamps = {};
+        if (nextStatus === "draft_saved" && item.status !== "draft_saved") timestamps.draftSavedAt = new Date().toISOString();
+        if (nextStatus === "ready_for_draft" && item.status === "draft_saved") timestamps.draftSavedAt = null;
+        if (nextStatus === "listed" && item.status !== "listed") timestamps.listedAt = new Date().toISOString();
+        if (nextStatus === "sold" && item.status !== "sold") timestamps.soldAt = new Date().toISOString();
+        return {
+          ...item,
+          ...patch,
+          ...timestamps,
+          imageUrls: normalizeLines(patch.imageUrls ?? item.imageUrls),
+          usedLowestPrice,
+          startPrice: prices.startPrice,
+          stalePrice: prices.stalePrice,
+          updatedAt: new Date().toISOString()
+        };
+      });
+      await saveItems(next);
+      return sendJson(res, { items: next, queue: splitDraftQueue(next), priceReviews: findPriceReviewItems(next) });
+    }
+
+    if (req.method === "DELETE" && url.pathname.startsWith("/api/items/")) {
+      const asin = decodeURIComponent(url.pathname.replace("/api/items/", ""));
+      const items = await loadItems();
+      const next = items.filter((item) => item.asin !== asin);
+      await saveItems(next);
+      return sendJson(res, { items: next, queue: splitDraftQueue(next), priceReviews: findPriceReviewItems(next) });
+    }
+
+    res.writeHead(404);
+    res.end("Not Found");
+  } catch (error) {
+    console.error(error);
+    sendJson(res, { error: error.message }, 500);
+  }
+});
+
+server.listen(port, () => {
+  console.log(`ASIN draft tool: http://localhost:${port}`);
+});
+
+setInterval(() => {
+  runStockWatchCheck().catch((error) => console.error("Stock watch check failed", error));
+}, 60 * 60 * 1000);
+
+function normalizeAsins(input) {
+  return String(input)
+    .split(/\r?\n/)
+    .map((asin) => asin.trim().toUpperCase())
+    .filter(Boolean)
+    .filter((asin, index, all) => all.indexOf(asin) === index);
+}
+
+function mergeMissingItems(current, candidates) {
+  const existing = new Set(current.map((item) => item.asin));
+  return [
+    ...current,
+    ...candidates.filter((item) => !existing.has(item.asin))
+  ];
+}
+
+function normalizeAsin(input) {
+  const match = String(input || "").toUpperCase().match(/[A-Z0-9]{10}/);
+  return match ? match[0] : "";
+}
+
+async function runStockWatchCheck() {
+  const watches = await loadStockWatch();
+  const targets = watches.filter((item) => !["paused", "resolved", "own_stock"].includes(item.status));
+  if (!targets.length) return;
+  const checked = [];
+  for (const item of targets) checked.push(await checkStockWatchItem(item));
+  const byAsin = new Map(checked.map((item) => [item.asin, item]));
+  await saveStockWatch(watches.map((item) => byAsin.get(item.asin) || item));
+}
+
+function normalizeLines(value) {
+  if (Array.isArray(value)) return value.map((line) => String(line).trim()).filter(Boolean);
+  return String(value || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function numberOrNull(value) {
+  const parsed = Number(String(value || "").replace(/[^\d.]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function stockWatchSummary(watches) {
+  return {
+    total: watches.length,
+    watching: watches.filter((item) => item.status === "watching").length,
+    needsAttention: watches.filter((item) => item.status === "needs_attention").length,
+    ownStock: watches.filter((item) => item.status === "own_stock").length,
+    paused: watches.filter((item) => item.status === "paused").length,
+    resolved: watches.filter((item) => item.status === "resolved").length,
+    reminders: watches.filter((item) => needsReminder(item)).length
+  };
+}
+
+function normalizeWatchPatch(item, patch, now) {
+  if (patch.status === "resolved") item.resolvedAt = now;
+  if (patch.status === "own_stock") item.ownStockAt = now;
+  if (patch.status === "paused") item.pausedAt = now;
+  if (patch.status === "watching") {
+    delete item.firstAlertAt;
+    delete item.lastReminderAt;
+    delete item.resolvedAt;
+    delete item.pausedAt;
+  }
+  if (patch.reminderSent) item.lastReminderAt = now;
+  return item;
+}
+
+async function readJson(req) {
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
+}
+
+async function sendFile(res, filePath, contentType) {
+  const body = await readFile(filePath);
+  res.writeHead(200, { "Content-Type": contentType });
+  res.end(body);
+}
+
+function sendJson(res, value, status = 200) {
+  res.writeHead(status, { ...corsHeaders(), "Content-Type": "application/json; charset=utf-8" });
+  res.end(JSON.stringify(value));
+}
+
+function corsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type,Authorization"
+  };
+}
