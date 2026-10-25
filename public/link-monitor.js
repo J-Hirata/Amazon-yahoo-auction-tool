@@ -55,6 +55,12 @@ function applyCapabilities() {
   if (!capabilities?.cloud) return;
   const external = capabilities.externalReads === false;
   const readOnly = capabilities.readOnly;
+  if ($("#salesSection")) {
+    $("#salesSection").hidden = !capabilities.salesRead || currentMode !== "saved";
+    $("#salesStart").disabled = Boolean(readOnly || !capabilities.salesRead || saved.salesHistory?.status === "running");
+    $("#salesStart").textContent = saved.salesHistory?.status === "not_started" ? "販売追跡を開始" : "未追跡の商品を追加";
+    $("#salesCheck").disabled = Boolean(readOnly || !capabilities.salesRead || !saved.salesHistory || ["not_started", "running"].includes(saved.salesHistory.status));
+  }
   if (readOnly) $("#pageLinkForm").closest("section").hidden = true;
   for (const selector of ["#fbaCheck", "#productRefresh", "[data-product-preview]", "#advancedSetup", "[data-unlink]"]) {
     document.querySelectorAll(selector).forEach((element) => {
@@ -257,6 +263,7 @@ function render() {
   const data = currentMode === "demo" ? demo : saved;
   if (!data) return;
   renderMail();
+  renderSales();
   $("#catalogSummary").textContent = `登録済みのAmazon商品：${saved?.catalog.length || 0}件`;
   $("#linkRows").innerHTML = data.links.length ? data.links.map((link) => {
     const a = link.assessment, p = a.product, y = a.listing;
@@ -269,6 +276,13 @@ function render() {
       ${currentMode === "demo" ? "" : `<button type="button" class="product-preview-button" data-product-preview="${escape(link.id)}">画像・商品名を再取得</button><button type="button" class="unlink-button" data-unlink="${escape(link.id)}">解除</button>`}</details></td></tr>`;
   }).join("") : '<tr><td colspan="4">まだ紐付けはありません。</td></tr>';
   if (currentMode === "saved") data.links.forEach((link, index) => {
+    const sales = saved.salesHistory?.products.find((item) => item.linkId === link.id);
+    if (saved.config.capabilities?.salesRead) {
+      const line = document.createElement("small");
+      line.className = "sales-count";
+      line.textContent = sales?.status === "complete" ? `追跡後の注文確定：${sales.confirmedQuantity}個（取消除外）` : sales?.status === "untracked" || !sales ? "販売履歴：未追跡" : "注文確定数：未確認・要確認";
+      $("#linkRows").children[index].querySelector('[data-label="御社のAmazon"]').append(line);
+    }
     const details = $("#linkRows").children[index].querySelector("details");
     for (const row of link.assessment.fbaRows || []) {
       const line = document.createElement("p");
@@ -339,6 +353,37 @@ function render() {
   renderReviews();
   applyCapabilities();
 }
+function renderSales() {
+  if (!$("#salesSection") || !saved?.config.capabilities?.salesRead) return;
+  const sales = saved.salesHistory;
+  const labels = {not_started: "販売追跡：未開始", idle: "販売追跡：開始済み・注文未取得", running: "Amazon注文を確認中", complete: "注文確認済み", failed: "注文確認：失敗・販売数は未確認"};
+  $("#salesSummary").textContent = `${labels[sales?.status] || "販売履歴：未確認"} ／ 手動確認・自動通知オフ${sales?.error ? ` ／ ${sales.error}` : ""}`;
+  $("#salesSummary").classList.toggle("error", sales?.status === "failed");
+  const tracked = sales?.products.filter((item) => item.status !== "untracked").length || 0;
+  const unresolved = sales?.products.filter((item) => item.status === "unknown").length || 0;
+  $("#salesPeriod").textContent = sales?.startedAt ? `追跡 ${tracked}組 ／ 要確認 ${unresolved}組 ／ 開始：${date(sales.startedAt)} ／ 確認済み期間の末尾：${date(sales.checkedThrough)}${sales.catchingUp ? " ／ 期間の確認が追いついていません" : ""}` : "追跡開始前の販売数：不明";
+  const groups = new Map();
+  for (const event of sales?.events || []) {
+    const k = JSON.stringify([event.asin, event.sellerSku]);
+    const group = groups.get(k) || {asin: event.asin, sellerSku: event.sellerSku, added: 0, corrected: 0};
+    if (event.delta > 0) group.added += event.delta; else group.corrected -= event.delta;
+    groups.set(k, group);
+  }
+  $("#salesPreview").innerHTML = groups.size ? [...groups.values()].map((group) => {
+    const links = sales.products.filter((item) => item.asin === group.asin && item.sellerSku === group.sellerSku).map((item) => saved.links.find((link) => link.id === item.linkId)).filter(Boolean);
+    const listing = saved.listings.find((item) => item.listingId === links[0]?.listingId);
+    return `<div class="sales-preview-row"><strong>${escape(listing?.title || group.asin)}</strong><p>今回の注文確定：${group.added}個 ／ 取消・訂正：${group.corrected}個</p><p><a href="https://www.amazon.co.jp/dp/${escape(group.asin)}" target="_blank" rel="noreferrer">ASIN：${escape(group.asin)}</a> ${links.map((link) => `<a href="https://auctions.yahoo.co.jp/jp/auction/${escape(link.listingId)}" target="_blank" rel="noreferrer">ヤフオク：${escape(link.listingId)}</a>`).join(" ")}</p><small>プレビュー・メール未送信 ／ 併売を続けるか確認</small></div>`;
+  }).join("") : `<p>${sales?.status === "complete" && !unresolved ? "今回の確認で新しい販売・訂正はありません。メール未送信。" : "今回の販売通知はまだ判定できない商品があります。メール未送信。"}</p>`;
+  $("#salesEvents").innerHTML = (sales?.recentEvents || []).map((event) => `<li>${date(event.at)} ／ ${escape(event.asin)} ／ ${event.delta > 0 ? `注文確定 +${event.delta}個` : `取消・訂正 ${event.delta}個`} ／ プレビュー・未送信</li>`).join("");
+}
+$("#salesStart")?.addEventListener("click", () => action(async () => {
+  saved = await api("/sales/start", {}); render(); status("販売追跡の開始時刻を保存しました。過去の販売数は遡って推定しません。注文確認は2分ほど後から利用できます。");
+}));
+$("#salesCheck")?.addEventListener("click", () => action(async () => {
+  status("Amazon注文を確認しています。メール・在庫変更は行いません。");
+  try {saved = await api("/sales/check", {}); render(); status(saved.salesHistory.status === "complete" ? "販売履歴と通知プレビューを更新しました。実メールは送信していません。" : saved.salesHistory.error, saved.salesHistory.status !== "complete");}
+  catch (error) {saved = await api(); render(); throw error;}
+}));
 function renderReviews() {
   if (!saved) return;
   $("#previousLink").innerHTML = '<option value="">選択してください</option>' + saved.links.map((link) => `<option value="${escape(link.id)}">${escape(link.asin || saved.catalog.find((p) => p.id === link.catalogId)?.sellerSku)} ／ ${escape(link.listingId)}</option>`).join("");

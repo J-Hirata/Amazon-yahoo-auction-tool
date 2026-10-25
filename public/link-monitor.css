@@ -92,6 +92,10 @@ form.monitor-inline {display:flex;}
 .email-details pre {white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.8 system-ui;}
 .email-delivery-error {color:#a21d24;}
 .monitor-logs {font-size:13px;line-height:1.8;overflow-wrap:anywhere;}
+.sales-preview-row {padding:16px 0;border-bottom:1px solid #dce1dd;overflow-wrap:anywhere;}
+.sales-preview-row p {margin:8px 0;}
+.sales-preview-row a {display:inline-block;margin:0 12px 8px 0;}
+.sales-count {color:#315846;}
 [hidden] {display:none!important;}
 @media(max-width:760px) {
   .pair-inputs {grid-template-columns:1fr;gap:14px;}

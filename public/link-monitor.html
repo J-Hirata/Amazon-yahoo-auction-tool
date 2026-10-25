@@ -96,6 +96,12 @@
     <div class="section-heading"><h2 id="monitorTableTitle">登録した紐付け</h2><div class="monitor-inline"><button id="productRefresh" type="button">商品画像・名前を更新</button><button id="fbaCheck" type="button">FBA在庫を確認する</button><button id="previewCheck" type="button">通知を確認する</button></div></div>
     <div class="monitor-table-wrap"><table class="monitor-table"><thead><tr><th>商品</th><th>御社のAmazon</th><th>ヤフオク</th><th>自分用メモ</th></tr></thead><tbody id="linkRows"></tbody></table></div>
   </section>
+  <section id="salesSection" class="monitor-section" hidden>
+    <div class="section-heading"><h2>Amazonの販売履歴</h2><div class="monitor-inline"><button id="salesStart" type="button">販売追跡を開始</button><button id="salesCheck" type="button">注文を確認</button></div></div>
+    <p id="salesSummary" role="status"></p>
+    <p id="salesPeriod" class="meta"></p>
+    <details id="salesHistoryDetails"><summary>販売履歴・通知プレビュー</summary><div id="salesPreview"></div><ul id="salesEvents" class="monitor-logs"></ul></details>
+  </section>
   <section class="monitor-section">
     <details id="notificationSetup"><summary>メール通知・自動確認</summary>
       <p id="notificationRecipient" class="meta"></p>

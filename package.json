@@ -8,6 +8,7 @@
     "seed": "node src/seed.js",
     "build:extension": "node scripts/build-extension.mjs",
     "test": "node --test tests/*.test.mjs",
+    "check:git": "node scripts/verify-git-snapshot.mjs",
     "preview:links": "node scripts/start-link-preview.mjs",
     "build:cloud": "node scripts/build-cloud.mjs",
     "build:vercel-local": "node scripts/build-vercel-local.mjs",

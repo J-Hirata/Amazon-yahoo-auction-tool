@@ -19,6 +19,7 @@ import {Pool} from "pg";
 import {randomUUID} from "node:crypto";
 import {createCloudFba} from "../src/cloud-fba.js";
 import {createCloudMail} from "../src/cloud-mail.js";
+import {createCloudSales} from "../src/cloud-sales.js";
 
 const {chromium} = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -102,7 +103,11 @@ try {
       items: asins.map((asin) => ({asin, sellerSku: "FIXTURE-" + asin, fulfillableQuantity: 5, condition: "UsedGood", source: "amazon_sp_api"}))};
   }}) : undefined;
   const mail = connections ? createCloudMail({store, transport: {verify: async () => {}, send: async () => {testEmails++; return {status: "smtp_accepted"};}}}) : undefined;
-  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, ownerAccess, fba, mail,
+  let salesClock = new Date().toISOString(), orderReads = 0;
+  const sales = connections ? createCloudSales({store, config: {accountKey, sellerId, marketplaceId: "A1VC38T7YXB528"}, now: () => salesClock,
+    readOrders: async ({after, before, targets}) => {orderReads++; return {complete: true, accountKey, sellerId, marketplaceId: "A1VC38T7YXB528", after, before, pages: 1,
+      rows: orderReads > 1 ? [] : [{orderId: "fixture-private-order", itemId: "fixture-item", ...targets[0], quantity: 1, status: "UNSHIPPED", fulfillment: "AMAZON", createdAt: after, updatedAt: before}]};}}) : undefined;
+  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, ownerAccess, fba, mail, sales,
     verifyIdentity: createIdentityVerifier({authUrl, keySet: publicKey}),
     verifyOwner: createOwnerVerifier({authUrl, ownerUserId, keySet: publicKey, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})}),
     assets: await loadCloudAssets(vercelMode ? path.join(root, ".vercel", "output", "static") : undefined)});
@@ -171,6 +176,27 @@ try {
     assert.equal(inventoryReads, 1); assert.equal(testEmails, 0);
     assert.equal((await store.read()).amazonInventory.complete, true);
     pass("connected UI refreshes only linked inventory without sending mail");
+    salesClock = new Date().toISOString();
+    await page.locator("#salesStart").click();
+    await page.waitForFunction(() => document.querySelector("#salesSummary").textContent.includes("開始済み"));
+    assert.equal(orderReads, 0); assert.equal(testEmails, 0);
+    const trackingStart = (await store.read()).salesTracking.startedAt;
+    salesClock = new Date(Date.parse(trackingStart) + 10 * 60000).toISOString();
+    await page.locator("#salesCheck").click();
+    await page.waitForFunction(() => document.querySelector("#salesSummary").textContent.includes("注文確認済み"));
+    assert.match(await page.locator("#linkRows").textContent(), /追跡後の注文確定：1個/);
+    await page.locator("#salesHistoryDetails summary").click();
+    assert.match(await page.locator("#salesPreview").textContent(), /今回の注文確定：1個/);
+    assert.equal(orderReads, 1); assert.equal(testEmails, 0);
+    await page.reload(); await page.locator("#cloudApp:not([hidden]) #linkRows tr").first().waitFor();
+    assert.match(await page.locator("#linkRows").textContent(), /追跡後の注文確定：1個/);
+    salesClock = new Date(Date.parse(trackingStart) + 14 * 60000).toISOString();
+    await page.locator("#salesCheck").click();
+    await page.waitForFunction(() => document.querySelector("#monitorStatus").textContent.includes("販売履歴と通知プレビューを更新"));
+    assert.equal(orderReads, 2); assert.equal((await store.read()).salesTracking.events.length, 1);
+    assert.match(await page.locator("#salesPreview").textContent(), /新しい販売・訂正はありません/);
+    assert.equal(testEmails, 0);
+    pass("sales start/check/preview/reload are durable and repeated checking does not duplicate orders or send mail");
   }
   await page.locator(".memo-edit").first().click();
   await page.locator("textarea[name=memo]").first().fill("クラウド画面の保存試験：スタンドなし");
@@ -207,6 +233,14 @@ try {
   await page.setViewportSize({width: 390, height: 844});
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
   await page.screenshot({path: path.join(root, "output", `${prefix}-monitor-mobile.png`), fullPage: true});
+  if (connections) {
+    await page.locator("#salesSection").scrollIntoViewIfNeeded();
+    await page.screenshot({path: path.join(root, "output", "sales-history-fixture-mobile.png")});
+    await page.setViewportSize({width: 1440, height: 1080});
+    await page.locator("#salesSection").scrollIntoViewIfNeeded();
+    await page.screenshot({path: path.join(root, "output", "sales-history-fixture-desktop.png")});
+    await page.setViewportSize({width: 390, height: 844});
+  }
   pass("desktop and mobile have no horizontal overflow");
   if (fullWorkspace) {
     await page.locator(".cloud-account nav").getByText("下書きQ", {exact: true}).click();

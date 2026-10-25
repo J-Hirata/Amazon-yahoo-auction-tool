@@ -9,6 +9,7 @@ import {createCloudHandler} from "./cloud-handler.js";
 import {createOwnerAccess} from "./owner-access.js";
 import {cloudAmazonConfig} from "./amazon-fba-reader.js";
 import {createCloudFba} from "./cloud-fba.js";
+import {createCloudSales} from "./cloud-sales.js";
 import {cloudMailConfig, createCloudMailTransport, createCloudMail} from "./cloud-mail.js";
 
 const fileTypes = {
@@ -31,8 +32,9 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const draftStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "draft-items", validate: validateDraftItems}) : undefined;
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
+  const sales = env.ASIN_AMAZON_CLIENT_ID ? createCloudSales({store, config: cloudAmazonConfig(env)}) : undefined;
   const mail = env.ASIN_GMAIL_USER ? createCloudMail({store, transport: createCloudMailTransport(cloudMailConfig(env))}) : undefined;
-  const handler = createCloudHandler({config, store, draftStore, ownerAccess, fba, mail, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
+  const handler = createCloudHandler({config, store, draftStore, ownerAccess, fba, mail, sales, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
   return {config, handler, pool};
 }
