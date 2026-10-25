@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>商品紐付け・通知 | ASIN下書きQ</title>
+  <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/link-monitor.css">
+</head>
+<body><main class="monitor-shell">
+  <header class="monitor-header">
+    <img src="/extension-logo.png" width="56" height="56" alt="Amazonからヤフオクへ">
+    <div><h1>Amazon・ヤフオク 商品の紐付け</h1></div>
+    <nav><a href="/">下書きQへ戻る</a><button id="refreshMonitor" type="button">更新</button></nav>
+  </header>
+  <div class="monitor-safety"><span>FBA在庫：参照のみ</span><span id="mailSettingLabel">メール：オフ</span><span id="monitorSettingLabel">自動確認：オフ</span></div>
+  <div class="monitor-tabs" role="tablist" aria-label="表示するデータ">
+    <button id="savedTab" type="button" role="tab" aria-selected="true" aria-controls="savedPanel">商品の紐付け</button>
+    <button id="demoTab" type="button" role="tab" aria-selected="false" aria-controls="demoPanel">通知の動作テスト</button>
+  </div>
+  <p id="monitorStatus" class="monitor-status" role="status" aria-live="polite"></p>
+  <section id="demoPanel" role="tabpanel" aria-labelledby="demoTab" hidden>
+    <div class="section-heading"><h2>通知の練習</h2><span class="demo-tag">実在しない商品・保存しません</span></div>
+    <form id="demoForm" class="monitor-inline">
+      <label>試す状態<select id="demoScenario">
+        <option value="baseline">在庫あり・出品中</option><option value="zero">在庫あり → 0個</option>
+        <option value="repeat">0個が続く（重複通知の確認）</option><option value="recovery">在庫復帰 → 再び0個</option>
+        <option value="ended">出品終了を2回確認</option><option value="stopped">手動停止を2回確認</option>
+        <option value="relisted">再出品で出品IDが変わる</option><option value="mismatch">紐付けた商品のセット内容が変わる</option>
+        <option value="failed">Amazonの在庫を取得できない</option><option value="mail_failed">メール送信失敗（模擬）</option>
+        <option value="mail_retry">メール失敗 → 再試行成功（模擬）</option>
+      </select></label><button type="submit">この状態を試す</button>
+    </form>
+    <ol id="demoSteps" class="demo-steps"></ol>
+  </section>
+  <section id="savedPanel" role="tabpanel" aria-labelledby="savedTab">
+    <section class="monitor-section">
+      <h2>2つの商品ページを紐付ける</h2>
+      <form id="pageLinkForm">
+        <div class="pair-inputs">
+          <label>Amazonの商品URL または ASIN<input id="pairAmazon" name="amazon" required placeholder="https://www.amazon.co.jp/dp/… または ASIN" autocomplete="off"></label>
+          <label>ヤフオクの出品URL<input id="pairYahoo" name="yahoo" type="url" required placeholder="https://auctions.yahoo.co.jp/jp/auction/…" autocomplete="off"></label>
+        </div>
+        <button type="submit">この2つを紐付ける</button>
+      </form>
+      <details id="batchRegistration" class="manual-entry"><summary>まとめて登録</summary>
+        <form id="batchForm">
+          <div id="batchRows"></div>
+          <div class="monitor-inline"><button id="addBatchRow" type="button">行を追加</button><button type="submit">まとめて紐付ける</button></div>
+          <p id="batchStatus" role="status"></p>
+        </form>
+      </details>
+    </section>
+    <details id="advancedSetup" class="monitor-section"><summary>詳細設定・データ取込</summary>
+    <section class="monitor-section">
+      <details id="catalogImport"><summary>詳細設定：Amazon在庫データの取込</summary>
+      <form id="catalogForm">
+        <div class="monitor-grid">
+          <label>Amazonアカウントの識別名<input id="accountName" required placeholder="例：自社Amazon"></label>
+          <label>販売国・マーケットプレイス<input id="marketplace" required value="JP"></label>
+          <label>在庫を確認した日時<input id="inventoryAt" type="datetime-local" required></label>
+        </div>
+        <div class="monitor-inline"><label>取込ファイル<input id="catalogFile" type="file" accept=".csv,.tsv,.json"></label><a href="/monitor-template.csv" download>練習用CSVをダウンロード</a></div>
+        <label>商品データ<textarea id="catalogContent" rows="4" required placeholder="SKU・ASIN・状態・セット内容のあるCSV、TSV、JSON"></textarea></label>
+        <div class="monitor-inline"><button type="submit">Amazon商品情報を取り込む</button><span class="meta">現在はファイル取込です。Amazonとの自動接続は未設定です。</span></div>
+      </form>
+      <p id="catalogSummary" class="meta"></p>
+      </details>
+    </section>
+    <section class="monitor-section">
+      <h2>ASINとヤフオク出品の紐付け</h2>
+      <form id="yahooForm" class="monitor-inline">
+        <label class="url-label">出品URL<input id="listingUrl" type="url" required placeholder="https://auctions.yahoo.co.jp/jp/auction/…"></label>
+        <button type="submit">管理番号を読み取る</button>
+      </form>
+      <details class="manual-entry"><summary>管理番号がない商品・読み取れない商品を登録</summary>
+        <form id="manualListingForm">
+          <div class="monitor-grid"><label>出品URL<input name="url" type="url" required></label><label>商品名<input name="title" required></label><label>ヤフオク出品者ID<input name="seller" required></label></div>
+          <label>商品説明・管理番号<textarea name="description" rows="3"></textarea></label>
+          <button type="submit">手動で登録する</button>
+        </form>
+      </details>
+      <div id="listingReview"></div>
+    </section>
+    <section class="monitor-section">
+      <details><summary>再出品先への紐付け引継ぎ</summary>
+        <form id="successorForm">
+          <div class="monitor-grid"><label>現在の紐付け<select id="previousLink" required></select></label><label>読み取り済みの再出品先<select id="successorListing" required></select></label></div>
+          <label>同じ商品と確認した根拠<input id="successorEvidence" required placeholder="SKU・状態・付属品・出品者を照合した内容"></label>
+          <label class="monitor-check"><input id="successorReviewed" type="checkbox" required>再出品先が同じ商品・同じ出品者であることを確認しました</label>
+          <button type="submit">紐付けを引き継ぐ</button>
+        </form>
+      </details>
+    </section>
+    </details>
+  </section>
+  <section class="monitor-section">
+    <div class="section-heading"><h2 id="monitorTableTitle">登録した紐付け</h2><div class="monitor-inline"><button id="productRefresh" type="button">商品画像・名前を更新</button><button id="fbaCheck" type="button">FBA在庫を確認する</button><button id="previewCheck" type="button">通知を確認する</button></div></div>
+    <div class="monitor-table-wrap"><table class="monitor-table"><thead><tr><th>商品</th><th>御社のAmazon</th><th>ヤフオク</th><th>自分用メモ</th></tr></thead><tbody id="linkRows"></tbody></table></div>
+  </section>
+  <section class="monitor-section">
+    <details id="notificationSetup"><summary>メール通知・自動確認</summary>
+      <p id="notificationRecipient" class="meta"></p>
+      <p id="notificationRuntimeWarning" class="error" hidden>通知機能の反映にはツールの再起動が必要です。</p>
+      <form id="notificationSettingsForm"><fieldset id="notificationSettingsFields" disabled>
+        <label class="monitor-check"><input id="mailEnabled" type="checkbox">新しい紐付けと確認結果をメールで通知する</label>
+        <label class="monitor-check"><input id="monitoringEnabled" type="checkbox">PC稼働中、30分ごとに在庫・出品状態を確認する</label>
+        <div class="monitor-inline"><button type="submit">通知設定を保存</button><button id="testRegistrationMail" type="button">登録メールを1通テスト</button><button id="checkAndNotify" type="button">今すぐ確認して通知する</button></div>
+      </fieldset></form>
+      <div id="cloudMailControls" class="monitor-inline" hidden><button id="verifyCloudMail" type="button">Gmail接続を確認</button><span id="cloudMailStatus" class="meta" role="status"></span></div>
+      <p id="notificationJobStatus" role="status"></p>
+      <p id="mailSummary" class="meta" role="status"></p><ul id="mailOutbox" class="monitor-logs"></ul>
+    </details>
+  </section>
+  <section class="monitor-section">
+    <div class="section-heading"><h2>通知プレビュー</h2><span id="eventCount" class="meta"></span></div>
+    <label>通知を選択<select id="eventSelect"></select></label>
+    <div id="emailPreview" class="email-preview">まだ通知はありません。</div>
+    <p id="previewLinks" class="monitor-inline" hidden></p>
+  </section>
+  <details class="monitor-section"><summary>確認履歴・取得エラー</summary><ul id="monitorLogs" class="monitor-logs"></ul></details>
+</main><script type="module" src="/link-monitor.js"></script></body>
+</html>

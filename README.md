@@ -1,5 +1,11 @@
 ﻿# ASIN Yahoo Auction Draft Tool
 
+業務版の入口は https://amazon-yahoo-inventory.vercel.app/ 。本人ログイン後、「商品紐付け・通知」と「下書きQ」を切り替えます。15組の紐付け、16出品情報、32通知履歴、58下書きを専用Neonへ移行・照合済みです。再登録は不要です。
+現在の状態は [docs/status.md](docs/status.md)、追加機能の手順は [docs/phase1-link-monitor.md](docs/phase1-link-monitor.md) を参照。
+クラウド版のメール接続確認・1通テストと旧30分確認の区別は [docs/notifications.md](docs/notifications.md) を参照。自動設定はオフで、過去の登録分は一斉送信しません。
+保存基盤と検証手順は [docs/neon-storage.md](docs/neon-storage.md)、本人認証と公開範囲は [docs/cloud-access.md](docs/cloud-access.md)。2026-10-26に本人の初回登録・本番ログイン・15件/58件表示とページ間セッション復元、登録14 ASINだけのFBA再取得、Gmail接続と承認済みテスト1通の本人受信まで確認済み。登録・メモ・下書き編集・取得結果はクラウド保存します。自動メール・定期確認はオフで、新規登録しても自動メールは送りません。注文確定ベースの1時間通知と実機スマホ回線の確認はこれからです。取得分数量とMCF発送可能数、古い情報は区別します。
+日常利用は上記URLを開くだけで、PCの電源やPowerShellは不要です。旧起動ファイルもクラウドへ案内し、移行元JSONは控えとして残して二重編集を防止します。`/demo.html` は以前の架空データ確認版であり、登録済み商品の入口ではありません。Netlify登録は不要です。以下のローカル補助手順は開発・移行前の記録です。
+
 Amazon ASIN繧堤匳骭ｲ縺励∝膚蜩∵ュ蝣ｱ繧貞叙繧願ｾｼ縺ｿ縲〆ahoo!繧ｪ繝ｼ繧ｯ繧ｷ繝ｧ繝ｳ荳区嶌縺咲畑縺ｮ蜃ｺ蜩√く繝･繝ｼ繧堤ｮ｡逅・☆繧九Ο繝ｼ繧ｫ繝ｫ繝・・繝ｫ縺ｧ縺吶・
 ## 蛻晄悄迚医〒縺ｧ縺阪ｋ縺薙→
 

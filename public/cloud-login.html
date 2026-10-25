@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Amazon・ヤフオク 在庫管理</title>
+  <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/link-monitor.css"><link rel="stylesheet" href="/cloud-login.css">
+</head>
+<body>
+  <main id="loginPanel" class="login-shell">
+    <header class="login-heading"><img src="/extension-logo.png" width="56" height="56" alt=""><h1>Amazon・ヤフオク<br>在庫管理</h1></header>
+    <form id="loginForm">
+      <h2 id="loginTitle">ログイン</h2>
+      <label>メールアドレス<input id="loginEmail" name="email" type="email" autocomplete="username" required></label>
+      <label>パスワード<input id="loginPassword" name="password" type="password" autocomplete="current-password" required></label>
+      <button id="loginSubmit" type="submit" disabled>ログイン</button>
+      <button id="setupSignIn" type="button" hidden>登録済みのアカウントでログイン</button>
+    </form>
+    <button id="finishSetup" type="button" hidden>このアカウントで開始</button>
+    <p id="loginStatus" role="status" aria-live="polite">認証を確認しています。</p>
+  </main>
+  <div id="cloudApp" hidden></div>
+  <script type="module" src="/cloud-login.js"></script>
+</body>
+</html>

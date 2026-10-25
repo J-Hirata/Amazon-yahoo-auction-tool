@@ -1,0 +1,19 @@
+[build]
+  command = "npm run build:cloud"
+  publish = "dist/cloud"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  included_files = ["dist/cloud/**"]
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-store"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' https://*.neon.tech; frame-src https://*.neon.tech; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"

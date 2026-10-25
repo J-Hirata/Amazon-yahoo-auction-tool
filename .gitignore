@@ -1,6 +1,8 @@
 # Local product records and stock-watch data
 data/*.json
 data/extension-backup-*/
+data/cloud-backup-*/
+data/cloud-private/
 
 # Browser screenshots and local verification output
 test-output/
@@ -10,3 +12,13 @@ test-output/
 .env.*
 !.env.example
 node_modules/
+data/gmail-credential*.xml
+data/mail-receipts/
+
+# New monitor runtime records, atomic-save files, and verification images
+data/link-monitor.json*
+output/
+dist/
+.vercel/
+
+.vercel

@@ -1,4 +1,16 @@
+import {monitorRequest} from "./monitor-http.js";
 const state = { items: [], queue: { active: [], waiting: [] }, priceReviews: [], config: null, selectedAsin: null };
+async function appFetch(url, options = {}) {
+  const headers = new Headers(options.headers);
+  if (state.capabilities?.cloud && options.method && options.method !== "GET") headers.set("If-Match", `"${state.storage.revision}"`);
+  const response = await monitorRequest(url, {...options, headers});
+  if (!response.ok) {
+    const result = await response.json().catch(() => ({}));
+    const error = new Error(result.error || "操作を完了できませんでした");
+    showTextStatus(error.message); throw error;
+  }
+  return response;
+}
 const yahooBookmarkletCode = "javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:41731/yahoo-fill.js?'+Date.now();document.body.appendChild(s);})();";
 
 document.querySelector("#extensionSelected").addEventListener("click", () => openWithExtension(state.selectedAsin));
@@ -32,7 +44,7 @@ document.querySelector("#copyYahooBookmarklet").addEventListener("click", copyYa
 document.querySelector("#copyYahooBookmarkletDraft").addEventListener("click", copyYahooBookmarklet);
 document.querySelector("#add").addEventListener("click", async () => {
   const asins = document.querySelector("#asins").value;
-  await fetch("/api/asins", {
+  await appFetch("/api/asins", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ asins })
@@ -43,7 +55,7 @@ document.querySelector("#add").addEventListener("click", async () => {
 document.querySelector("#fetchProducts").addEventListener("click", async () => {
   const asins = document.querySelector("#asins").value;
   showTextStatus("Amazon情報を取得しています。少し待ってください。");
-  const res = await fetch("/api/fetch-product-data", {
+  const res = await appFetch("/api/fetch-product-data", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ asins })
@@ -53,10 +65,18 @@ document.querySelector("#fetchProducts").addEventListener("click", async () => {
   await load();
 });
 
+document.querySelector("a[href='/api/export/drafts.csv']")?.addEventListener("click", async (event) => {
+  if (!state.capabilities?.cloud) return;
+  event.preventDefault();
+  const response = await appFetch("/api/export/drafts.csv");
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a"); link.href = url; link.download = "drafts.csv"; link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+});
 await load();
 
 async function load() {
-  const res = await fetch("/api/items");
+  const res = await appFetch("/api/items");
   Object.assign(state, await res.json());
   render();
 }
@@ -94,6 +114,7 @@ function render() {
   renderList("#active", active, true);
   renderList("#waiting", waiting, false);
   renderHistory();
+  if (state.capabilities?.cloud) document.querySelectorAll("[data-action='delete']").forEach((button) => {button.disabled = true; button.title = "履歴を保持するためクラウドの削除は未有効です";});
 }
 
 function syncYahooLaunchBanner(active) {
@@ -121,9 +142,9 @@ function card(item, compact) {
     <div class="item-head">
       <div>
         <strong>${escapeHtml(item.title || item.asin)}</strong>
-        <a href="${item.amazonUrl}" target="_blank" rel="noreferrer">${item.asin}</a>
+        <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(item.asin)}" target="_blank" rel="noreferrer">${escapeHtml(item.asin)}</a>
       </div>
-      <span class="status-pill">${statusLabel(item.status)}</span>
+      <span class="status-pill">${escapeHtml(statusLabel(item.status))}</span>
     </div>
     <div class="prices">
       <span>初回: ${yen(item.startPrice)}</span>
@@ -136,7 +157,7 @@ function card(item, compact) {
       <button type="button" data-action="draft">下書き文面</button>
       <button type="button" data-action="saved">下書き保存済み</button>
       <button type="button" data-action="delete" class="danger">削除</button>
-      <a href="${item.amazonUrl}" target="_blank" rel="noreferrer">Amazon</a>
+      <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(item.asin)}" target="_blank" rel="noreferrer">Amazon</a>
       <a href="${buildYahooMarketUrl(item)}" target="_blank" rel="noreferrer" title="キーワード: ${escapeAttribute(buildYahooMarketKeyword(item))}">ヤフオク</a>
     </div>
   `;
@@ -179,7 +200,7 @@ function historyCard(item) {
     <div class="history-actions">
       <button type="button" data-action="draft">下書き文面</button>
       <button type="button" data-action="restore">下書き候補に戻す</button>
-      <a href="${item.amazonUrl}" target="_blank" rel="noreferrer">Amazon</a>
+      <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(item.asin)}" target="_blank" rel="noreferrer">Amazon</a>
     </div>
   `;
   el.querySelector("[data-action='draft']").addEventListener("click", async () => openDraft(item.asin));
@@ -213,7 +234,7 @@ function detailEditor(item) {
         <input data-field="title" value="${escapeAttribute(item.title || "")}" placeholder="Amazonの商品名">
       </label>
       <label>Amazon中古最安値
-        <input data-field="usedLowestPrice" type="number" min="1" value="${item.usedLowestPrice ?? ""}" placeholder="例: 3980">
+        <input data-field="usedLowestPrice" type="number" min="1" value="${escapeAttribute(item.usedLowestPrice ?? "")}" placeholder="例: 3980">
       </label>
     </div>
     <label>仕様・サイズ・重さなど
@@ -242,7 +263,7 @@ function reviewBadge(item) {
 }
 
 async function openNextDraft() {
-  const res = await fetch("/api/next-draft");
+  const res = await appFetch("/api/next-draft");
   const { item } = await res.json();
   if (!item) {
     showTextStatus("下書き候補はありません。");
@@ -252,7 +273,7 @@ async function openNextDraft() {
 }
 
 async function openDraft(asin) {
-  const res = await fetch(`/api/items/${encodeURIComponent(asin)}/draft`);
+  const res = await appFetch(`/api/items/${encodeURIComponent(asin)}/draft`);
   const { draft } = await res.json();
   state.selectedAsin = asin;
   document.querySelector("#draftTitle").textContent = `${draft.asin} / ${yen(draft.price)}`;
@@ -291,7 +312,7 @@ async function copyYahooBookmarklet() {
 }
 
 async function patchItem(asin, patch) {
-  await fetch(`/api/items/${encodeURIComponent(asin)}`, {
+  await appFetch(`/api/items/${encodeURIComponent(asin)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(patch)
@@ -300,7 +321,7 @@ async function patchItem(asin, patch) {
 }
 
 async function deleteItem(asin) {
-  await fetch(`/api/items/${encodeURIComponent(asin)}`, { method: "DELETE" });
+  await appFetch(`/api/items/${encodeURIComponent(asin)}`, { method: "DELETE" });
   await load();
 }
 

@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildItemsFromAsins } from "./amazon.js";
 import { findPriceReviewItems, splitDraftQueue } from "./queue.js";
-import { loadItems, saveItems, upsertItems } from "./store.js";
+import { loadItems, updateItems, upsertItems } from "./store.js";
 import { calculateAuctionPrices } from "./pricing.js";
 import { CONFIG } from "./config.js";
 import { buildYahooDraft } from "./draft.js";
@@ -12,14 +12,41 @@ import { fetchProductData } from "./product-provider.js";
 import { buildDraftCsv } from "./csv.js";
 import { loadStockWatch, saveStockWatch, upsertStockWatch } from "./stock-monitor-store.js";
 import { checkStockWatchItem, needsReminder, normalizeWatchAsins } from "./stock-monitor.js";
+import { handleLinkMonitor } from "./link-monitor-api.js";
+import {cloudCutover} from "./cloud-cutover.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+if (!process.env.ASIN_DATA_DIR && !process.env.LINK_MONITOR_DATA_DIR && await cloudCutover(path.resolve(__dirname, "..", "data"))) {
+  console.log("Cloud version is ready: https://amazon-yahoo-inventory.vercel.app . Local backup files will not be edited.");
+  process.exit(0);
+}
 const publicDir = path.resolve(__dirname, "..", "public");
 const port = Number(process.env.PORT || 41731);
+const bindHost = process.env.ASIN_BIND_HOST || (process.env.ASIN_STORAGE_BACKEND === "postgres" ? "127.0.0.1" : undefined);
+if (process.env.ASIN_STORAGE_BACKEND === "postgres" && !["127.0.0.1", "::1", "localhost"].includes(bindHost)) {
+  throw new Error("DB保存の試行はローカル接続限定です。クラウド公開は認証実装後に行ってください");
+}
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host}`);
+    if (process.env.ASIN_STORAGE_BACKEND === "postgres" &&
+      (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname) || (req.headers.origin && req.headers.origin !== url.origin))) {
+      return sendJson(res, {error: "DB保存の試行は同じローカル管理画面から操作してください"}, 403);
+    }
+
+    if (await handleLinkMonitor(req, res, url)) return;
+    const monitorFiles = {
+      "/link-monitor.html": ["link-monitor.html", "text/html; charset=utf-8"],
+      "/link-monitor.js": ["link-monitor.js", "text/javascript; charset=utf-8"],
+      "/monitor-http.js": ["monitor-http.js", "text/javascript; charset=utf-8"],
+      "/link-monitor.css": ["link-monitor.css", "text/css; charset=utf-8"],
+      "/monitor-template.csv": ["monitor-template.csv", "text/csv; charset=utf-8"]
+    };
+    if (req.method === "GET" && Object.hasOwn(monitorFiles, url.pathname)) {
+      const [name, contentType] = monitorFiles[url.pathname];
+      return sendFile(res, path.join(publicDir, name), contentType);
+    }
 
     if (req.method === "OPTIONS") {
       res.writeHead(204, corsHeaders());
@@ -201,26 +228,21 @@ const server = http.createServer(async (req, res) => {
         .filter((item) => item.status === "waiting_for_product_data")
         .map((item) => item.asin);
       const results = [];
-      let next = requestedAsins.length
-        ? mergeMissingItems(current, await buildItemsFromAsins(requestedAsins))
-        : current;
+      const candidates = requestedAsins.length ? await buildItemsFromAsins(requestedAsins) : [];
 
       for (const asin of targets) {
         const result = await fetchProductData(asin);
         results.push(result);
-        if (result.ok) {
-          const prices = calculateAuctionPrices(result.item.usedLowestPrice, CONFIG);
-          next = next.map((item) => item.asin === asin ? {
-            ...item,
-            ...result.item,
-            startPrice: prices.startPrice,
-            stalePrice: prices.stalePrice,
-            updatedAt: new Date().toISOString()
-          } : item);
-        }
       }
-
-      await saveItems(next);
+      const next = await updateItems((latest) => {
+        let merged = mergeMissingItems(latest, candidates);
+        for (const result of results.filter((entry) => entry.ok)) {
+          const prices = calculateAuctionPrices(result.item.usedLowestPrice, CONFIG);
+          merged = merged.map((item) => item.asin === result.item.asin ? {...item, ...result.item,
+            startPrice: prices.startPrice, stalePrice: prices.stalePrice, updatedAt: new Date().toISOString()} : item);
+        }
+        return merged;
+      });
       return sendJson(res, { items: next, queue: splitDraftQueue(next), priceReviews: findPriceReviewItems(next), results });
     }
 
@@ -229,7 +251,6 @@ const server = http.createServer(async (req, res) => {
       const asin = normalizeAsin(body.asin);
       if (!asin) return sendJson(res, { error: "ASINが読み取れませんでした。" }, 400);
 
-      const current = await loadItems();
       const usedLowestPrice = numberOrNull(body.usedLowestPrice ?? body.price);
       const prices = calculateAuctionPrices(usedLowestPrice, CONFIG);
       const now = new Date().toISOString();
@@ -250,20 +271,16 @@ const server = http.createServer(async (req, res) => {
         updatedAt: now
       };
 
-      const exists = current.some((item) => item.asin === asin);
-      const next = exists
+      const next = await updateItems((current) => current.some((item) => item.asin === asin)
         ? current.map((item) => item.asin === asin ? { ...item, ...imported } : item)
-        : [...current, { ...imported, createdAt: now }];
-
-      await saveItems(next);
+        : [...current, { ...imported, createdAt: now }]);
       return sendJson(res, { item: next.find((item) => item.asin === asin), queue: splitDraftQueue(next) });
     }
 
     if (req.method === "PATCH" && url.pathname.startsWith("/api/items/")) {
       const asin = decodeURIComponent(url.pathname.replace("/api/items/", ""));
       const patch = await readJson(req);
-      const items = await loadItems();
-      const next = items.map((item) => {
+      const next = await updateItems((items) => items.map((item) => {
         if (item.asin !== asin) return item;
         const usedLowestPrice = patch.usedLowestPrice === "" ? null : Number(patch.usedLowestPrice ?? item.usedLowestPrice);
         const prices = calculateAuctionPrices(usedLowestPrice, CONFIG);
@@ -283,16 +300,13 @@ const server = http.createServer(async (req, res) => {
           stalePrice: prices.stalePrice,
           updatedAt: new Date().toISOString()
         };
-      });
-      await saveItems(next);
+      }));
       return sendJson(res, { items: next, queue: splitDraftQueue(next), priceReviews: findPriceReviewItems(next) });
     }
 
     if (req.method === "DELETE" && url.pathname.startsWith("/api/items/")) {
       const asin = decodeURIComponent(url.pathname.replace("/api/items/", ""));
-      const items = await loadItems();
-      const next = items.filter((item) => item.asin !== asin);
-      await saveItems(next);
+      const next = await updateItems((items) => items.filter((item) => item.asin !== asin));
       return sendJson(res, { items: next, queue: splitDraftQueue(next), priceReviews: findPriceReviewItems(next) });
     }
 
@@ -300,15 +314,15 @@ const server = http.createServer(async (req, res) => {
     res.end("Not Found");
   } catch (error) {
     console.error(error);
-    sendJson(res, { error: error.message }, 500);
+    sendJson(res, { error: error.message }, error.code === "STORAGE_CONFLICT" ? 409 : String(error.code || "").startsWith("STORAGE_") ? 503 : 500);
   }
 });
 
-server.listen(port, () => {
-  console.log(`ASIN draft tool: http://localhost:${port}`);
+server.listen(port, bindHost, () => {
+  console.log(`ASIN draft tool: http://localhost:${server.address().port}`);
 });
 
-setInterval(() => {
+if (process.env.ASIN_STORAGE_BACKEND !== "postgres" && process.env.ASIN_DISABLE_BACKGROUND !== "1") setInterval(() => {
   runStockWatchCheck().catch((error) => console.error("Stock watch check failed", error));
 }, 60 * 60 * 1000);
 
@@ -400,6 +414,7 @@ function sendJson(res, value, status = 200) {
 }
 
 function corsHeaders() {
+  if (process.env.ASIN_STORAGE_BACKEND === "postgres") return {};
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
