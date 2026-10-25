@@ -1,7 +1,8 @@
 ﻿# ASIN Yahoo Auction Draft Tool
 
-業務版の入口は https://amazon-yahoo-inventory.vercel.app/ 。本人ログイン後、「商品紐付け・通知」と「下書きQ」を切り替えます。15組の紐付け、16出品情報、32通知履歴、58下書きを専用Neonへ移行・照合済みです。再登録は不要です。
+業務版の入口は https://amazon-yahoo-inventory.vercel.app/ 。本人ログイン後、「商品紐付け・通知」「手元在庫」「下書きQ」を切り替えます。15組の紐付け、16出品情報、32通知履歴、58下書きを専用Neonへ移行・照合済みです。再登録は不要です。
 現在の状態は [docs/status.md](docs/status.md)、追加機能の手順は [docs/phase1-link-monitor.md](docs/phase1-link-monitor.md) を参照。
+コンテナ/自宅・自社の手入力、棚卸し、取り置き/使用不可、場所移動/FBA納品中、ASINなしのカタログ作業待ちは [docs/physical-stock.md](docs/physical-stock.md)。入口は `/?view=stock`。過去の基準数量を現在庫として自動登録せず、本人が実数を確認してから保存します。
 販売追跡の開始・手動の注文確認・取消除外の履歴と未送信プレビューは [docs/sales-history.md](docs/sales-history.md)。1時間ごとの自動実行/メールはまだ有効にしません。Gitの記録前には `npm run check:git` で秘密設定・業務データ・生成物が管理対象へ入っていないことを確認します。通常データは専用Neon、ソース/仕様/試験はGitで管理します。
 クラウド版のメール接続確認・1通テストと旧30分確認の区別は [docs/notifications.md](docs/notifications.md) を参照。自動設定はオフで、過去の登録分は一斉送信しません。
 保存基盤と検証手順は [docs/neon-storage.md](docs/neon-storage.md)、本人認証と公開範囲は [docs/cloud-access.md](docs/cloud-access.md)。2026-10-26に本人の初回登録・本番ログイン・15件/58件表示とページ間セッション復元、登録14 ASINだけのFBA再取得、Gmail接続と承認済みテスト1通の本人受信まで確認済み。登録・メモ・下書き編集・取得結果はクラウド保存します。自動メール・定期確認はオフで、新規登録しても自動メールは送りません。注文確定ベースの1時間通知と実機スマホ回線の確認はこれからです。取得分数量とMCF発送可能数、古い情報は区別します。

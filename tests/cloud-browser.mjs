@@ -20,6 +20,9 @@ import {randomUUID} from "node:crypto";
 import {createCloudFba} from "../src/cloud-fba.js";
 import {createCloudMail} from "../src/cloud-mail.js";
 import {createCloudSales} from "../src/cloud-sales.js";
+import {createCloudStock} from "../src/cloud-stock.js";
+import {emptyPhysicalStock, validatePhysicalStock} from "../src/physical-stock.js";
+import {verifyPhysicalStockUI} from "./physical-stock-browser-flow.mjs";
 
 const {chromium} = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -82,7 +85,12 @@ server.listen(0, "127.0.0.1");
 await once(server, "listening");
 const base = `http://127.0.0.1:${server.address().port}`;
 let browser;
-let databasePool, databaseKey;
+let databasePool, databaseKey, stockDatabaseKey;
+let stockData = emptyPhysicalStock(), stockRevision = 0;
+let stockStore = {read: async () => structuredClone(stockData), readSnapshot: async () => ({state: structuredClone(stockData), revision: stockRevision}), update: async (callback, {expectedRevision}) => {
+  if (stockRevision !== expectedRevision) throw Object.assign(new Error("更新競合"), {code: "STORAGE_CONFLICT"});
+  const next = structuredClone(stockData), result = await callback(next); stockData = next; stockRevision++; return result;
+}};
 let checks = 0;
 const pass = (name) => {checks++; console.log(`PASS ${name}`);};
 try {
@@ -94,6 +102,9 @@ try {
     databaseKey = `test-vercel-browser-${randomUUID()}`;
     await databasePool.query("INSERT INTO app_storage.documents(document_key, payload) VALUES ($1, $2::jsonb)", [databaseKey, JSON.stringify(state)]);
     store = createPostgresDocumentStore({pool: databasePool, key: databaseKey, validate: validateMonitorState});
+    stockDatabaseKey = `test-physical-stock-${randomUUID()}`;
+    await databasePool.query("INSERT INTO app_storage.documents(document_key, payload) VALUES ($1, $2::jsonb)", [stockDatabaseKey, JSON.stringify(emptyPhysicalStock())]);
+    stockStore = createPostgresDocumentStore({pool: databasePool, key: stockDatabaseKey, validate: validatePhysicalStock});
   }
   let testEmails = 0, inventoryReads = 0;
   const accountKey = state.amazonAccountKey || "fixture-account";
@@ -107,7 +118,8 @@ try {
   const sales = connections ? createCloudSales({store, config: {accountKey, sellerId, marketplaceId: "A1VC38T7YXB528"}, now: () => salesClock,
     readOrders: async ({after, before, targets}) => {orderReads++; return {complete: true, accountKey, sellerId, marketplaceId: "A1VC38T7YXB528", after, before, pages: 1,
       rows: orderReads > 1 ? [] : [{orderId: "fixture-private-order", itemId: "fixture-item", ...targets[0], quantity: 1, status: "UNSHIPPED", fulfillment: "AMAZON", createdAt: after, updatedAt: before}]};}}) : undefined;
-  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, ownerAccess, fba, mail, sales,
+  const stock = fullWorkspace ? createCloudStock({store: stockStore, monitorStore: store}) : undefined;
+  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, ownerAccess, fba, mail, sales,
     verifyIdentity: createIdentityVerifier({authUrl, keySet: publicKey}),
     verifyOwner: createOwnerVerifier({authUrl, ownerUserId, keySet: publicKey, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})}),
     assets: await loadCloudAssets(vercelMode ? path.join(root, ".vercel", "output", "static") : undefined)});
@@ -198,6 +210,12 @@ try {
     assert.equal(testEmails, 0);
     pass("sales start/check/preview/reload are durable and repeated checking does not duplicate orders or send mail");
   }
+  if (fullWorkspace) {
+    await verifyPhysicalStockUI({page, stockStore, monitorStore: store, root, pass});
+    assert.equal(testEmails, 0);
+    await page.locator(".cloud-account nav").getByText("商品紐付け・通知", {exact: true}).click();
+    await page.locator("#cloudApp:not([hidden]) #linkRows tr").first().waitFor();
+  }
   await page.locator(".memo-edit").first().click();
   await page.locator("textarea[name=memo]").first().fill("クラウド画面の保存試験：スタンドなし");
   await page.locator("form[data-memo] button[type=submit]").first().click();
@@ -275,6 +293,7 @@ try {
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
   if (databasePool) {
+    if (stockDatabaseKey) await databasePool.query("DELETE FROM app_storage.documents WHERE document_key = $1", [stockDatabaseKey]);
     if (databaseKey) await databasePool.query("DELETE FROM app_storage.documents WHERE document_key = $1", [databaseKey]);
     await databasePool.end();
   }

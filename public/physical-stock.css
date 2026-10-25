@@ -1,0 +1,41 @@
+.stock-shell {max-width:1280px;margin:0 auto;padding:24px;font:14px/1.6 system-ui;color:#24342c;}
+.stock-heading,.stock-toolbar {display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;}
+.stock-heading h1 {font-size:24px;margin:0;letter-spacing:0;}
+.stock-heading p {margin:4px 0;}
+.stock-shell button {min-height:40px;}
+.stock-filters {display:grid;grid-template-columns:minmax(240px,2fr) minmax(150px,1fr) minmax(170px,1fr);gap:16px;padding:20px 0;}
+.stock-shell label {display:grid;gap:5px;min-width:0;}
+.stock-shell input,.stock-shell select,.stock-shell textarea {box-sizing:border-box;width:100%;min-width:0;max-width:100%;font:inherit;border:1px solid #cdd5d0;background:#fff;border-radius:4px;padding:9px;}
+.stock-table {border-collapse:collapse;width:100%;table-layout:fixed;background:#fff;}
+.stock-table th,.stock-table td {border-bottom:1px solid #d8e1dc;text-align:left;vertical-align:top;padding:14px 12px;overflow-wrap:anywhere;}
+.stock-table th {background:#eef3ef;font-size:12px;color:#52635a;}
+.stock-table th:first-child {width:27%;}.stock-table th:nth-child(5) {width:21%;}.stock-table th:last-child {width:100px;}
+.stock-table small {display:block;color:#64756b;line-height:1.6;}
+.stock-table .stock-product {display:flex;gap:10px;align-items:flex-start;}
+.stock-product img {width:56px;height:56px;object-fit:contain;flex:none;border:1px solid #e4e8e5;border-radius:4px;}
+.stock-table button {display:block;margin:6px 0;font-size:12px;width:100%;padding:7px;}
+.stock-section {border-top:1px solid #d8e1dc;padding:18px 0;margin-top:20px;}
+.stock-section summary {cursor:pointer;font-weight:600;}
+.stock-transfer,.stock-reference {display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;border-bottom:1px solid #d8e1dc;padding:12px 0;}
+.stock-reference button {background:transparent;color:#17623c;text-decoration:underline;}
+.stock-pending {border-left:3px solid #9a731c;padding:12px 16px;background:#fff8e4;}
+.stock-error,.stock-shell .error {color:#a21d24;}
+.stock-shell #stockStatus {min-height:24px;margin:12px 0;overflow-wrap:anywhere;}
+.stock-dialog {width:min(620px,calc(100vw - 32px));max-width:calc(100vw - 32px);box-sizing:border-box;max-height:90dvh;overflow:auto;border:1px solid #bccdc2;border-radius:8px;padding:22px;color:#24342c;font:14px/1.6 system-ui;}
+.stock-dialog::backdrop {background:#16291e66;}
+.stock-dialog header,.stock-dialog footer {display:flex;justify-content:space-between;gap:12px;align-items:center;}
+.stock-dialog header {margin-bottom:18px;}.stock-dialog footer {justify-content:flex-end;margin-top:20px;}
+.stock-dialog h2 {font-size:19px;margin:0;letter-spacing:0;overflow-wrap:anywhere;}
+.stock-dialog header button {background:transparent;color:#52635a;font-size:24px;width:40px;height:40px;padding:0;flex:none;}
+.stock-dialog form {display:grid;gap:14px;}.stock-form-grid {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;}
+.stock-dialog table {width:100%;border-collapse:collapse;font-size:13px;}.stock-dialog th,.stock-dialog td {padding:10px 6px;border-bottom:1px solid #d8e1dc;text-align:left;overflow-wrap:anywhere;}
+.stock-dialog p {overflow-wrap:anywhere;}
+#stockExtraFields>summary {cursor:pointer;margin-bottom:14px;}#stockExtraFields[open] {display:grid;gap:14px;}
+@media(max-width:760px) {
+ .stock-shell {padding:16px;}.stock-filters {grid-template-columns:1fr;gap:12px;}.stock-heading {align-items:flex-start;}.stock-toolbar {justify-content:flex-start;}
+ .stock-table,.stock-table tbody {display:block;}.stock-table thead {display:none;}.stock-table tr {display:grid;grid-template-columns:1fr 1fr;gap:0 16px;padding:14px 12px;border-bottom:1px solid #cbd8d0;}
+ .stock-table td {display:block;border:0;padding:8px 0;}.stock-table td::before {content:attr(data-label);display:block;font-size:12px;color:#64756b;margin-bottom:4px;}
+ .stock-table td:first-child,.stock-table td:nth-child(5),.stock-table td:last-child {grid-column:1/-1;}.stock-table td:last-child {display:flex;gap:12px;}.stock-table td:last-child::before {display:none;}.stock-table td button {width:auto;min-height:44px;padding:10px 16px;}
+ .stock-dialog {padding:16px;}.stock-form-grid {grid-template-columns:1fr;}.stock-dialog footer button {min-height:44px;}.stock-product {font-size:16px;}
+ .stock-shell input,.stock-shell select,.stock-shell textarea {font-size:16px;}
+}

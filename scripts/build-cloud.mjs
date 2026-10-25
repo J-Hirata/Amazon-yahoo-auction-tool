@@ -8,8 +8,8 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const output = path.join(root, "dist", "cloud");
 await mkdir(output, {recursive: true});
 await build({entryPoints: [path.join(root, "public", "cloud-login.js")], outfile: path.join(output, "cloud-login.js"), bundle: true,
-  format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./link-monitor.js", "./app.js"], logLevel: "warning"});
-const files = ["cloud-login.html", "cloud-login.css", "cloud-demo.js", "app.js", "monitor-http.js", "link-monitor.js", "link-monitor.css", "styles.css", "extension-logo.png"];
+  format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./link-monitor.js", "./physical-stock.js", "./app.js"], logLevel: "warning"});
+const files = ["cloud-login.html", "cloud-login.css", "cloud-demo.js", "app.js", "monitor-http.js", "link-monitor.js", "link-monitor.css", "physical-stock.js", "physical-stock.css", "cloud-stock-view.html", "styles.css", "extension-logo.png"];
 for (const name of files) await copyFile(path.join(root, "public", name), path.join(output, name));
 for (const name of ["index.html", "link-monitor.html"]) await copyFile(path.join(root, "public", "cloud-login.html"), path.join(output, name));
 await copyFile(path.join(root, "public", "cloud-demo.html"), path.join(output, "demo.html"));

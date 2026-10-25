@@ -8,9 +8,10 @@ export function vercelCloudRequest(request) {
   if (!url.searchParams.has("__route")) return request;
   const value = url.searchParams.get("__route") || "";
   const route = value.startsWith("/") ? value.slice(1) : value;
+  const validRoute = /^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(route || "") || ["export/drafts.csv", "physical-stock/export.csv"].includes(route);
   if (url.searchParams.getAll("__route").length !== 1 || [...url.searchParams.keys()].some((key) => !["__route", "path"].includes(key)) ||
       (url.searchParams.has("path") && (url.searchParams.getAll("path").length !== 1 || url.searchParams.get("path") !== route)) ||
-      !/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/.test(route || "") || route.length > 500) return null;
+      !validRoute || route.length > 500) return null;
   const canonicalPath = `/api/${route}`;
   if (url.pathname !== "/api/inventory" && url.pathname !== canonicalPath) return null;
   url.pathname = canonicalPath;

@@ -1,0 +1,40 @@
+import assert from "node:assert/strict";
+import {randomUUID} from "node:crypto";
+import {Pool} from "pg";
+import {storageConfiguration} from "../src/storage-runtime.js";
+import {createPostgresDocumentStore} from "../src/postgres-document-store.js";
+import {emptyPhysicalStock, validatePhysicalStock} from "../src/physical-stock.js";
+import {createCloudStock} from "../src/cloud-stock.js";
+import {emptyMonitor} from "../src/link-monitor.js";
+
+const config = storageConfiguration();
+if (process.env.ASIN_RUN_DATABASE_TESTS !== "1" || config.backend !== "postgres" || config.environment !== "development") throw new Error("隔離した開発DBだけで在庫試験を実行してください");
+const pool = new Pool(config.poolOptions), key = "test-stock-" + randomUUID(), actor = "database-stock-fixture";
+let checks = 0;
+const pass = (label) => {checks++; console.log("PASS " + label);};
+try {
+  await pool.query("INSERT INTO app_storage.documents(document_key,payload) VALUES($1,$2::jsonb)", [key, JSON.stringify(emptyPhysicalStock())]);
+  const store = createPostgresDocumentStore({pool, key, validate: validatePhysicalStock}), monitorStore = {read: async () => emptyMonitor()};
+  const service = createCloudStock({store, monitorStore});
+  const productId = randomUUID(), create = {operationId: randomUUID(), kind: "create", productId, product: {title: "隔離DBの試験在庫", unit: "台", condition: "used", setContents: "スタンドなし"}, locationId: "container", quantity: 10};
+  await service.commit(create, {expectedRevision: 0, actor, confirmed: true});
+  const op = (amount) => ({operationId: randomUUID(), kind: "add", productId, locationId: "container", quantity: amount, reason: "DBの競合試験"});
+  const race = await Promise.allSettled([service.commit(op(2), {expectedRevision: 1, actor, confirmed: true}), service.commit(op(2), {expectedRevision: 1, actor, confirmed: true})]);
+  assert.equal(race.filter((r) => r.status === "fulfilled").length, 1);
+  assert.equal(race.find((r) => r.status === "rejected").reason.code, "STORAGE_CONFLICT");
+  assert.equal((await store.read()).balances[0].usable, 12); pass("two writers cannot lose an update or apply both stale operations");
+  const pending = op(3), revision = (await store.readSnapshot()).revision;
+  const lost = createCloudStock({monitorStore, store: {...store, update: async (...args) => {await store.update(...args); throw Object.assign(new Error("response lost"), {code: "STORAGE_COMMIT_UNKNOWN"});}}});
+  await assert.rejects(lost.commit(pending, {expectedRevision: revision, actor, confirmed: true}), {code: "STORAGE_COMMIT_UNKNOWN"});
+  const retry = await service.commit(pending, {expectedRevision: revision, actor, confirmed: true});
+  assert.equal(retry.receipt.replayed, true); assert.equal((await store.read()).balances[0].usable, 15); assert.equal((await store.read()).events.length, 3);
+  pass("a real committed operation with a lost response is reconciled, not replayed as another quantity change");
+  const before = await store.readSnapshot();
+  await assert.rejects(service.commit({...op(1), kind: "count", counts: {usable: 0, reserved: 0, unusable: 0}}, {expectedRevision: revision, actor, confirmed: true}), {code: "STORAGE_CONFLICT"});
+  assert.deepEqual(await store.readSnapshot(), before); pass("a stale absolute count cannot overwrite later inventory");
+  await assert.rejects(service.commit(op(1000000), {expectedRevision: before.revision, actor, confirmed: true}));
+  assert.deepEqual(await store.readSnapshot(), before); pass("invalid final balances roll back the event, receipt and balance atomically");
+  const readAgain = createPostgresDocumentStore({pool, key, validate: validatePhysicalStock});
+  assert.deepEqual(await readAgain.read(), before.state); pass("an independent store restores the same balances, receipts and history");
+  console.log(JSON.stringify({passed: checks, database: "real-development-neon", marketWrites: 0, liveEmails: 0}));
+} finally {await pool.query("DELETE FROM app_storage.documents WHERE document_key=$1", [key]); await pool.end();}

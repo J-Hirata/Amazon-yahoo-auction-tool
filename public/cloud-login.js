@@ -38,7 +38,8 @@ async function openApplication() {
   if (opened) {location.replace("/"); return;}
   const session = await response.json();
   const drafts = new URLSearchParams(location.search).get("view") === "drafts";
-  const htmlResponse = await fetch(drafts ? "/cloud-drafts-view.html" : "/cloud-view.html", {cache: "no-store"});
+  const stock = new URLSearchParams(location.search).get("view") === "stock";
+  const htmlResponse = await fetch(stock ? "/cloud-stock-view.html" : drafts ? "/cloud-drafts-view.html" : "/cloud-view.html", {cache: "no-store"});
   if (!htmlResponse.ok) throw new Error("画面を読み込めませんでした。");
   const main = new DOMParser().parseFromString(await htmlResponse.text(), "text/html").querySelector("main");
   if (!main) throw new Error("画面を読み込めませんでした。");
@@ -60,7 +61,8 @@ async function openApplication() {
   });
   const navigation = document.createElement("nav");
   navigation.setAttribute("aria-label", "管理画面");
-  for (const [label, href, selected] of [["商品紐付け・通知", "/", !drafts], ["下書きQ", "/?view=drafts", drafts]]) {
+  for (const [label, href, selected] of [["商品紐付け・通知", "/", !drafts && !stock], ["手元在庫", "/?view=stock", stock], ["下書きQ", "/?view=drafts", drafts]]) {
+    if (href === "/?view=stock" && !session.physicalStock) continue;
     const link = document.createElement("a"); link.textContent = label; link.href = href;
     if (selected) link.setAttribute("aria-current", "page");
     navigation.append(link);
@@ -68,7 +70,8 @@ async function openApplication() {
   account.append(navigation, mode, logout);
   panel.append(account, main);
   configureMonitorRequest(authenticatedRequest);
-  await import(drafts ? "./app.js" : "./link-monitor.js");
+  if (stock) {const {openStock} = await import("./physical-stock.js"); await openStock({userId: session.userId, readOnly: session.readOnly});}
+  else await import(drafts ? "./app.js" : "./link-monitor.js");
   document.querySelector("#loginPanel").hidden = true;
   panel.hidden = false;
   document.querySelector("#loginPassword").value = "";

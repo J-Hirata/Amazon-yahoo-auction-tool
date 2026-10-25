@@ -4,6 +4,7 @@ import {monitorView} from "./link-monitor-view.js";
 import {draftView, patchDraft, addDrafts, buildYahooDraft, buildDraftCsv} from "./cloud-drafts.js";
 import {splitDraftQueue} from "./queue.js";
 import {salesHistoryView} from "./sales-history.js";
+import {stockCsv} from "./cloud-stock.js";
 
 const maxBody = 2 * 1024 * 1024;
 const inactive = {status: "idle", pages: 0, scanned: 0};
@@ -31,7 +32,7 @@ export async function jsonBody(request) {
   catch {throw fail("入力データを読み取れません", 400);}
 }
 
-export function createCloudHandler({config, store, draftStore, ownerAccess, fba, mail, sales, verifyIdentity, verifyOwner, assets = new Map()}) {
+export function createCloudHandler({config, store, draftStore, stock, ownerAccess, fba, mail, sales, verifyIdentity, verifyOwner, assets = new Map()}) {
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
@@ -49,7 +50,7 @@ export function createCloudHandler({config, store, draftStore, ownerAccess, fba,
       if (url.origin !== config.origin) return reply({error: "公開先が一致しません"}, 403);
       if (request.headers.get("origin") && request.headers.get("origin") !== config.origin) return reply({error: "同じ管理画面から操作してください"}, 403);
       if (request.headers.get("sec-fetch-site") === "cross-site") return reply({error: "別サイトからは操作できません"}, 403);
-      const draftPage = request.method === "GET" && url.pathname === "/" && url.search === "?view=drafts";
+      const draftPage = request.method === "GET" && url.pathname === "/" && ["?view=drafts", "?view=stock"].includes(url.search);
       if ((url.search && !draftPage) || url.hash || /%2f|%5c/i.test(url.pathname)) return reply({error: "未対応のURLです"}, 404);
       if (request.method === "GET" && url.pathname === "/api/cloud-config") return reply({authUrl: config.authUrl, setupEnabled: Boolean(ownerAccess)});
       if (request.method === "GET" && assets.has(url.pathname)) {
@@ -66,7 +67,18 @@ export function createCloudHandler({config, store, draftStore, ownerAccess, fba,
       }
       const owner = await verifyOwner(request);
       if (owner.status !== 200) return reply({error: owner.status === 403 ? "このアカウントには利用権限がありません" : "ログインが必要です"}, owner.status);
-      if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly});
+      if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly, physicalStock: Boolean(stock)});
+      if (stock && request.method === "GET" && url.pathname === "/api/physical-stock") return reply(await stock.view());
+      if (stock && request.method === "GET" && url.pathname === "/api/physical-stock/export.csv") return new Response(stockCsv(await stock.view()), {headers: {...headers, "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=physical-stock.csv"}});
+      const stockOperation = url.pathname.match(/^\/api\/physical-stock\/operations\/([0-9a-f-]{36})$/i);
+      if (stock && stockOperation && request.method === "GET") return reply(await stock.operation(stockOperation[1], owner.userId));
+      if (stock && request.method === "POST" && ["/api/physical-stock/preview", "/api/physical-stock/operations"].includes(url.pathname)) {
+        if (config.readOnly) return reply({error: "現在は閲覧のみです"}, 403);
+        const match = request.headers.get("if-match");
+        if (!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match || "")) return reply({error: "最新の在庫を読み込んでください"}, 428);
+        const data = await jsonBody(request), options = {expectedRevision: Number(match.slice(1, -1)), actor: owner.userId, confirmed: data.confirmed};
+        return reply(url.pathname.endsWith("/preview") ? await stock.preview(data.command, options) : await stock.commit(data.command, options));
+      }
       if (draftStore && ["/api/items", "/api/next-draft", "/api/export/drafts.csv"].includes(url.pathname) && request.method === "GET") {
         const saved = await draftStore.readSnapshot();
         if (url.pathname === "/api/next-draft") return reply({item: splitDraftQueue(saved.state).active[0] || null});

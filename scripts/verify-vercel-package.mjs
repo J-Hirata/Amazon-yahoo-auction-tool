@@ -15,7 +15,7 @@ assert.equal(manifest.version, 3);
 assert.equal(manifest.crons?.length || 0, 0);
 const route = manifest.routes.find((item) => item.dest?.startsWith("/api/inventory?__route="));
 assert.ok(route);
-for (const routePath of ["/api/cloud-config", "/api/session", "/api/link-monitor", "/api/link-monitor/links/fixture-id/memo", "/api/link-monitor/page-links/batch"]) {
+for (const routePath of ["/api/cloud-config", "/api/session", "/api/link-monitor", "/api/link-monitor/links/fixture-id/memo", "/api/link-monitor/page-links/batch", "/api/physical-stock/preview", "/api/physical-stock/export.csv", "/api/export/drafts.csv"]) {
   const match = routePath.match(new RegExp(route.src));
   assert.ok(match, routePath);
   const target = route.dest.replace(/\$(\d+)/g, (_, index) => match[Number(index)] || "");

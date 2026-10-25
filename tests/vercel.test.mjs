@@ -6,6 +6,13 @@ import {createCloudHandler} from "../src/cloud-handler.js";
 import {demoMonitor} from "../src/link-monitor-demo.js";
 import ignore from "ignore";
 
+test("only the two named CSV download routes may contain an extension in Vercel rewrites", () => {
+  for (const route of ["export/drafts.csv", "physical-stock/export.csv"]) {
+    const r = vercelCloudRequest(new Request("https://fixture.example/api/inventory?__route=/" + route)); assert.equal(new URL(r.url).pathname, "/api/" + route);
+  }
+  for (const route of ["physical-stock/other.csv", "physical-stock/export.json", "physical-stock/a.b", "physical-stock/%2e%2e/export.csv", "physical-stock/export.csv/extra"]) assert.equal(vercelCloudRequest(new Request("https://fixture.example/api/inventory?__route=/" + route)), null);
+});
+
 test("Vercel uses only a trusted server-side preview origin, not production or arbitrary hosts", () => {
   const preview = {VERCEL: "1", VERCEL_ENV: "preview", VERCEL_URL: "inventory-preview-one.vercel.app"};
   assert.equal(vercelCloudEnvironment(preview).ASIN_PUBLIC_ORIGIN, "https://inventory-preview-one.vercel.app");

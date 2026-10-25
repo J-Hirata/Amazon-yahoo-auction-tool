@@ -1,0 +1,35 @@
+<main class="stock-shell">
+  <header class="stock-heading"><div><h1>手元在庫</h1><p id="stockSummary" class="meta"></p></div><div class="stock-toolbar"><button id="stockRefresh" type="button">更新</button><button id="stockExport" type="button">CSV出力</button><button id="stockNew" type="button">商品を登録</button></div></header>
+  <p id="stockStatus" role="status" aria-live="polite"></p>
+  <section id="stockPending" class="stock-pending" hidden><strong>前の操作の保存結果を確認中です</strong><div class="stock-toolbar"><button id="stockResolve" type="button">保存結果を確認</button><button id="stockRetry" type="button">同じ操作を再試行</button></div><p id="stockPendingStatus" role="status"></p></section>
+  <div class="stock-filters"><label>商品を検索<input id="stockSearch" type="search" placeholder="商品名・管理ID・ASIN・メモ"></label><label>保管場所<select id="stockLocationFilter"><option value="">すべて</option><option value="container">コンテナ</option><option value="home">自宅・自社</option></select></label><label>状態<select id="stockStateFilter"><option value="">すべて</option><option value="catalog">カタログ準備中</option><option value="unknown">数量未確認あり</option><option value="transit">移動中</option><option value="replenishment">FBA補充検討</option></select></label></div>
+  <div class="stock-table-wrap"><table class="stock-table"><thead><tr><th>商品・管理ID</th><th>コンテナ</th><th>自宅・自社</th><th>移動中</th><th>Amazon・ヤフオク</th><th>操作</th></tr></thead><tbody id="stockRows"></tbody></table></div>
+  <section class="stock-section"><details id="stockTransfers"><summary>移動・納品の記録</summary><div id="stockTransferRows"></div></details></section>
+  <section class="stock-section"><details><summary>数量変更の履歴</summary><ol id="stockHistory"></ol></details></section>
+  <section class="stock-section"><details><summary>以前のコンテナメモ（実数未確認）</summary><p class="meta">過去の指定リスト。現在庫には未反映。</p><div id="stockReferenceRows"></div></details></section>
+
+  <dialog id="stockProductDialog" class="stock-dialog"><form id="stockProductForm"><header><h2 id="stockProductTitle">商品を登録</h2><button type="button" data-close="stockProductDialog" aria-label="閉じる">×</button></header>
+    <label>登録済みの紐付け<select id="stockLinked"><option value="">紐付けなし</option></select></label>
+    <label>商品名<input name="title" maxlength="200" required></label>
+    <div class="stock-form-grid"><label>新品・中古<select name="condition" required><option value="used">中古</option><option value="new">新品</option><option value="parts">部品・現状品</option><option value="unknown">未確認</option></select></label><label>単位<select name="unit"><option>個</option><option>台</option><option>箱</option><option>セット</option><option>冊</option></select></label></div>
+    <label>状態・付属品・セット内容<input name="setContents" maxlength="300" placeholder="例：スタンドなし、電源コード付き"></label>
+    <div id="stockInitialFields" class="stock-form-grid"><label>保管場所<select name="locationId"><option value="container">コンテナ</option><option value="home">自宅・自社</option></select></label><label>使用可能な実数<input name="quantity" type="number" min="0" max="1000000" step="1" placeholder="未確認なら空欄"></label></div>
+    <label>ひとことメモ<textarea name="memo" rows="2" maxlength="500"></textarea></label>
+    <details id="stockExtraFields"><summary>ASIN・カタログ・納品設定</summary>
+    <div class="stock-form-grid"><label>ASIN（任意）<input name="asin" maxlength="10" autocomplete="off"></label><label>SKU（任意）<input name="sellerSku" maxlength="200" autocomplete="off"></label></div>
+    <div class="stock-form-grid"><label>カタログ作業<select name="catalogTask"><option value="none">予定なし</option><option value="pending">作成待ち</option><option value="working">作業中</option><option value="registered">登録済み</option></select></label><label>再確認日<input name="reviewDate" type="date"></label></div>
+    <label>FBAへの納品<select name="fbaEligibility"><option value="unknown">未確認</option><option value="possible">納品候補</option><option value="not_possible">FBA不可・自己発送等</option></select></label>
+    </details>
+    <p id="stockProductError" class="stock-error" role="status"></p><footer><button type="button" data-close="stockProductDialog">取消</button><button type="submit">変更内容を確認</button></footer>
+  </form></dialog>
+  <dialog id="stockActionDialog" class="stock-dialog"><form id="stockActionForm"><header><h2 id="stockActionTitle">数量を変更</h2><button type="button" data-close="stockActionDialog" aria-label="閉じる">×</button></header>
+    <label>操作<select name="kind" id="stockActionKind"><option value="add">追加する</option><option value="remove">販売等で減らす</option><option value="count">棚卸し・実数へ修正</option><option value="reserve">取り置きにする</option><option value="release">取り置きを戻す</option><option value="unusable">使用不可にする</option><option value="recover">使用可能へ戻す</option><option value="dispatch">別の場所へ発送・移動</option><option value="receive_transfer">到着・FBA受領を記録</option><option value="return_transfer">移動分を出荷元へ戻す</option></select></label>
+    <label id="stockNormalLocation">保管場所<select name="locationId"><option value="container">コンテナ</option><option value="home">自宅・自社</option></select></label>
+    <div id="stockCountFields" class="stock-form-grid" hidden><label>使用可能<input name="usable" type="number" min="0" max="1000000" step="1"></label><label>取り置き<input name="reserved" type="number" min="0" max="1000000" step="1"></label><label>使用不可<input name="unusable" type="number" min="0" max="1000000" step="1"></label></div>
+    <label id="stockQtyFields">数量<input name="quantity" type="number" min="1" max="1000000" step="1" value="1"></label>
+    <div id="stockDispatchFields" hidden><label>移動先<select name="to"><option value="home">自宅・自社</option><option value="container">コンテナ</option><option value="fba">Amazon FBA</option></select></label><label>納品ID・移動メモ<input name="reference" maxlength="200"></label></div>
+    <div id="stockReceiveFields" hidden><label>対象の移動<select name="transferId"></select></label><label>到着後の区分<select name="bucket"><option value="usable">使用可能</option><option value="unusable">使用不可</option></select></label><label>到着・FBA受領の確認根拠<input name="evidence" maxlength="300" placeholder="例：納品IDの受領画面で3台を確認"></label></div>
+    <label>理由<input name="reason" required maxlength="300" placeholder="例：ヤフオクで1台販売、棚卸しで確認"></label><p id="stockActionError" class="stock-error" role="status"></p><footer><button type="button" data-close="stockActionDialog">取消</button><button type="submit">変更内容を確認</button></footer>
+  </form></dialog>
+  <dialog id="stockConfirmDialog" class="stock-dialog"><header><h2>変更内容の確認</h2><button type="button" data-close="stockConfirmDialog" aria-label="閉じる">×</button></header><div id="stockConfirmContent"></div><p id="stockConfirmError" class="stock-error" role="status"></p><footer><button type="button" data-close="stockConfirmDialog">戻る</button><button id="stockCommit" type="button">この内容で保存</button></footer></dialog>
+</main>
