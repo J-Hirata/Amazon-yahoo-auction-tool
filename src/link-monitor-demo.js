@@ -22,6 +22,7 @@ export function advanceDemo(state, scenario, at) {
   };
   check("最初の確認", 5);
   if (["zero", "mail_failed", "mail_retry"].includes(scenario)) check("在庫5→0", 0);
+  else if (scenario === "decreased") check("在庫5→4（販売と断定しない）", 4);
   else if (scenario === "repeat") { check("在庫5→0", 0); check("0のまま再確認", 0); }
   else if (scenario === "recovery") {check("在庫5→0", 0); check("在庫復帰", 3); check("再び0", 0);}
   else if (scenario === "ended") {check("終了を検知", 5, "ended"); check("終了を再確認", 5, "ended");}

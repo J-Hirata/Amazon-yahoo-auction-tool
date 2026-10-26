@@ -1,5 +1,6 @@
 import {applyStockCommand, stockCommandDigest, stockTotals, STOCK_LOCATIONS} from "./physical-stock.js";
 import {assessLink, PREVIEW_CONFIG} from "./link-monitor.js";
+import {stockImageUrl} from "./stock-images.js";
 
 const fail = (message, status) => Object.assign(new Error(message), {status});
 function checkLinks(command, monitor) {
@@ -20,7 +21,7 @@ function linksFor(monitor, at) {
       yahooStatus: assessment.yahoo, fbaLabel: assessment.fbaLabel || "未確認", quantity: current && assessment.inventory !== "unlinked" && product?.source === "amazon_sp_api" ? product.fulfillableQuantity : null, checkedAt: product?.checkedAt || null};
   });
 }
-export function physicalStockView({state, revision}, monitor, at = new Date().toISOString()) {
+export function physicalStockView({state, revision}, monitor, at = new Date().toISOString(), drafts = []) {
   const linkOptions = linksFor(monitor, at);
   const products = state.products.map((product) => {
     const totals = stockTotals(state, product.id), linked = product.linkedLinkIds.map((id) => linkOptions.find((link) => link.id === id)).filter(Boolean);
@@ -30,7 +31,12 @@ export function physicalStockView({state, revision}, monitor, at = new Date().to
       product.condition === "new" && /used/i.test(reference.condition) || product.condition === "used" && /^new/i.test(reference.condition));
     const fba = reference && reference.sellerSku && !mismatch && reference.quantity !== null && reference.quantity !== undefined ?
       {quantity: reference.quantity, label: reference.fbaLabel, checkedAt: reference.checkedAt, sellerSku: reference.sellerSku} : {quantity: null, label: linked.length ? "SKU・状態・鮮度を要確認" : "未紐付け", checkedAt: null};
-    return {...product, totals, linked, fba, replenishmentCandidate: product.fbaEligibility === "possible" && fba.quantity === 0 && totals.usable > 0,
+    const linkCandidates = product.asin ? linkOptions.filter((l) => l.asin === product.asin && !product.linkedLinkIds.includes(l.id)) : [];
+    const savedPhotos = (monitor.amazonInventory?.items || []).filter((r) => r.asin === product.asin).map((r) => r.listingInfo?.catalogImageUrl).filter((u) => stockImageUrl(u));
+    const draftPhotos = drafts.filter((d) => product.asin && d.asin === product.asin).flatMap((d) => d.imageUrls || []).filter((u) => stockImageUrl(u));
+    const photoUrl = stockImageUrl(product.imageUrl) || stockImageUrl(linked[0]?.imageUrl) || stockImageUrl(savedPhotos[0]) || stockImageUrl(draftPhotos[0]) || stockImageUrl(linkCandidates[0]?.imageUrl);
+    const photoLabel = product.imageUrl ? product.imageSource === "amazon_catalog" ? "Amazon商品画像（現物写真ではありません）" : "登録した商品画像" : linked[0]?.imageUrl ? "ヤフオク出品写真" : savedPhotos.length || draftPhotos.length ? "Amazon商品画像（現物写真ではありません）" : "同ASINのヤフオク参考画像（紐付け未確認）";
+    return {...product, totals, linked, linkCandidates, photo: photoUrl ? {url: photoUrl, label: photoLabel} : null, fba, replenishmentCandidate: product.fbaEligibility === "possible" && fba.quantity === 0 && totals.usable > 0,
       catalogDue: ["pending", "working"].includes(product.catalogTask) && Boolean(product.reviewDate) && product.reviewDate <= new Date(Date.parse(at) + 9 * 3600000).toISOString().slice(0, 10)};
   });
   return {storage: {backend: "postgres", revision}, locations: STOCK_LOCATIONS, products, linkOptions,
@@ -44,8 +50,8 @@ export function stockCsv(view) {
     STOCK_LOCATIONS.find((l) => l.id === balance.locationId).name, balance.usable, balance.reserved, balance.unusable, balance.usable === null ? "未確認" : "確認済み", balance.checkedAt, product.memo]);
   return "\ufeff" + rows.map((row) => row.map(cell).join(",")).join("\r\n");
 }
-export function createCloudStock({store, monitorStore, now = () => new Date().toISOString()}) {
-  async function view() {return physicalStockView(await store.readSnapshot(), await monitorStore.read(), now());}
+export function createCloudStock({store, monitorStore, draftStore, now = () => new Date().toISOString()}) {
+  async function view() {return physicalStockView(await store.readSnapshot(), await monitorStore.read(), now(), draftStore ? await draftStore.read() : []);}
   async function preview(command, {expectedRevision, actor}) {
     const snapshot = await store.readSnapshot();
     if (snapshot.revision !== expectedRevision) throw fail("在庫が更新されています。最新の内容で確認し直してください", 409);

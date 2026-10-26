@@ -276,6 +276,13 @@ function render() {
       ${currentMode === "demo" ? "" : `<button type="button" class="product-preview-button" data-product-preview="${escape(link.id)}">画像・商品名を再取得</button><button type="button" class="unlink-button" data-unlink="${escape(link.id)}">解除</button>`}</details></td></tr>`;
   }).join("") : '<tr><td colspan="4">まだ紐付けはありません。</td></tr>';
   if (currentMode === "saved") data.links.forEach((link, index) => {
+    const asin = link.assessment.product?.asin || link.asin;
+    const ownStock = (saved.physicalInventory || []).filter((p) => p.linkedLinkIds.includes(link.id) || asin && p.asin === asin);
+    if (ownStock.length) {
+      const stockLine = document.createElement("a"); stockLine.href = "/?view=stock"; stockLine.className = "physical-inventory-link";
+      stockLine.textContent = ownStock.length === 1 ? ownStock[0].locations.map((b) => `${b.locationId === "container" ? "コンテナ" : "自宅・会社"} ${b.usable === null ? "未確認" : b.usable + ownStock[0].unit}`).join(" ／ ") + (ownStock[0].linkedLinkIds.includes(link.id) ? "（関連付け済み）" : "（同ASIN候補・要確認）") : `コンテナ・自社在庫の候補 ${ownStock.length}件を確認`;
+      $("#linkRows").children[index].querySelector('[data-label="商品"]').append(stockLine);
+    }
     const sales = saved.salesHistory?.products.find((item) => item.linkId === link.id);
     if (saved.config.capabilities?.salesRead) {
       const line = document.createElement("small");

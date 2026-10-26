@@ -156,8 +156,8 @@ test("stock endpoints enforce owner/read-only/Origin/JSON/If-Match before action
     let calls = 0;
     const origin = "https://stock.example", handler = createCloudHandler({config: {origin, authUrl: "https://fixture.neon.tech/auth", readOnly},
       verifyOwner: async (req) => ({status: req.headers.has("authorization") ? 200 : 401, userId: actor}),
-      stock: {view: async () => {calls++; return {};}, preview: async () => {calls++; return {};}, commit: async () => {calls++; return {};}}});
-    for (const path of ["/api/physical-stock/preview", "/api/physical-stock/operations"]) {
+      stockPhotos: async()=>{calls++;return{};}, stock: {view: async () => {calls++; return {};}, preview: async () => {calls++; return {};}, commit: async () => {calls++; return {};}}});
+    for (const path of ["/api/physical-stock/preview", "/api/physical-stock/operations", "/api/physical-stock/photos"]) {
       const send = (headers = {}) => handler(new Request(origin + path, {method: "POST", headers: {"Content-Type": "application/json", ...headers}, body: "{}"}));
       assert.equal((await send()).status, 401);
       assert.equal((await send({Authorization: "Bearer fixture", Origin: "https://other.example"})).status, 403);

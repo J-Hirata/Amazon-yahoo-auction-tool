@@ -11,6 +11,7 @@ let creatingAccount = false;
 let suppliedSetup = new URLSearchParams(location.hash.slice(1)).get("setup");
 if (suppliedSetup) history.replaceState(null, "", location.pathname + location.search);
 const message = (value) => {status.textContent = value;};
+function showLogin() {document.querySelector("#authLoading").hidden = true; document.querySelector("#loginPanel").hidden = false;}
 async function token() {
   const result = await auth.token();
   // This SDK version can return its cached get-session shape from token().
@@ -20,7 +21,7 @@ async function token() {
 }
 function requireLogin() {
   document.querySelector("#cloudApp").hidden = true;
-  document.querySelector("#loginPanel").hidden = false;
+  showLogin();
   message("ログインし直してください。");
 }
 async function authenticatedRequest(url, options = {}) {
@@ -34,7 +35,7 @@ async function authenticatedRequest(url, options = {}) {
 }
 async function openApplication() {
   const response = await authenticatedRequest("/api/session");
-  if (!response.ok) {message("このアカウントには利用権限がありません。"); return;}
+  if (!response.ok) {showLogin(); message("このアカウントには利用権限がありません。"); return;}
   if (opened) {location.replace("/"); return;}
   const session = await response.json();
   const drafts = new URLSearchParams(location.search).get("view") === "drafts";
@@ -61,7 +62,7 @@ async function openApplication() {
   });
   const navigation = document.createElement("nav");
   navigation.setAttribute("aria-label", "管理画面");
-  for (const [label, href, selected] of [["商品紐付け・通知", "/", !drafts && !stock], ["手元在庫", "/?view=stock", stock], ["下書きQ", "/?view=drafts", drafts]]) {
+  for (const [label, href, selected] of [["商品紐付け・通知", "/", !drafts && !stock], ["コンテナ・自社在庫", "/?view=stock", stock], ["下書きQ", "/?view=drafts", drafts]]) {
     if (href === "/?view=stock" && !session.physicalStock) continue;
     const link = document.createElement("a"); link.textContent = label; link.href = href;
     if (selected) link.setAttribute("aria-current", "page");
@@ -73,6 +74,7 @@ async function openApplication() {
   if (stock) {const {openStock} = await import("./physical-stock.js"); await openStock({userId: session.userId, readOnly: session.readOnly});}
   else await import(drafts ? "./app.js" : "./link-monitor.js");
   document.querySelector("#loginPanel").hidden = true;
+  document.querySelector("#authLoading").hidden = true;
   panel.hidden = false;
   document.querySelector("#loginPassword").value = "";
   opened = true;
@@ -123,6 +125,7 @@ try {
   auth = createAuthClient(config.authUrl);
   const session = await auth.getSession();
   if (suppliedSetup && config.setupEnabled) {
+    showLogin();
     const check = await fetch("/api/owner/check", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({setupToken: suppliedSetup}), cache: "no-store"});
     if (!check.ok) {message((await check.json()).error || "初回設定リンクを確認してください"); suppliedSetup = undefined; submit.disabled = false; throw new Error("setup");}
     setupToken = suppliedSetup;
@@ -139,6 +142,6 @@ try {
       message(`${session.data.user.email} で本人設定を完了します。`);
     } else message("このツール専用のメールアドレスとパスワードを設定してください。");
   } else if (session.data?.user) await openApplication();
-  else message("メールアドレスとパスワードを入力してください。");
+  else {showLogin(); message("メールアドレスとパスワードを入力してください。");}
   submit.disabled = false;
-} catch (error) {if (error.message !== "setup") message("認証に接続できませんでした。ページを再読み込みしてください。");}
+} catch (error) {showLogin(); if (error.message !== "setup") message("認証に接続できませんでした。ページを再読み込みしてください。");}

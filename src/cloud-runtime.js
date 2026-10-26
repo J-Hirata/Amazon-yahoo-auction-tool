@@ -13,6 +13,7 @@ import {createCloudSales} from "./cloud-sales.js";
 import {cloudMailConfig, createCloudMailTransport, createCloudMail} from "./cloud-mail.js";
 import {validatePhysicalStock} from "./physical-stock.js";
 import {createCloudStock} from "./cloud-stock.js";
+import {createStockPhotoRefresh} from "./cloud-stock-photos.js";
 
 const fileTypes = {
   "cloud-login.html": "text/html; charset=utf-8", "cloud-view.html": "text/html; charset=utf-8", "cloud-drafts-view.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "demo.html": "text/html; charset=utf-8", "cloud-demo.js": "text/javascript; charset=utf-8",
@@ -33,12 +34,14 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const pool = databasePool();
   const store = createPostgresDocumentStore({pool, key: "link-monitor", validate: validateMonitorState});
   const draftStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "draft-items", validate: validateDraftItems}) : undefined;
-  const stock = config.fullWorkspace ? createCloudStock({store: createPostgresDocumentStore({pool, key: "physical-stock", validate: validatePhysicalStock}), monitorStore: store}) : undefined;
+  const stockStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "physical-stock", validate: validatePhysicalStock}) : undefined;
+  const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
+  const stockPhotos = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockPhotoRefresh({store: stockStore, config: cloudAmazonConfig(env)}) : undefined;
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
   const sales = env.ASIN_AMAZON_CLIENT_ID ? createCloudSales({store, config: cloudAmazonConfig(env)}) : undefined;
   const mail = env.ASIN_GMAIL_USER ? createCloudMail({store, transport: createCloudMailTransport(cloudMailConfig(env))}) : undefined;
-  const handler = createCloudHandler({config, store, draftStore, stock, ownerAccess, fba, mail, sales, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
+  const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, ownerAccess, fba, mail, sales, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
   return {config, handler, pool};
 }

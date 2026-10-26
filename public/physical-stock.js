@@ -1,7 +1,7 @@
 import {monitorRequest} from "./monitor-http.js";
-import {createElement, Boxes, Warehouse, House, Plus, Minus, Truck, History, NotebookPen, RefreshCw, Download, Search, X, ArrowRight, Check, Pencil, Package, ArrowLeftRight} from "lucide";
+import {createElement, Boxes, Warehouse, House, Plus, Minus, Truck, History, NotebookPen, RefreshCw, Download, Search, X, ArrowRight, Check, Pencil, Package, ArrowLeftRight, Image as ImageIcon} from "lucide";
 
-const icons = {boxes: Boxes, warehouse: Warehouse, house: House, plus: Plus, minus: Minus, truck: Truck, history: History, notebook: NotebookPen, refresh: RefreshCw, download: Download, search: Search, x: X, arrow: ArrowRight, check: Check, pencil: Pencil, package: Package, move: ArrowLeftRight};
+const icons = {boxes: Boxes, warehouse: Warehouse, house: House, plus: Plus, minus: Minus, truck: Truck, history: History, notebook: NotebookPen, refresh: RefreshCw, download: Download, search: Search, x: X, arrow: ArrowRight, check: Check, pencil: Pencil, package: Package, move: ArrowLeftRight, image: ImageIcon};
 const icon = (name) => createElement(icons[name], {width: 18, height: 18, "aria-hidden": "true", "focusable": "false", "stroke-width": 1.8}).outerHTML;
 
 const $ = (selector) => document.querySelector(selector);
@@ -10,9 +10,10 @@ const when = (value) => value ? new Date(value).toLocaleString("ja-JP", {timeZon
 const labels = {create: "商品登録", edit: "商品情報の編集", add: "追加", remove: "販売等の減少", count: "棚卸し・実数修正", count_locations: "場所ごとの数量修正", reserve: "取り置き", release: "取り置き解除", unusable: "使用不可へ振替", recover: "使用可能へ復帰", dispatch: "発送・移動開始", receive_transfer: "到着・受領", return_transfer: "出荷元へ戻す"};
 const conditions = {new: "新品", used: "中古", parts: "部品・現状品", unknown: "状態未確認"};
 const tasks = {none: "", pending: "カタログ作成待ち", working: "カタログ作業中", registered: "カタログ登録済み"};
+const purposes = {unknown: "用途未設定", possible: "FBA補充用", not_possible: "自社発送用（FBA不可）"};
 const locationName = (id) => ({container: "コンテナ", home: "自宅・会社", fba: "Amazon FBA"})[id] || id;
 const references = [["iiyama XUB2493HS-B3", 6, "台"], ["iiyama E2483HS-B3", 13, "台"], ["ASUS VG245H", 7, "台"], ["I-O DATA LCD-MF245EDB-F", 5, "台"], ["学研 スーパーのりものデラックス：ふみきりのヒミツ！", 15, "箱"], ["ヘルメット（色別・数量要確認）", null, "個"]];
-function imageUrl(value) {try {const u = new URL(value); if (u.protocol === "https:" && u.hostname.endsWith(".yimg.jp") && !u.username && !u.password && !u.port) return u.href;} catch {} return "";}
+function imageUrl(value) {try {const u = new URL(value); if (u.protocol === "https:" && (u.hostname.endsWith(".yimg.jp") || ["m.media-amazon.com", "images-na.ssl-images-amazon.com", "images-fe.ssl-images-amazon.com"].includes(u.hostname)) && !u.username && !u.password && !u.port && u.href.length <= 2048) return u.href;} catch {} return "";}
 
 export async function openStock({userId, readOnly}) {
   let view, activeProduct, editingProduct, placesProduct, preview, busy = false, dirty = false, pending;
@@ -23,11 +24,13 @@ export async function openStock({userId, readOnly}) {
   try {pending = JSON.parse(sessionStorage.getItem(pendingKey) || "null");} catch {pending = null;}
   function controls() {
     for (const button of document.querySelectorAll(".stock-shell button")) button.disabled = busy;
-    for (const button of document.querySelectorAll("[data-stock-action],[data-stock-edit],[data-stock-places],[data-stock-transfer],#stockNew,[data-reference]")) button.disabled = busy || readOnly || Boolean(pending) || !view;
+    for (const button of document.querySelectorAll("[data-stock-action],[data-stock-edit],[data-stock-places],[data-stock-connect],[data-stock-transfer],#stockNew,[data-reference]")) button.disabled = busy || readOnly || Boolean(pending) || !view;
     $("#stockCommit").disabled = busy || readOnly || !preview;
     $("#stockCommit").innerHTML = icon("check") + (pending ? "同じ操作を再試行" : "この内容で保存");
     $("#stockRetry").disabled = busy || readOnly;
     $("#stockPending").hidden = !pending;
+    $("#stockPhotos").disabled = busy || readOnly || Boolean(pending) || !view?.photoRead;
+    for (const select of document.querySelectorAll("[data-stock-purpose]")) select.disabled = busy || readOnly || Boolean(pending);
   }
   async function request(path = "", data, revision = view?.storage.revision) {
     const response = await monitorRequest("/api/physical-stock" + path, data === undefined ? undefined : {method: "POST", headers: {"Content-Type": "application/json", "If-Match": `"${revision}"`}, body: JSON.stringify(data)});
@@ -45,23 +48,27 @@ export async function openStock({userId, readOnly}) {
     if (!view) return;
     $("#stockSummary").textContent = `${view.products.length}商品`;
     $("#stockTransferCount").textContent = view.totals.inTransit ? `移動中 ${view.totals.inTransit}件` : "";
-    const query = $("#stockSearch").value.trim().toLowerCase(), place = $("#stockLocationFilter").value, filter = $("#stockStateFilter").value;
+    const query = $("#stockSearch").value.trim().toLowerCase(), place = $("#stockLocationFilter").value, filter = $("#stockStateFilter").value, purpose = $("#stockPurposeFilter").value;
     const products = view.products.filter((p) => [p.title, p.managementId, p.asin, p.sellerSku, p.memo].join(" ").toLowerCase().includes(query) &&
       (!place || p.totals.locations.some((b) => b.locationId === place && (b.usable === null || b.usable + b.reserved + b.unusable > 0))) &&
+      (!purpose || p.fbaEligibility === purpose) &&
       (!filter || filter === "catalog" && ["pending", "working"].includes(p.catalogTask) || filter === "unknown" && p.totals.unknownLocations > 0 || filter === "transit" && p.totals.inTransit > 0 || filter === "replenishment" && p.replenishmentCandidate));
     const balance = (b, p) => `<button type="button" class="stock-balance ${b.usable === null ? "unconfirmed" : ""}" data-stock-places="${escape(p.id)}" data-place="${b.locationId}" title="${locationName(b.locationId)}の数量を編集" aria-label="${locationName(b.locationId)}の数量を編集">${b.usable === null ? `<span>未確認</span>${icon("plus")}` : `<strong>${b.usable}</strong><span>${escape(p.unit)}</span>${icon("pencil")}`}</button>${b.reserved || b.unusable ? `<small>取り置き ${b.reserved} ／ 使用不可 ${b.unusable}</small>` : ""}`;
     $("#stockRows").innerHTML = products.length ? products.map((p) => {
-      const photo = imageUrl(p.linked[0]?.imageUrl);
+      const photo = imageUrl(p.photo?.url);
       const chips = [`<span class="stock-badge">${conditions[p.condition]}</span>`, ...(p.catalogTask !== "none" && p.catalogTask !== "registered" ? [`<span class="stock-badge ${p.catalogDue ? "attention" : ""}">${escape(tasks[p.catalogTask])}</span>`] : []), ...(p.totals.inTransit ? [`<span class="stock-badge attention">${icon("truck")}移動中 ${p.totals.inTransit}${escape(p.unit)}</span>`] : [])];
-      return `<tr><td data-label="商品"><div class="stock-product">${photo ? `<img src="${escape(photo)}" alt="" width="56" height="56" loading="lazy" referrerpolicy="no-referrer">` : `<span class="stock-product-icon">${icon("package")}</span>`}<div class="stock-product-text"><strong>${escape(p.title)}</strong><div class="stock-badges">${chips.join("")}</div>${p.setContents ? `<small>${escape(p.setContents)}</small>` : ""}${p.memo ? `<p class="stock-memo">${escape(p.memo)}</p>` : ""}${p.asin ? `<a class="stock-asin" href="https://www.amazon.co.jp/dp/${escape(p.asin)}" target="_blank" rel="noreferrer">${escape(p.asin)}</a>` : ""}
+      return `<tr><td data-label="商品"><div class="stock-product">${photo ? `<img src="${escape(photo)}" alt="${escape(p.photo.label)}" title="${escape(p.photo.label)}" width="80" height="80" loading="lazy" referrerpolicy="no-referrer">` : `<span class="stock-product-icon" title="ASINまたは商品画像URLを登録して画像を取得">${icon("image")}<small>写真なし</small></span>`}<div class="stock-product-text"><strong>${escape(p.title)}</strong><select class="stock-purpose purpose-${escape(p.fbaEligibility)}" data-stock-purpose="${escape(p.id)}" aria-label="${escape(p.title)}の在庫の用途">${Object.entries(purposes).map(([id,label])=>`<option value="${id}" ${id === p.fbaEligibility ? "selected" : ""}>${label}</option>`).join("")}</select><div class="stock-badges">${chips.join("")}</div>${p.setContents ? `<small>${escape(p.setContents)}</small>` : ""}${p.memo ? `<p class="stock-memo">${escape(p.memo)}</p>` : ""}${p.asin ? `<a class="stock-asin" href="https://www.amazon.co.jp/dp/${escape(p.asin)}" target="_blank" rel="noreferrer">${escape(p.asin)}</a>` : ""}
         <details class="stock-item-details"><summary>詳細</summary><dl><dt>管理ID</dt><dd>${escape(p.managementId)}</dd><dt>SKU</dt><dd>${escape(p.sellerSku || "未登録")}</dd><dt>FBA参照</dt><dd>${escape(p.fba.label)}${p.fba.checkedAt ? ` ／ ${when(p.fba.checkedAt)}` : ""}</dd><dt>納品設定</dt><dd>${({unknown:"未確認",possible:"納品候補",not_possible:"FBA不可・自己発送等"})[p.fbaEligibility]}</dd>${p.reviewDate ? `<dt>再確認日</dt><dd>${escape(p.reviewDate)}</dd>` : ""}${p.totals.locations.map((b) => `<dt>${locationName(b.locationId)}</dt><dd>${b.usable === null ? "未確認" : `使用可能 ${b.usable} ／ 取り置き ${b.reserved} ／ 使用不可 ${b.unusable}<br>${when(b.checkedAt)}`}</dd>`).join("")}</dl>${p.replenishmentCandidate ? '<p>補充検討（FBA取得分0）</p>' : ""}${p.linked.map((l) => `<a href="https://auctions.yahoo.co.jp/jp/auction/${escape(l.listingId)}" target="_blank" rel="noreferrer">ヤフオク ${escape(l.listingId)}</a><small>出品状態：${({active:"出品中",ended:"終了確認済み",ending:"再確認待ち"})[l.yahooStatus] || "未確認"}</small>`).join("")}</details></div></div></td>
         <td data-label="コンテナ">${balance(p.totals.locations[0], p)}</td><td data-label="自宅・会社">${balance(p.totals.locations[1], p)}</td>
+        <td data-label="販売・紐付け"><div class="stock-sales-overview"><strong>${p.linked.length ? `紐付け済み ${p.linked.length}件` : "未紐付け"}</strong>${p.linked.map((l) => `<a href="https://auctions.yahoo.co.jp/jp/auction/${escape(l.listingId)}" target="_blank" rel="noreferrer">ヤフオク ${escape(l.listingId)}</a><small>${({active:"出品中",ended:"終了確認済み",ending:"終了・再確認待ち"})[l.yahooStatus] || "出品状態は未確認"}</small>`).join("")}${!p.linked.length && p.linkCandidates.length ? `<small>同ASINの候補 ${p.linkCandidates.length}件</small><button class="stock-text-button" type="button" data-stock-connect="${escape(p.id)}">紐付けを確認</button>` : ""}${p.linked.length ? `<small>FBA：${escape(p.fba.label)}</small>` : p.asin ? '<small>Amazon販売状態は未取得</small>' : '<small>ASIN未登録</small>'}</div></td>
         <td data-label="操作"><div class="stock-row-actions"><button type="button" data-stock-places="${escape(p.id)}">${icon("pencil")}数量を編集</button><button class="secondary" type="button" data-stock-action="${escape(p.id)}">${icon("move")}入出庫・移動</button><button class="stock-text-button" type="button" data-stock-edit="${escape(p.id)}">${icon("notebook")}情報・メモ</button></div></td></tr>`;
-    }).join("") : `<tr><td colspan="4" class="stock-empty">${icon("package")}<p>${view.products.length ? "該当する商品はありません。" : "登録された手元在庫はまだありません。"}</p></td></tr>`;
+    }).join("") : `<tr><td colspan="5" class="stock-empty">${icon("package")}<p>${view.products.length ? "該当する商品はありません。" : "登録されたコンテナ・自社在庫はまだありません。"}</p></td></tr>`;
     for (const img of document.querySelectorAll("#stockRows img")) img.addEventListener("error", () => {img.hidden = true;});
     for (const button of document.querySelectorAll("[data-stock-action]")) button.addEventListener("click", () => openAction(button.dataset.stockAction));
     for (const button of document.querySelectorAll("[data-stock-edit]")) button.addEventListener("click", () => openProduct(view.products.find((p) => p.id === button.dataset.stockEdit)));
     for (const button of document.querySelectorAll("[data-stock-places]")) button.addEventListener("click", () => openPlaces(button.dataset.stockPlaces, button.dataset.place));
+    for (const button of document.querySelectorAll("[data-stock-connect]")) button.addEventListener("click", () => {openProduct(view.products.find((p) => p.id === button.dataset.stockConnect)); $("#stockExtraFields").open = true; $("#stockLinked").focus();});
+    for (const select of document.querySelectorAll("[data-stock-purpose]")) select.addEventListener("change", () => {const product = view.products.find((p) => p.id === select.dataset.stockPurpose), value = select.value; select.value = product.fbaEligibility; work(() => showPreview({operationId: crypto.randomUUID(), kind: "edit", productId: product.id, product: {...product, fbaEligibility: value}, reason: "在庫の用途を変更"}));});
     $("#stockTransferRows").innerHTML = view.transfers.length ? [...view.transfers].reverse().map((t) => `<div class="stock-transfer"><span><strong>${escape(view.products.find((p) => p.id === t.productId)?.title || "商品")}</strong><br>${locationName(t.from)} → ${locationName(t.to)} ／ 移動中 ${t.remaining} ／ 到着 ${t.received} ／ 出荷元へ戻し ${t.returned}<br><small>${escape(t.reference)} ／ ${when(t.updatedAt)}</small></span>${t.remaining ? `<button type="button" data-stock-transfer="${escape(t.id)}">到着を記録</button>` : ""}</div>`).join("") : "<p>移動の記録はありません。</p>";
     for (const button of document.querySelectorAll("[data-stock-transfer]")) {button.disabled = readOnly || Boolean(pending); button.addEventListener("click", () => {const t = view.transfers.find((t) => t.id === button.dataset.stockTransfer); openAction(t.productId, "receive_transfer", t.id);});}
     $("#stockHistory").innerHTML = view.events.length ? view.events.map((e) => `<li>${when(e.at)} ／ ${escape(view.products.find((p) => p.id === e.productId)?.title)} ／ ${labels[e.kind]} ／ ${escape(e.reason)}${e.changes.map((c) => `<br>${locationName(c.locationId)}：${["usable", "reserved", "unusable"].map((b) => `${({usable:"使用可能",reserved:"取り置き",unusable:"使用不可"})[b]} ${c.before[b] ?? "未確認"} → ${c.after[b] ?? "未確認"}`).join(" ／ ")}`).join("")}${e.transferAfter ? `<br>移動中 ${e.transferBefore?.remaining ?? 0} → ${e.transferAfter.remaining} ／ 到着 ${e.transferBefore?.received ?? 0} → ${e.transferAfter.received} ／ 戻し ${e.transferBefore?.returned ?? 0} → ${e.transferAfter.returned}` : ""}${e.evidence ? `<br>確認根拠：${escape(e.evidence)}` : ""}${e.metadataAfter ? `<br>ASIN：${escape(e.metadataBefore.asin || "なし")} → ${escape(e.metadataAfter.asin || "なし")} ／ ${escape(tasks[e.metadataAfter.catalogTask])}` : ""}</li>`).join("") : "<li>まだ変更履歴はありません。</li>";
@@ -73,11 +80,11 @@ export async function openStock({userId, readOnly}) {
     $("#stockProductError").textContent = ""; $("#stockProductTitle").textContent = product ? "商品情報・メモ" : "商品を登録";
     $("#stockInitialFields").hidden = Boolean(product);
     $("#stockExtraFields").open = Boolean(product && product.catalogTask !== "none");
-    for (const field of ["title", "unit", "condition", "setContents", "asin", "sellerSku", "memo", "catalogTask", "fbaEligibility", "reviewDate"]) {
+    for (const field of ["title", "unit", "condition", "setContents", "asin", "sellerSku", "memo", "catalogTask", "fbaEligibility", "reviewDate", "imageUrl"]) {
       if (product) productForm.elements[field].value = product[field] || "";
       productForm.elements[field].disabled = Boolean(product && ["unit", "condition", "setContents"].includes(field));
     }
-    $("#stockLinked").innerHTML = '<option value="">紐付けなし</option>' + view.linkOptions.map((l) => `<option value="${escape(l.id)}">${escape(l.title)} ／ ${escape(l.asin)} ／ ${escape(l.listingId)}</option>`).join("");
+    $("#stockLinked").innerHTML = '<option value="">紐付けなし</option>' + view.linkOptions.map((l) => `<option value="${escape(l.id)}">${product?.asin === l.asin ? "同ASIN候補：" : ""}${escape(l.title)} ／ ${escape(l.asin)} ／ ${escape(l.listingId)}</option>`).join("");
     $("#stockLinked").value = product?.linkedLinkIds[0] || "";
     if (reference) productForm.elements.title.value = reference[0];
     $("#stockProductDialog").showModal();
@@ -125,11 +132,13 @@ export async function openStock({userId, readOnly}) {
     const changes = e?.changes.flatMap((c) => ["usable", "reserved", "unusable"].filter((b) => b === "usable" || c.before[b] !== c.after[b] && !(c.before[b] === null && c.after[b] === 0)).map((b) => `<tr><td>${locationName(c.locationId)}${b !== "usable" ? "・" + ({reserved:"取り置き",unusable:"使用不可"})[b] : ""}</td><td>${c.before[b] ?? "未確認"}</td><td><strong>${c.after[b] ?? "未確認"}</strong>${c.after[b] !== null ? escape(result.product.unit) : ""}</td></tr>`)).join("") || "";
     $("#stockConfirmContent").innerHTML = `<strong>${escape(result.product.title)}</strong><p class="stock-muted">${labels[command.kind]}</p>${changes ? `<table><thead><tr><th>場所・区分</th><th>変更前</th><th>変更後</th></tr></thead><tbody>${changes}</tbody></table>` : ""}${e?.transferAfter ? `<p>${locationName(e.transferAfter.from)} → ${locationName(e.transferAfter.to)} ／ 移動中 ${e.transferAfter.remaining}${escape(result.product.unit)}</p>` : ""}<p>${escape(command.reason || result.product.memo || "")}</p>${command.kind === "edit" ? `<p>ASIN：${escape(result.product.asin || "未登録")} ／ ${escape(tasks[result.product.catalogTask])}</p><p>${escape(result.product.memo)}</p>` : ""}<p class="meta">Amazon・ヤフオクの数量や出品は変更しません。</p>`;
     $("#stockConfirmError").textContent = ""; $("#stockConfirmDialog").showModal(); controls();
+    if (e?.metadataBefore?.fbaEligibility !== undefined && e.metadataBefore.fbaEligibility !== result.product.fbaEligibility) {const line = document.createElement("p"); line.textContent = `用途：${purposes[e.metadataBefore.fbaEligibility]} → ${purposes[result.product.fbaEligibility]}`; $("#stockConfirmContent").prepend(line);}
     if (result.duplicates.length) {const warning = document.createElement("p"); warning.className = "stock-error"; warning.textContent = "同じASIN・商品名の登録あり：" + result.duplicates.map((p) => p.managementId + " " + p.title).join(" ／ ") + "。別の現物・状態か確認してください。"; $("#stockConfirmContent").prepend(warning);}
   }
   productForm.addEventListener("submit", (event) => {event.preventDefault(); work(async () => {
-    const p = Object.fromEntries(["title", "unit", "condition", "setContents", "asin", "sellerSku", "memo", "catalogTask", "fbaEligibility", "reviewDate"].map((field) => [field, productForm.elements[field].value]));
-    p.linkedLinkIds = $("#stockLinked").value ? [$("#stockLinked").value] : [];
+    const p = Object.fromEntries(["title", "unit", "condition", "setContents", "asin", "sellerSku", "memo", "catalogTask", "fbaEligibility", "reviewDate", "imageUrl"].map((field) => [field, productForm.elements[field].value]));
+    p.imageSource = editingProduct?.imageUrl === p.imageUrl ? editingProduct.imageSource || "manual" : "manual";
+    p.linkedLinkIds = $("#stockLinked").value ? editingProduct?.linkedLinkIds[0] === $("#stockLinked").value ? editingProduct.linkedLinkIds : [$("#stockLinked").value] : [];
     await showPreview({operationId: crypto.randomUUID(), kind: editingProduct ? "edit" : "create", productId: editingProduct?.id || crypto.randomUUID(), product: p,
       ...(editingProduct ? {} : {initialCounts: Object.fromEntries(["container", "home"].map((id) => {const value = productForm.elements[id + "Quantity"].value; return [id, value === "" ? null : Number(value)];}))})});
   }, "#stockProductError");});
@@ -156,7 +165,7 @@ export async function openStock({userId, readOnly}) {
     sessionStorage.setItem(pendingKey, JSON.stringify(payload)); pending = payload; controls();
     try {
       const result = await request("/operations", {command: payload.command, confirmed: true}, payload.revision);
-      view = result.result; clearPending(); dirty = false;
+      view = {...result.result, photoRead: view.photoRead}; clearPending(); dirty = false;
       for (const dialog of document.querySelectorAll(".stock-dialog[open]")) dialog.close(); render(); status(result.receipt.replayed ? "保存済みの操作を確認しました。数量を重複変更していません。" : "在庫の変更と履歴を保存しました。");
     } catch (error) {$("#stockPendingStatus").textContent = error.message; throw error;}
   }
@@ -176,7 +185,8 @@ export async function openStock({userId, readOnly}) {
   $("#stockRefresh").addEventListener("click", () => work(async () => {await load(); status("保存済みの手元在庫を更新しました。");}));
   $("#stockNew").addEventListener("click", () => openProduct());
   $("#stockExport").addEventListener("click", () => work(async () => {const response = await monitorRequest("/api/physical-stock/export.csv"); if (!response.ok) throw new Error("CSVを取得できません"); const url = URL.createObjectURL(await response.blob()); const a = document.createElement("a"); a.href = url; a.download = "physical-stock.csv"; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);}));
-  for (const selector of ["#stockSearch", "#stockLocationFilter", "#stockStateFilter"]) $(selector).addEventListener("input", render);
+  $("#stockPhotos").addEventListener("click", () => work(async () => {status("Amazonの商品画像を取得しています。数量は変更しません。"); const result = await request("/photos", {}); await load(); status(`商品画像 ${result.updated}件を保存しました。${result.errors.length ? `取得できず ${result.errors.length}件：${result.errors.map((e) => e.asin + " " + e.error).join(" ／ ")}` : ""}${result.remaining ? " 未取得分はもう一度取得できます。" : ""} ASIN未登録の商品は画像URLまたはASINを登録してください。`);}));
+  for (const selector of ["#stockSearch", "#stockLocationFilter", "#stockStateFilter", "#stockPurposeFilter"]) $(selector).addEventListener("input", render);
   for (const button of document.querySelectorAll("[data-close]")) button.addEventListener("click", () => {$("#" + button.dataset.close).close(); if (button.dataset.close !== "stockConfirmDialog") dirty = false;});
   for (const element of [actionForm.elements.kind, actionForm.elements.locationId, actionForm.elements.to, actionForm.elements.transferId]) element.addEventListener("change", syncAction);
   for (const button of document.querySelectorAll("[data-stock-mode]")) button.addEventListener("click", () => {actionForm.elements.kind.value = button.dataset.stockMode; syncAction(); dirty = true;});

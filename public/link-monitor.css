@@ -123,3 +123,5 @@ form.monitor-inline {display:flex;}
   .monitor-header img {width:44px;height:44px;}
   .monitor-safety {gap:8px 12px;}
 }
+.physical-inventory-link {display:block;margin-top:10px;color:#256b9c;font-size:12px;line-height:1.6;text-decoration:none;overflow-wrap:anywhere;}
+.physical-inventory-link:hover {text-decoration:underline;}

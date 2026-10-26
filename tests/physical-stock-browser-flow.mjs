@@ -4,8 +4,11 @@ import {mkdir} from "node:fs/promises";
 
 export async function verifyPhysicalStockUI({page, stockStore, monitorStore, root, pass}) {
   const before = JSON.stringify(await monitorStore.read());
-  await page.locator(".cloud-account nav").getByText("手元在庫", {exact: true}).click();
+  await page.addInitScript(()=>{window.__loginFlashed=false;new MutationObserver(()=>{const p=document.querySelector("#loginPanel");if(p&&!p.hidden&&p.getBoundingClientRect().height>0)window.__loginFlashed=true;}).observe(document,{subtree:true,childList:true,attributes:true,attributeFilter:["hidden"]});});
+  await page.locator(".cloud-account nav").getByText("コンテナ・自社在庫", {exact: true}).click();
   await page.waitForFunction(() => document.querySelector("#stockSummary")?.textContent.includes("0商品"));
+  assert.equal(await page.evaluate(()=>window.__loginFlashed),false);
+  pass("switching authenticated views restores the session without displaying the login form");
   await page.locator("#stockNew").click();
   assert.equal(await page.locator('#stockProductForm select[name=unit]').count(), 0);
   await page.locator("#stockExtraFields summary").click();
@@ -21,6 +24,15 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   await preview("#stockProductForm"); await commit();
   assert.equal((await stockStore.read()).products.length, 1); assert.equal((await stockStore.read()).balances[0].usable, 6);
   pass("physical-stock preview is read-only; confirmed registration persists a separate management item");
+  const savedBeforePurpose=await stockStore.read();
+  await page.locator("[data-stock-purpose]").first().selectOption("not_possible");await page.locator("#stockConfirmDialog[open]").waitFor();
+  assert.match(await page.locator("#stockConfirmContent").textContent(),/自社発送用/);assert.equal((await stockStore.read()).products[0].fbaEligibility,savedBeforePurpose.products[0].fbaEligibility);
+  await commit();assert.equal((await stockStore.read()).products[0].fbaEligibility,"not_possible");assert.deepEqual((await stockStore.read()).balances,savedBeforePurpose.balances);
+  await page.locator("#stockPurposeFilter").selectOption("possible");assert.equal(await page.locator("[data-stock-purpose]").count(),0);await page.locator("#stockPurposeFilter").selectOption("");
+  await page.locator("#stockPhotos").click();await page.waitForFunction(()=>document.querySelector("#stockStatus").textContent.includes("商品画像 1件"));
+  assert.equal((await stockStore.read()).products[0].imageUrl,"https://m.media-amazon.com/images/I/fixture.jpg");assert.deepEqual((await stockStore.read()).balances,savedBeforePurpose.balances);
+  assert.ok(await page.locator('#stockRows img[title*="現物写真ではありません"]').count());
+  pass("purpose is visible, filterable and preview-confirmed; photo refresh saves only image metadata, never quantities");
   async function openAction(kind) {await page.locator("[data-stock-action]").first().click(); if (["add", "remove", "dispatch"].includes(kind)) await page.locator(`[data-stock-mode=${kind}]`).click(); else {await page.locator("#stockAdvancedActions summary").click(); await page.locator("#stockActionKind").selectOption(kind);} await page.locator('#stockActionForm [name=reason]').fill("隔離画面の試験");}
   async function changeQuantity(kind, amount) {await openAction(kind); await page.locator('#stockActionForm [name=quantity]').fill(String(amount)); await preview("#stockActionForm"); await commit();}
   await changeQuantity("add", 3); assert.equal((await stockStore.read()).balances[0].usable, 9);
@@ -56,6 +68,7 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   await preview("#stockProductForm"); await commit();
   state = await stockStore.read(); assert.equal(state.products[0].id, productId); assert.deepEqual(state.balances, balances);
   await page.reload(); await page.waitForFunction(() => document.querySelector("#stockSummary")?.textContent.includes("1商品"));
+  assert.equal(await page.evaluate(()=>window.__loginFlashed),false);
   assert.match(await page.locator("#stockRows").textContent(), /帰宅後にカタログ/);
   pass("product memo/catalog editing and reload keep the same ID and quantities");
   const eventCount = state.events.length, oldQuantity = state.balances.find((b) => b.locationId === "container").usable;

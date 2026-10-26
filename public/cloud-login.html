@@ -6,7 +6,8 @@
   <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/link-monitor.css"><link rel="stylesheet" href="/cloud-login.css"><link rel="stylesheet" href="/physical-stock.css">
 </head>
 <body>
-  <main id="loginPanel" class="login-shell">
+  <div id="authLoading" class="auth-loading" role="status"><span class="auth-spinner" aria-hidden="true"></span>画面を準備しています</div>
+  <main id="loginPanel" class="login-shell" hidden>
     <header class="login-heading"><img src="/extension-logo.png" width="56" height="56" alt=""><h1>Amazon・ヤフオク<br>在庫管理</h1></header>
     <form id="loginForm">
       <h2 id="loginTitle">ログイン</h2>

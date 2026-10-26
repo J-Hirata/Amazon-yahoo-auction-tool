@@ -1,4 +1,5 @@
 import {randomUUID, createHash} from "node:crypto";
+import {stockImageUrl} from "./stock-images.js";
 
 export const STOCK_LOCATIONS = [{id: "container", name: "コンテナ"}, {id: "home", name: "自宅・自社"}, {id: "fba", name: "Amazon FBA（観測のみ）"}];
 const local = new Set(["container", "home"]);
@@ -23,6 +24,7 @@ export function validatePhysicalStock(state) {
   if (!state || state.version !== 1 || !["products", "balances", "transfers", "events", "receipts"].every((key) => Array.isArray(state[key]))) throw new Error("手元在庫の保存形式を確認してください");
   const products = new Set(state.products.map((p) => p.id)), pairs = new Set(), operations = new Set();
   if (products.size !== state.products.length || state.products.some((p) => !uuid(p.id) || typeof p.title !== "string" || !p.title)) throw new Error("手元在庫の管理IDを確認してください");
+  if (state.products.some((p) => p.imageUrl && stockImageUrl(p.imageUrl) !== p.imageUrl)) throw new Error("商品画像の保存先を確認してください");
   for (const balance of state.balances) {
     const pair = JSON.stringify([balance.productId, balance.locationId]);
     if (!products.has(balance.productId) || !local.has(balance.locationId) || pairs.has(pair) || !(buckets.every((b) => balance[b] === null) || buckets.every((b) => count(balance[b]))) ||
@@ -46,6 +48,11 @@ function productFields(data) {
   if (!Array.isArray(result.linkedLinkIds) || result.linkedLinkIds.length > 10 || result.linkedLinkIds.some((value) => !uuid(value)) || new Set(result.linkedLinkIds).size !== result.linkedLinkIds.length) throw fail("紐付け先を確認してください");
   if (result.reviewDate && (!/^\d{4}-\d{2}-\d{2}$/.test(result.reviewDate) || new Date(result.reviewDate + "T00:00:00Z").toISOString().slice(0, 10) !== result.reviewDate)) throw fail("再確認日を正しく入力してください");
   if (task === "registered" && !result.asin) throw fail("カタログ登録済みにする場合はASINを入力してください");
+  if (data.imageUrl !== undefined) {
+    const value = text(data.imageUrl, 2048); if (value && !stockImageUrl(value)) throw fail("画像URLはAmazonまたはヤフオクのHTTPS画像URLを入力してください");
+    result.imageUrl = value ? stockImageUrl(value) : "";
+    result.imageSource = choice(data.imageSource || "manual", ["manual", "amazon_catalog"]);
+  }
   return result;
 }
 
@@ -87,6 +94,7 @@ export function applyStockCommand(state, command, {actor, at = new Date().toISOS
     if (kind === "edit") {
       metadataBefore = structuredClone(product); const fields = productFields(command.product || {});
       if (fields.unit !== product.unit || fields.condition !== product.condition || fields.setContents !== product.setContents) throw fail("単位・状態・セットの変更は別の管理商品として登録してください。数量を自動変換しません", 409);
+      if (fields.asin !== product.asin && product.imageSource === "amazon_catalog" && (!Object.hasOwn(fields, "imageUrl") || fields.imageUrl === product.imageUrl)) Object.assign(fields, {imageUrl:"",imageSource:"manual"});
       Object.assign(product, fields, {updatedAt: at});
     } else if (kind === "count_locations") {
       const entries = command.locations;

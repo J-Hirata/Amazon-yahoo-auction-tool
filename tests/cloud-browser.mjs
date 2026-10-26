@@ -21,6 +21,7 @@ import {createCloudFba} from "../src/cloud-fba.js";
 import {createCloudMail} from "../src/cloud-mail.js";
 import {createCloudSales} from "../src/cloud-sales.js";
 import {createCloudStock} from "../src/cloud-stock.js";
+import {createStockPhotoRefresh} from "../src/cloud-stock-photos.js";
 import {emptyPhysicalStock, validatePhysicalStock} from "../src/physical-stock.js";
 import {verifyPhysicalStockUI} from "./physical-stock-browser-flow.mjs";
 
@@ -118,8 +119,9 @@ try {
   const sales = connections ? createCloudSales({store, config: {accountKey, sellerId, marketplaceId: "A1VC38T7YXB528"}, now: () => salesClock,
     readOrders: async ({after, before, targets}) => {orderReads++; return {complete: true, accountKey, sellerId, marketplaceId: "A1VC38T7YXB528", after, before, pages: 1,
       rows: orderReads > 1 ? [] : [{orderId: "fixture-private-order", itemId: "fixture-item", ...targets[0], quantity: 1, status: "UNSHIPPED", fulfillment: "AMAZON", createdAt: after, updatedAt: before}]};}}) : undefined;
-  const stock = fullWorkspace ? createCloudStock({store: stockStore, monitorStore: store}) : undefined;
-  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, ownerAccess, fba, mail, sales,
+  const stock = fullWorkspace ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
+  const stockPhotos = fullWorkspace ? createStockPhotoRefresh({store:stockStore,config:{},readPhotos:async({asins})=>({photos:asins.map(asin=>({asin,imageUrl:"https://m.media-amazon.com/images/I/fixture.jpg"})),errors:[]})}) : undefined;
+  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, stockPhotos, ownerAccess, fba, mail, sales,
     verifyIdentity: createIdentityVerifier({authUrl, keySet: publicKey}),
     verifyOwner: createOwnerVerifier({authUrl, ownerUserId, keySet: publicKey, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})}),
     assets: await loadCloudAssets(vercelMode ? path.join(root, ".vercel", "output", "static") : undefined)});
@@ -147,6 +149,7 @@ try {
     await route.fulfill({status: 200, headers: {...headers, ...(loggedIn ? {"set-auth-jwt": jwt} : {})}, contentType: "application/json", body: JSON.stringify(body)});
   });
   if (process.env.ASIN_TEST_REAL_IMAGES !== "1") await context.route("https://auctions.c.yimg.jp/**", (route) => route.fulfill({contentType: "image/png", path: path.join(root, "public", "extension-logo.png")}));
+  await context.route("https://m.media-amazon.com/images/I/fixture.jpg", (route)=>route.fulfill({contentType:"image/png",path:path.join(root,"public","extension-logo.png")}));
   assert.equal((await fetch(base + "/api/link-monitor")).status, 401);
   await page.goto(base + (fullWorkspace ? `/#setup=${setupToken}` : ""));
   await page.locator("#loginSubmit:not([disabled])").waitFor();
@@ -215,6 +218,19 @@ try {
     assert.equal(testEmails, 0);
     await page.locator(".cloud-account nav").getByText("商品紐付け・通知", {exact: true}).click();
     await page.locator("#cloudApp:not([hidden]) #linkRows tr").first().waitFor();
+    assert.ok(await page.locator(".physical-inventory-link").count());assert.equal(await page.evaluate(()=>window.__loginFlashed),false);
+    pass("linkage screen shows the related local quantities without another login form");
+    const beforeDemos=JSON.stringify(await store.read());
+    await page.locator("#demoTab").click();
+    for(const scenario of ["decreased","zero","repeat","failed"]){
+      await page.locator("#demoScenario").selectOption(scenario);
+      const response=page.waitForResponse(r=>new URL(r.url()).pathname==="/api/link-monitor/demo" && r.request().method()==="POST");
+      await page.locator("#demoForm button").click();await response;
+      await page.waitForFunction(()=>document.querySelector("#monitorStatus").textContent.includes("練習用データ"));
+      if(scenario==="decreased")assert.match(await page.locator("#demoSteps").textContent(),/販売と断定しない/);
+    }
+    assert.equal(JSON.stringify(await store.read()),beforeDemos);assert.equal(testEmails,0);await page.locator("#savedTab").click();
+    pass("decrease, zero, repeated zero and fetch failure can be rehearsed without production records or mail changes");
   }
   await page.locator(".memo-edit").first().click();
   await page.locator("textarea[name=memo]").first().fill("クラウド画面の保存試験：スタンドなし");

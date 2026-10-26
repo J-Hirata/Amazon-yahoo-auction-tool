@@ -1,4 +1,8 @@
 .login-shell {max-width:420px; margin:80px auto; padding:24px;}
+.auth-loading {min-height:50vh;display:flex;align-items:center;justify-content:center;gap:12px;color:#63766b;font:14px system-ui;}
+.auth-spinner {width:18px;height:18px;border:2px solid #dce7e0;border-top-color:#176847;border-radius:50%;animation:auth-spin .9s linear infinite;}
+@keyframes auth-spin {to {transform:rotate(360deg);}}
+@media(prefers-reduced-motion:reduce) {.auth-spinner {animation:none;}}
 .login-heading {display:flex; align-items:center; gap:16px; padding-bottom:24px; border-bottom:1px solid #d2d9d5;}
 .login-heading h1 {font-size:22px; line-height:1.5; margin:0; letter-spacing:0; overflow-wrap:anywhere;}
 .login-heading img {flex:none;}

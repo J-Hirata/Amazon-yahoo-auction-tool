@@ -1,6 +1,6 @@
 ﻿# ASIN Yahoo Auction Draft Tool
 
-業務版の入口は https://amazon-yahoo-inventory.vercel.app/ 。本人ログイン後、「商品紐付け・通知」「手元在庫」「下書きQ」を切り替えます。15組の紐付け、16出品情報、32通知履歴、58下書きを専用Neonへ移行・照合済みです。再登録は不要です。
+業務版の入口は https://amazon-yahoo-inventory.vercel.app/ 。本人ログイン後、「商品紐付け・通知」「コンテナ・自社在庫」「下書きQ」を切り替えます。15組の紐付け、16出品情報、32通知履歴、58下書きを専用Neonへ移行・照合済みです。再登録は不要です。
 現在の状態は [docs/status.md](docs/status.md)、追加機能の手順は [docs/phase1-link-monitor.md](docs/phase1-link-monitor.md) を参照。
 コンテナ/自宅・自社の手入力、棚卸し、取り置き/使用不可、場所移動/FBA納品中、ASINなしのカタログ作業待ちは [docs/physical-stock.md](docs/physical-stock.md)。入口は `/?view=stock`。過去の基準数量を現在庫として自動登録せず、本人が実数を確認してから保存します。
 販売追跡の開始・手動の注文確認・取消除外の履歴と未送信プレビューは [docs/sales-history.md](docs/sales-history.md)。1時間ごとの自動実行/メールはまだ有効にしません。Gitの記録前には `npm run check:git` で秘密設定・業務データ・生成物が管理対象へ入っていないことを確認します。通常データは専用Neon、ソース/仕様/試験はGitで管理します。
