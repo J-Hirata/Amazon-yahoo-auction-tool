@@ -25,6 +25,8 @@ export function validatePhysicalStock(state) {
   const products = new Set(state.products.map((p) => p.id)), pairs = new Set(), operations = new Set();
   if (products.size !== state.products.length || state.products.some((p) => !uuid(p.id) || typeof p.title !== "string" || !p.title)) throw new Error("手元在庫の管理IDを確認してください");
   if (state.products.some((p) => p.imageUrl && stockImageUrl(p.imageUrl) !== p.imageUrl)) throw new Error("商品画像の保存先を確認してください");
+  if (state.amazonListings && (!["complete","failed"].includes(state.amazonListings.status) || state.amazonListings.status === "complete" &&
+    (!Array.isArray(state.amazonListings.rows) || !Array.isArray(state.amazonListings.asins) || state.amazonListings.rows.some((r) => typeof r.asin !== "string" || typeof r.sellerSku !== "string" || !Array.isArray(r.statuses) || !Array.isArray(r.fulfillment))))) throw new Error("自社Amazon出品の確認情報を検証してください");
   for (const balance of state.balances) {
     const pair = JSON.stringify([balance.productId, balance.locationId]);
     if (!products.has(balance.productId) || !local.has(balance.locationId) || pairs.has(pair) || !(buckets.every((b) => balance[b] === null) || buckets.every((b) => count(balance[b]))) ||

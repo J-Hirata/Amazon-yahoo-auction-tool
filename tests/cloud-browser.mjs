@@ -22,6 +22,7 @@ import {createCloudMail} from "../src/cloud-mail.js";
 import {createCloudSales} from "../src/cloud-sales.js";
 import {createCloudStock} from "../src/cloud-stock.js";
 import {createStockPhotoRefresh} from "../src/cloud-stock-photos.js";
+import {createStockAmazonRefresh} from "../src/stock-amazon-listings.js";
 import {emptyPhysicalStock, validatePhysicalStock} from "../src/physical-stock.js";
 import {verifyPhysicalStockUI} from "./physical-stock-browser-flow.mjs";
 
@@ -121,7 +122,8 @@ try {
       rows: orderReads > 1 ? [] : [{orderId: "fixture-private-order", itemId: "fixture-item", ...targets[0], quantity: 1, status: "UNSHIPPED", fulfillment: "AMAZON", createdAt: after, updatedAt: before}]};}}) : undefined;
   const stock = fullWorkspace ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
   const stockPhotos = fullWorkspace ? createStockPhotoRefresh({store:stockStore,config:{},readPhotos:async({asins})=>({photos:asins.map(asin=>({asin,imageUrl:"https://m.media-amazon.com/images/I/fixture.jpg"})),errors:[]})}) : undefined;
-  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, stockPhotos, ownerAccess, fba, mail, sales,
+  const stockAmazon = fullWorkspace ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:{accountKey,sellerId},readListings:async({asins})=>({version:1,status:"complete",source:"own_seller_listings",sellerId,accountKey,marketplaceId:"A1VC38T7YXB528",asins,checkedAt:new Date().toISOString(),rows:asins.map(asin=>({asin,sellerSku:"FIXTURE-"+asin,condition:asin==="B000TEST99"?"new_new":"used_good",statuses:["BUYABLE"],fulfillment:[{channel:"DEFAULT",quantity:1}]}))})}) : undefined;
+  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, stockPhotos, stockAmazon, ownerAccess, fba, mail, sales,
     verifyIdentity: createIdentityVerifier({authUrl, keySet: publicKey}),
     verifyOwner: createOwnerVerifier({authUrl, ownerUserId, keySet: publicKey, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})}),
     assets: await loadCloudAssets(vercelMode ? path.join(root, ".vercel", "output", "static") : undefined)});

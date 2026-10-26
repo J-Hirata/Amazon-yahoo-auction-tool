@@ -36,6 +36,9 @@
 .stock-shell .purpose-not_possible {color:#245d8c;background:#edf4fb;border-color:#cedfec;}
 .stock-shell .purpose-unknown {color:#7f6428;background:#fff8e5;border-color:#e6dcc4;}
 .stock-sales-overview {display:grid;gap:6px;font-size:12px;}.stock-sales-overview a {color:#256b9c;overflow-wrap:anywhere;text-decoration:none;}.stock-sales-overview strong {font-size:12px;color:#52695a;}
+.stock-channel {display:grid;gap:5px;min-width:0;}.stock-channel+.stock-channel {margin-top:10px;padding-top:12px;border-top:1px solid #e1e9e4;}
+.stock-channel h3 {font-size:12px;font-weight:500;margin:0;color:#6c7e71;}.stock-channel .state-buyable {color:#176847;}.stock-channel .state-variant_mismatch,.stock-variant-warning {color:#8a5c17!important;}
+.stock-offer-details {font-size:11px;color:#75887b;}.stock-offer-details summary {cursor:pointer;}.stock-channel .amazon-state {font-size:13px;}
 .stock-badges {display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:7px 0;}
 .stock-badge {display:inline-flex;align-items:center;gap:5px;background:#f0f3f1;color:#59675f;font-size:11px;line-height:1.6;padding:2px 7px;border-radius:4px;}
 .stock-badge.attention {background:#fff2ce;color:#815b10;}

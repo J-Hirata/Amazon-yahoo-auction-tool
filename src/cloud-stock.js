@@ -1,6 +1,7 @@
 import {applyStockCommand, stockCommandDigest, stockTotals, STOCK_LOCATIONS} from "./physical-stock.js";
 import {assessLink, PREVIEW_CONFIG} from "./link-monitor.js";
 import {stockImageUrl} from "./stock-images.js";
+import {stockAmazonView} from "./stock-amazon-listings.js";
 
 const fail = (message, status) => Object.assign(new Error(message), {status});
 function checkLinks(command, monitor) {
@@ -36,7 +37,7 @@ export function physicalStockView({state, revision}, monitor, at = new Date().to
     const draftPhotos = drafts.filter((d) => product.asin && d.asin === product.asin).flatMap((d) => d.imageUrls || []).filter((u) => stockImageUrl(u));
     const photoUrl = stockImageUrl(product.imageUrl) || stockImageUrl(linked[0]?.imageUrl) || stockImageUrl(savedPhotos[0]) || stockImageUrl(draftPhotos[0]) || stockImageUrl(linkCandidates[0]?.imageUrl);
     const photoLabel = product.imageUrl ? product.imageSource === "amazon_catalog" ? "Amazon商品画像（現物写真ではありません）" : "登録した商品画像" : linked[0]?.imageUrl ? "ヤフオク出品写真" : savedPhotos.length || draftPhotos.length ? "Amazon商品画像（現物写真ではありません）" : "同ASINのヤフオク参考画像（紐付け未確認）";
-    return {...product, totals, linked, linkCandidates, photo: photoUrl ? {url: photoUrl, label: photoLabel} : null, fba, replenishmentCandidate: product.fbaEligibility === "possible" && fba.quantity === 0 && totals.usable > 0,
+    return {...product, totals, linked, linkCandidates, amazon:stockAmazonView(product,state.amazonListings,at,monitor), photo: photoUrl ? {url: photoUrl, label: photoLabel} : null, fba, replenishmentCandidate: product.fbaEligibility === "possible" && fba.quantity === 0 && totals.usable > 0,
       catalogDue: ["pending", "working"].includes(product.catalogTask) && Boolean(product.reviewDate) && product.reviewDate <= new Date(Date.parse(at) + 9 * 3600000).toISOString().slice(0, 10)};
   });
   return {storage: {backend: "postgres", revision}, locations: STOCK_LOCATIONS, products, linkOptions,

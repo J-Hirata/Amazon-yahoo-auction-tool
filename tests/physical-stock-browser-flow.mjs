@@ -33,6 +33,12 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   assert.equal((await stockStore.read()).products[0].imageUrl,"https://m.media-amazon.com/images/I/fixture.jpg");assert.deepEqual((await stockStore.read()).balances,savedBeforePurpose.balances);
   assert.ok(await page.locator('#stockRows img[title*="現物写真ではありません"]').count());
   pass("purpose is visible, filterable and preview-confirmed; photo refresh saves only image metadata, never quantities");
+  await page.locator("#stockAmazonCheck").click();await page.waitForFunction(()=>document.querySelector("#stockStatus").textContent.includes("Amazon出品を確認しました"));
+  await page.locator(".amazon-state.state-buyable").first().waitFor();
+  assert.deepEqual((await stockStore.read()).balances,savedBeforePurpose.balances);
+  assert.match(await page.locator("#stockRows").textContent(),/Amazonの自社出品/);
+  assert.match(await page.locator("#stockRows").textContent(),/ヤフオクとの関連付け/);
+  pass("own Amazon listing check displays selling status independently of Yahoo association and preserves physical quantities");
   async function openAction(kind) {await page.locator("[data-stock-action]").first().click(); if (["add", "remove", "dispatch"].includes(kind)) await page.locator(`[data-stock-mode=${kind}]`).click(); else {await page.locator("#stockAdvancedActions summary").click(); await page.locator("#stockActionKind").selectOption(kind);} await page.locator('#stockActionForm [name=reason]').fill("隔離画面の試験");}
   async function changeQuantity(kind, amount) {await openAction(kind); await page.locator('#stockActionForm [name=quantity]').fill(String(amount)); await preview("#stockActionForm"); await commit();}
   await changeQuantity("add", 3); assert.equal((await stockStore.read()).balances[0].usable, 9);
@@ -89,12 +95,19 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   pass("authenticated physical-stock CSV works through the actual generated Vercel rewrite");
   await page.locator("#stockNew").click(); await page.locator('#stockProductForm [name=title]').fill("場所別在庫の試験商品");
   await page.locator('#stockProductForm [name=containerQuantity]').fill("4"); await page.locator('#stockProductForm [name=homeQuantity]').fill("2");
+  await page.locator("#stockExtraFields summary").click();await page.locator('#stockProductForm [name=asin]').fill("B000TEST99");
   await preview("#stockProductForm"); await commit();
   const newProduct = (await stockStore.read()).products.find((p) => p.title === "場所別在庫の試験商品");
   assert.equal(newProduct.unit, "個"); assert.equal(newProduct.setContents, "");
   assert.deepEqual((await stockStore.read()).balances.filter((b) => b.productId === newProduct.id).map((b) => b.usable), [4, 2]);
   const newRow = page.locator("#stockRows tr").filter({hasText: "場所別在庫の試験商品"});
-  assert.equal(await newRow.locator("details").getAttribute("open"), null); assert.equal(await newRow.getByText("移動中 0個").count(), 0);
+  const beforeAmazon=await stockStore.read();
+  await page.locator("#stockAmazonCheck").click();await newRow.locator(".state-variant_mismatch").waitFor();
+  assert.match(await newRow.textContent(),/別の状態・SKU/);assert.match(await newRow.textContent(),/在庫登録は中古/);
+  assert.match(await newRow.textContent(),/登録なし/);assert.equal((await stockStore.read()).products.find(p=>p.id===newProduct.id).condition,"used");
+  assert.deepEqual((await stockStore.read()).balances,beforeAmazon.balances);
+  pass("new-only Amazon offer stays visible for an unlinked used item with a mismatch warning, never auto-correcting condition or quantities");
+  assert.equal(await newRow.locator(".stock-item-details").getAttribute("open"), null); assert.equal(await newRow.getByText("移動中 0個").count(), 0);
   pass("registration accepts both locations, fixed item units and blank optional contents; zero transit/FBA details stay out of the primary row");
   await mkdir(path.join(root, "output"), {recursive: true});
   await page.screenshot({path: path.join(root, "output", "physical-stock-fixture-desktop.png"), fullPage: true});

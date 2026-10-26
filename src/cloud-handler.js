@@ -32,7 +32,7 @@ export async function jsonBody(request) {
   catch {throw fail("入力データを読み取れません", 400);}
 }
 
-export function createCloudHandler({config, store, draftStore, stock, stockPhotos, ownerAccess, fba, mail, sales, verifyIdentity, verifyOwner, assets = new Map()}) {
+export function createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, ownerAccess, fba, mail, sales, verifyIdentity, verifyOwner, assets = new Map()}) {
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
@@ -72,16 +72,16 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
       const owner = await verifyOwner(request);
       if (owner.status !== 200) return reply({error: owner.status === 403 ? "このアカウントには利用権限がありません" : "ログインが必要です"}, owner.status);
       if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly, physicalStock: Boolean(stock)});
-      if (stock && request.method === "GET" && url.pathname === "/api/physical-stock") return reply({...await stock.view(), photoRead: Boolean(stockPhotos)});
+      if (stock && request.method === "GET" && url.pathname === "/api/physical-stock") return reply({...await stock.view(), photoRead: Boolean(stockPhotos), amazonRead:Boolean(stockAmazon)});
       if (stock && request.method === "GET" && url.pathname === "/api/physical-stock/export.csv") return new Response(stockCsv(await stock.view()), {headers: {...headers, "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=physical-stock.csv"}});
       const stockOperation = url.pathname.match(/^\/api\/physical-stock\/operations\/([0-9a-f-]{36})$/i);
       if (stock && stockOperation && request.method === "GET") return reply(await stock.operation(stockOperation[1], owner.userId));
-      if (stockPhotos && request.method === "POST" && url.pathname === "/api/physical-stock/photos") {
+      if (request.method === "POST" && (stockPhotos && url.pathname === "/api/physical-stock/photos" || stockAmazon && url.pathname === "/api/physical-stock/amazon-listings")) {
         if (config.readOnly) return reply({error: "現在は閲覧のみです"}, 403);
         const match = request.headers.get("if-match");
         if (!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match || "")) return reply({error: "最新の一覧を読み込んでください"}, 428);
         await jsonBody(request);
-        return reply(await stockPhotos({expectedRevision: Number(match.slice(1,-1)), actor: owner.userId}));
+        return reply(await (url.pathname.endsWith("/amazon-listings") ? stockAmazon : stockPhotos)({expectedRevision: Number(match.slice(1,-1)), actor: owner.userId}));
       }
       if (stock && request.method === "POST" && ["/api/physical-stock/preview", "/api/physical-stock/operations"].includes(url.pathname)) {
         if (config.readOnly) return reply({error: "現在は閲覧のみです"}, 403);
