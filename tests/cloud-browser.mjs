@@ -25,6 +25,7 @@ import {createStockPhotoRefresh} from "../src/cloud-stock-photos.js";
 import {createStockAmazonRefresh} from "../src/stock-amazon-listings.js";
 import {emptyPhysicalStock, validatePhysicalStock} from "../src/physical-stock.js";
 import {verifyPhysicalStockUI} from "./physical-stock-browser-flow.mjs";
+import {verifyStockWorkflow} from "./stock-workflow-browser-flow.mjs";
 
 const {chromium} = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -217,8 +218,9 @@ try {
   }
   if (fullWorkspace) {
     await verifyPhysicalStockUI({page, stockStore, monitorStore: store, root, pass});
+    await verifyStockWorkflow({page,stockStore,monitorStore:store,root,pass});
     assert.equal(testEmails, 0);
-    await page.locator(".cloud-account nav").getByText("商品紐付け・通知", {exact: true}).click();
+    await page.locator(".cloud-account nav").getByText("商品紐付けツール", {exact: true}).click();
     await page.locator("#cloudApp:not([hidden]) #linkRows tr").first().waitFor();
     assert.ok(await page.locator(".physical-inventory-link").count());assert.equal(await page.evaluate(()=>window.__loginFlashed),false);
     pass("linkage screen shows the related local quantities without another login form");
@@ -279,7 +281,7 @@ try {
   }
   pass("desktop and mobile have no horizontal overflow");
   if (fullWorkspace) {
-    await page.locator(".cloud-account nav").getByText("下書きQ", {exact: true}).click();
+    await page.locator(".cloud-account nav").getByText("出品下書きツール", {exact: true}).click();
     await page.locator("#cloudApp:not([hidden]) #summary").waitFor();
     assert.match(await page.locator("#summary").textContent(), /58/);
     assert.equal(await page.locator("#fetchProducts").isDisabled(), true);
@@ -292,8 +294,10 @@ try {
     assert.ok((await page.locator("[data-field=title]").first().inputValue()).endsWith(" 保存試験"));
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
     await page.screenshot({path: path.join(root, "output", `${prefix}-drafts-mobile.png`), fullPage: true});
+    await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(root,"output",`${prefix}-drafts-mobile-viewport.png`)});
     await page.setViewportSize({width: 1440, height: 1080});
     await page.screenshot({path: path.join(root, "output", `${prefix}-drafts-desktop.png`), fullPage: true});
+    await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(root,"output",`${prefix}-drafts-desktop-viewport.png`)});
     pass("all 58 drafts, safe edit/reload and mobile layout preserved without changing source data");
   }
   await page.locator(".cloud-account button").click();

@@ -1,7 +1,7 @@
 import {monitorRequest} from "./monitor-http.js";
-import {createElement, Boxes, Warehouse, House, Plus, Minus, Truck, History, NotebookPen, RefreshCw, Download, Search, X, ArrowRight, Check, Pencil, Package, ArrowLeftRight, Image as ImageIcon} from "lucide";
+import {createElement, Boxes, Warehouse, House, Plus, Minus, Truck, History, NotebookPen, RefreshCw, Download, Search, X, ArrowRight, Check, Pencil, Package, ArrowLeftRight, Image as ImageIcon, Link2, FilePenLine} from "lucide";
 
-const icons = {boxes: Boxes, warehouse: Warehouse, house: House, plus: Plus, minus: Minus, truck: Truck, history: History, notebook: NotebookPen, refresh: RefreshCw, download: Download, search: Search, x: X, arrow: ArrowRight, check: Check, pencil: Pencil, package: Package, move: ArrowLeftRight, image: ImageIcon};
+const icons = {boxes: Boxes, warehouse: Warehouse, house: House, plus: Plus, minus: Minus, truck: Truck, history: History, notebook: NotebookPen, refresh: RefreshCw, download: Download, search: Search, x: X, arrow: ArrowRight, check: Check, pencil: Pencil, package: Package, move: ArrowLeftRight, image: ImageIcon, link:Link2, draft:FilePenLine};
 const icon = (name) => createElement(icons[name], {width: 18, height: 18, "aria-hidden": "true", "focusable": "false", "stroke-width": 1.8}).outerHTML;
 
 const $ = (selector) => document.querySelector(selector);
@@ -16,7 +16,7 @@ const references = [["iiyama XUB2493HS-B3", 6, "台"], ["iiyama E2483HS-B3", 13,
 function imageUrl(value) {try {const u = new URL(value); if (u.protocol === "https:" && (u.hostname.endsWith(".yimg.jp") || ["m.media-amazon.com", "images-na.ssl-images-amazon.com", "images-fe.ssl-images-amazon.com"].includes(u.hostname)) && !u.username && !u.password && !u.port && u.href.length <= 2048) return u.href;} catch {} return "";}
 
 export async function openStock({userId, readOnly}) {
-  let view, activeProduct, editingProduct, placesProduct, preview, busy = false, dirty = false, pending;
+  let view, activeProduct, editingProduct, placesProduct, linkProduct, preview, busy = false, dirty = false, pending;
   const pendingKey = "physical-stock-pending:" + userId;
   const productForm = $("#stockProductForm"), actionForm = $("#stockActionForm"), placesForm = $("#stockPlacesForm");
   for (const element of document.querySelectorAll("[data-stock-icon]")) element.innerHTML = icon(element.dataset.stockIcon);
@@ -32,6 +32,8 @@ export async function openStock({userId, readOnly}) {
     $("#stockPhotos").disabled = busy || readOnly || Boolean(pending) || !view?.photoRead;
     $("#stockAmazonCheck").disabled = busy || readOnly || Boolean(pending) || !view?.amazonRead;
     for (const select of document.querySelectorAll("[data-stock-purpose]")) select.disabled = busy || readOnly || Boolean(pending);
+    $("#stockLinkSubmit").disabled = busy || readOnly || Boolean(pending) || !document.querySelector("#stockLinkOptions input:checked:not(:disabled)");
+    for (const a of document.querySelectorAll(".stock-link-routes a")) {a.setAttribute("aria-disabled",String(readOnly || Boolean(pending) || !linkProduct?.asin));if(readOnly || pending || !linkProduct?.asin)a.removeAttribute("href");}
   }
   async function request(path = "", data, revision = view?.storage.revision) {
     const response = await monitorRequest("/api/physical-stock" + path, data === undefined ? undefined : {method: "POST", headers: {"Content-Type": "application/json", "If-Match": `"${revision}"`}, body: JSON.stringify(data)});
@@ -68,7 +70,12 @@ export async function openStock({userId, readOnly}) {
     for (const button of document.querySelectorAll("[data-stock-action]")) button.addEventListener("click", () => openAction(button.dataset.stockAction));
     for (const button of document.querySelectorAll("[data-stock-edit]")) button.addEventListener("click", () => openProduct(view.products.find((p) => p.id === button.dataset.stockEdit)));
     for (const button of document.querySelectorAll("[data-stock-places]")) button.addEventListener("click", () => openPlaces(button.dataset.stockPlaces, button.dataset.place));
-    for (const button of document.querySelectorAll("[data-stock-connect]")) button.addEventListener("click", () => {openProduct(view.products.find((p) => p.id === button.dataset.stockConnect)); $("#stockExtraFields").open = true; $("#stockLinked").focus();});
+    for (const [index,row] of [...document.querySelectorAll("#stockRows tr")].entries()) {
+      const product=products[index]; if(!product)continue;
+      let button=row.querySelector("[data-stock-connect]");
+      if(!button){button=document.createElement("button");button.type="button";button.className="stock-text-button";button.dataset.stockConnect=product.id;row.querySelector(".stock-channel:last-child").append(button);}
+      button.innerHTML=icon("link")+"ヤフオクと紐付け";button.addEventListener("click",()=>openLinks(product));
+    }
     for (const select of document.querySelectorAll("[data-stock-purpose]")) select.addEventListener("change", () => {const product = view.products.find((p) => p.id === select.dataset.stockPurpose), value = select.value; select.value = product.fbaEligibility; work(() => showPreview({operationId: crypto.randomUUID(), kind: "edit", productId: product.id, product: {...product, fbaEligibility: value}, reason: "在庫の用途を変更"}));});
     $("#stockTransferRows").innerHTML = view.transfers.length ? [...view.transfers].reverse().map((t) => `<div class="stock-transfer"><span><strong>${escape(view.products.find((p) => p.id === t.productId)?.title || "商品")}</strong><br>${locationName(t.from)} → ${locationName(t.to)} ／ 移動中 ${t.remaining} ／ 到着 ${t.received} ／ 出荷元へ戻し ${t.returned}<br><small>${escape(t.reference)} ／ ${when(t.updatedAt)}</small></span>${t.remaining ? `<button type="button" data-stock-transfer="${escape(t.id)}">到着を記録</button>` : ""}</div>`).join("") : "<p>移動の記録はありません。</p>";
     for (const button of document.querySelectorAll("[data-stock-transfer]")) {button.disabled = readOnly || Boolean(pending); button.addEventListener("click", () => {const t = view.transfers.find((t) => t.id === button.dataset.stockTransfer); openAction(t.productId, "receive_transfer", t.id);});}
@@ -76,6 +83,26 @@ export async function openStock({userId, readOnly}) {
     controls();
   }
   async function load() {view = await request(); render();}
+  function openLinks(product, suggestedLink) {
+    if(readOnly || pending || busy)return;
+    linkProduct=product;dirty=false;preview=null;
+    $("#stockLinkTitle").textContent=product.title+" ／ "+(product.asin||"ASIN未登録");$("#stockLinkError").textContent="";
+    const options=view.linkOptions.filter(l=>l.asin===product.asin&&product.asin);
+    $("#stockLinkOptions").innerHTML=options.length?options.map(l=>{
+      const already=product.linkedLinkIds.includes(l.id), family=/^new/i.test(l.condition)?"new":/^used/i.test(l.condition)?"used":"unknown";
+      const mismatch=family!=="unknown"&&["new","used"].includes(product.condition)&&family!==product.condition || product.sellerSku&&l.sellerSku&&product.sellerSku!==l.sellerSku;
+      return `<label class="stock-link-option"><input type="checkbox" value="${escape(l.id)}" ${already||l.id===suggestedLink&&!mismatch?"checked":""} ${already||mismatch?"disabled":""}><span><strong>${escape(l.title)}</strong><small>${escape(l.listingId)} ／ ${family==="unknown"?"状態未確認":conditions[family]}${l.sellerSku?" ／ "+escape(l.sellerSku):""}</small><small>${already?"紐付け済み":mismatch?"在庫登録と状態・SKUが異なります":"同じ商品・状態・セットか確認"}</small></span></label>`;
+    }).join(""):"<p class='stock-muted'>このASINの登録済み出品はありません。</p>";
+    $("#stockLinkNew").href="/#stock="+product.id;$("#stockLinkDraft").href="/?view=drafts#stock="+product.id;
+    if(!product.asin)$("#stockLinkError").textContent="ASINを商品情報に登録してください。";
+    $("#stockLinkDialog").showModal();controls();
+  }
+  $("#stockLinkForm").addEventListener("change",()=>{dirty=true;controls();});
+  $("#stockLinkForm").addEventListener("submit",event=>{event.preventDefault();work(async()=>{
+    const added=[...document.querySelectorAll("#stockLinkOptions input:checked:not(:disabled)")].map(i=>i.value);
+    if(!added.length)throw new Error("追加する出品を選んでください。");
+    await showPreview({operationId:crypto.randomUUID(),kind:"edit",productId:linkProduct.id,product:{...linkProduct,linkedLinkIds:[...new Set([...linkProduct.linkedLinkIds,...added])]},reason:"ヤフオク出品との関連付け"});
+  },"#stockLinkError");});
   function openProduct(product, reference) {
     editingProduct = product || null; productForm.reset(); dirty = false; preview = null;
     $("#stockProductError").textContent = ""; $("#stockProductTitle").textContent = product ? "商品情報・メモ" : "商品を登録";
@@ -135,6 +162,10 @@ export async function openStock({userId, readOnly}) {
     $("#stockConfirmError").textContent = ""; $("#stockConfirmDialog").showModal(); controls();
     if (e?.metadataBefore?.fbaEligibility !== undefined && e.metadataBefore.fbaEligibility !== result.product.fbaEligibility) {const line = document.createElement("p"); line.textContent = `用途：${purposes[e.metadataBefore.fbaEligibility]} → ${purposes[result.product.fbaEligibility]}`; $("#stockConfirmContent").prepend(line);}
     if (result.duplicates.length) {const warning = document.createElement("p"); warning.className = "stock-error"; warning.textContent = "同じASIN・商品名の登録あり：" + result.duplicates.map((p) => p.managementId + " " + p.title).join(" ／ ") + "。別の現物・状態か確認してください。"; $("#stockConfirmContent").prepend(warning);}
+    const previous=view.products.find(p=>p.id===command.productId);
+    if(command.kind==="edit"&&JSON.stringify(previous?.linkedLinkIds)!==JSON.stringify(result.product.linkedLinkIds)){
+      const line=document.createElement("p");line.textContent="ヤフオクとの関連付け："+result.product.linkedLinkIds.map(id=>view.linkOptions.find(l=>l.id===id)?.listingId||id).join(" ／ ")+"。場所別数量は変更しません。";$("#stockConfirmContent").append(line);
+    }
   }
   productForm.addEventListener("submit", (event) => {event.preventDefault(); work(async () => {
     const p = Object.fromEntries(["title", "unit", "condition", "setContents", "asin", "sellerSku", "memo", "catalogTask", "fbaEligibility", "reviewDate", "imageUrl"].map((field) => [field, productForm.elements[field].value]));
@@ -167,7 +198,7 @@ export async function openStock({userId, readOnly}) {
     try {
       const result = await request("/operations", {command: payload.command, confirmed: true}, payload.revision);
       view = {...result.result, photoRead: view.photoRead,amazonRead:view.amazonRead}; clearPending(); dirty = false;
-      for (const dialog of document.querySelectorAll(".stock-dialog[open]")) dialog.close(); render(); status(result.receipt.replayed ? "保存済みの操作を確認しました。数量を重複変更していません。" : "在庫の変更と履歴を保存しました。");
+      for (const dialog of document.querySelectorAll(".stock-dialog[open]")) dialog.close(); render(); status(result.receipt.replayed ? "保存済みの操作を確認しました。数量を重複変更していません。" : payload.command.reason==="ヤフオク出品との関連付け" ? "ヤフオクとの関連付けを保存しました。場所別数量は変更していません。" : "在庫の変更と履歴を保存しました。");
     } catch (error) {$("#stockPendingStatus").textContent = error.message; throw error;}
   }
   $("#stockCommit").addEventListener("click", () => work(() => save(preview), "#stockConfirmError"));
@@ -198,4 +229,6 @@ export async function openStock({userId, readOnly}) {
   $("#stockReferenceRows").innerHTML = references.map((r, index) => `<div class="stock-reference"><span>${escape(r[0])}<br><small>以前のメモ：${r[1] === null ? "数量未確認" : r[1] + r[2]}・現在数ではありません</small></span><button type="button" data-reference="${index}">この商品を入力</button></div>`).join("");
   for (const button of document.querySelectorAll("[data-reference]")) button.addEventListener("click", () => openProduct(null, references[Number(button.dataset.reference)]));
   await work(async () => {await load(); if (pending) status("前の操作の保存結果が未確認です。同じ操作IDで確認・再試行できます。", true);});
+  const context=new URLSearchParams(location.hash.slice(1)),target=view?.products.find(p=>p.id===context.get("connect"));
+  if(target&&!pending&&!readOnly){openLinks(target,context.get("link"));history.replaceState(null,"",location.pathname+location.search);}
 }

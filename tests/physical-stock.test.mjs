@@ -93,6 +93,27 @@ function storeFixture() {
     const next = structuredClone(state), receipt = fn(next); validatePhysicalStock(next); state = next; revision++; return receipt;
   }};
 }
+
+test("explicit Yahoo association changes metadata only, replays once and refuses a different condition or SKU", async () => {
+  const store=storeFixture(), monitor=emptyMonitor(), linkId=randomUUID(), catalogId="own-catalog", asin="B000TEST01";
+  monitor.catalog.push({id:catalogId,asin,condition:"UsedGood",sellerSku:"own-used"});
+  monitor.links.push({id:linkId,catalogId,asin,listingId:"x123456789",verified:true});
+  const service=createCloudStock({store,monitorStore:{read:async()=>monitor},now:()=>at});
+  const create=command("create",{product:product({asin}),initialCounts:{container:3,home:1}});
+  await service.commit(create,{expectedRevision:0,actor,confirmed:true});
+  const before=await store.read(), p=before.products[0];
+  const edit=command("edit",{productId:p.id,product:{...p,linkedLinkIds:[linkId]}});
+  monitor.catalog[0].condition="NewItem";
+  await assert.rejects(service.preview(edit,{expectedRevision:1,actor}),{status:409});
+  await assert.rejects(service.commit(edit,{expectedRevision:1,actor,confirmed:true}),{status:409});
+  monitor.catalog[0].condition="UsedGood";
+  await assert.rejects(service.preview({...edit,product:{...edit.product,sellerSku:"different"}},{expectedRevision:1,actor}),{status:409});
+  await service.preview(edit,{expectedRevision:1,actor});assert.deepEqual(await store.read(),before);
+  await service.commit(edit,{expectedRevision:1,actor,confirmed:true});const after=await store.read();
+  assert.deepEqual(after.balances,before.balances);assert.deepEqual(after.transfers,before.transfers);assert.deepEqual(after.products[0].linkedLinkIds,[linkId]);
+  assert.equal((await service.commit(edit,{expectedRevision:1,actor,confirmed:true})).receipt.replayed,true);
+  assert.deepEqual(await store.read(),after);
+});
 test("registration atomically records both locations with fixed default unit and optional contents", () => {
   const p = product(); delete p.unit; delete p.setContents;
   const state = emptyPhysicalStock(); applyStockCommand(state, command("create", {product: p, initialCounts: {container: 3, home: 1}}), {actor, at});

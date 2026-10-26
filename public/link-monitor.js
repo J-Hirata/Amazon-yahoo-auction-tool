@@ -103,6 +103,7 @@ $("#pageLinkForm").addEventListener("submit", (event) => {event.preventDefault()
   scheduleMailPoll();
   const listingId = new URL(data.yahoo).pathname.split("/").filter(Boolean).at(-1).toLowerCase();
   const link = saved.links.find((item) => item.listingId === listingId);
+  if (link) window.dispatchEvent(new CustomEvent("stock-page-link-created",{detail:{linkId:link.id,asin:link.asin || saved.catalog.find(p=>p.id===link.catalogId)?.asin}}));
   if (link && saved.config.capabilities?.externalReads !== false && !saved.listings.find((item) => item.listingId === listingId)?.previewCheckedAt) await fetchProductPreview(link.id);
 });});
 async function fetchProductPreview(id) {

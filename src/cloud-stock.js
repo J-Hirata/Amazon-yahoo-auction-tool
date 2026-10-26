@@ -4,12 +4,16 @@ import {stockImageUrl} from "./stock-images.js";
 import {stockAmazonView} from "./stock-amazon-listings.js";
 
 const fail = (message, status) => Object.assign(new Error(message), {status});
-function checkLinks(command, monitor) {
+function checkLinks(command, monitor, previous) {
   if (!["create", "edit"].includes(command.kind)) return;
   for (const id of command.product?.linkedLinkIds || []) {
     const link = monitor.links.find((link) => link.id === id);
     const asin = link?.asin || monitor.catalog.find((item) => item.id === link?.catalogId)?.asin;
     if (!link?.verified || link.observationConflict || command.product.asin?.trim().toUpperCase() !== asin) throw fail("紐付け先と在庫商品のASINが一致しません。数量は変更していません", 409);
+    if (!previous?.linkedLinkIds.includes(id)) {
+      const item=monitor.catalog.find(item=>item.id===link.catalogId), family=/^new/i.test(item?.condition||"")?"new":/^used/i.test(item?.condition||"")?"used":"unknown";
+      if (family!=="unknown"&&["new","used"].includes(command.product.condition)&&family!==command.product.condition || command.product.sellerSku&&item?.sellerSku&&command.product.sellerSku!==item.sellerSku) throw fail("紐付け先と在庫商品の状態・SKUが異なります。別商品か確認してください",409);
+    }
   }
 }
 function linksFor(monitor, at) {
@@ -56,7 +60,7 @@ export function createCloudStock({store, monitorStore, draftStore, now = () => n
   async function preview(command, {expectedRevision, actor}) {
     const snapshot = await store.readSnapshot();
     if (snapshot.revision !== expectedRevision) throw fail("在庫が更新されています。最新の内容で確認し直してください", 409);
-    checkLinks(command, await monitorStore.read());
+    checkLinks(command, await monitorStore.read(), snapshot.state.products.find(p=>p.id===command.productId));
     const state = structuredClone(snapshot.state), receipt = applyStockCommand(state, command, {actor, at: now()});
     const event = state.events.find((e) => e.operationId === receipt.id);
     const product = state.products.find((p) => p.id === receipt.productId);
@@ -70,7 +74,7 @@ export function createCloudStock({store, monitorStore, draftStore, now = () => n
       if (previous.digest !== stockCommandDigest(command) || previous.actor !== actor) throw fail("操作IDと内容が一致しません", 409);
       return {receipt: {...previous, replayed: true}, result: await view()};
     }
-    checkLinks(command, await monitorStore.read());
+    checkLinks(command, await monitorStore.read(), snapshot.state.products.find(p=>p.id===command.productId));
     const receipt = await store.update((state) => applyStockCommand(state, command, {actor, at: now()}), {expectedRevision});
     return {receipt, result: await view()};
   }

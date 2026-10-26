@@ -102,6 +102,9 @@
 .stock-dialog table {width:100%;border-collapse:collapse;font-size:13px;}.stock-dialog th,.stock-dialog td {padding:12px 6px;border-bottom:1px solid #dce6df;text-align:left;overflow-wrap:anywhere;}
 .stock-dialog th {font-size:12px;color:#74877a;font-weight:500;}
 .stock-dialog p {overflow-wrap:anywhere;}
+.stock-link-options {border:0;padding:0;margin:0;min-width:0;}.stock-link-options legend {font-size:12px;color:#687d70;margin-bottom:10px;}
+.stock-shell .stock-link-option {display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid #e1e8e3;}.stock-shell .stock-link-option input {width:18px;min-height:18px;height:18px;flex:none;margin-top:3px;}.stock-link-option>span {min-width:0;overflow-wrap:anywhere;}.stock-link-option small {display:block;color:#6c7d71;font-size:12px;margin-top:4px;}
+.stock-link-routes {display:grid;gap:0;border-top:1px solid #e1e8e3;}.stock-link-routes a {display:flex;align-items:center;gap:10px;padding:14px 0;color:#256b9c;text-decoration:none;border-bottom:1px solid #e1e8e3;}.stock-link-routes a svg:last-child {margin-left:auto;}.stock-link-routes a[aria-disabled=true] {color:#89938d;pointer-events:none;}
 .stock-action-modes {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:4px;background:#f0f4f1;border-radius:6px;}
 .stock-shell .stock-action-modes button {font-size:12px;padding:8px 5px;min-height:44px;color:#64766a;background:transparent;}
 .stock-shell .stock-action-modes button[aria-pressed="true"] {background:white;color:#176847;box-shadow:0 1px 5px #1c3f241c;border-color:#dce7df;}

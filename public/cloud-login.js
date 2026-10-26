@@ -1,5 +1,6 @@
 import {createAuthClient} from "@neondatabase/auth";
 import {configureMonitorRequest} from "./monitor-http.js";
+import {workspaceNavigation, stockWorkflowContext} from "./workspace-navigation.js";
 
 const form = document.querySelector("#loginForm");
 const status = document.querySelector("#loginStatus");
@@ -60,19 +61,17 @@ async function openApplication() {
       location.replace("/");
     } catch (error) {logout.disabled = false; mode.textContent = error.message;}
   });
-  const navigation = document.createElement("nav");
-  navigation.setAttribute("aria-label", "管理画面");
-  for (const [label, href, selected] of [["商品紐付け・通知", "/", !drafts && !stock], ["コンテナ・自社在庫", "/?view=stock", stock], ["下書きQ", "/?view=drafts", drafts]]) {
-    if (href === "/?view=stock" && !session.physicalStock) continue;
-    const link = document.createElement("a"); link.textContent = label; link.href = href;
-    if (selected) link.setAttribute("aria-current", "page");
-    navigation.append(link);
-  }
+  const navigation = workspaceNavigation({drafts,stock,physicalStock:session.physicalStock});
   account.append(navigation, mode, logout);
   panel.append(account, main);
   configureMonitorRequest(authenticatedRequest);
   if (stock) {const {openStock} = await import("./physical-stock.js"); await openStock({userId: session.userId, readOnly: session.readOnly});}
   else await import(drafts ? "./app.js" : "./link-monitor.js");
+  if (!stock && session.physicalStock) {
+    try {await stockWorkflowContext({drafts,main,request:authenticatedRequest});}
+    catch (error) {const warning=document.createElement("p");warning.className="workspace-context-error";warning.setAttribute("role","alert");warning.textContent=error.message;main.prepend(warning);}
+  }
+  document.title = `${stock ? "コンテナ・自社在庫" : drafts ? "出品下書きツール" : "商品紐付けツール"} | Amazon・ヤフオク`;
   document.querySelector("#loginPanel").hidden = true;
   document.querySelector("#authLoading").hidden = true;
   panel.hidden = false;

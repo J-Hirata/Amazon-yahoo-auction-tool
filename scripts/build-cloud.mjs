@@ -16,13 +16,16 @@ for (const name of files) await copyFile(path.join(root, "public", name), path.j
 for (const name of ["index.html", "link-monitor.html"]) await copyFile(path.join(root, "public", "cloud-login.html"), path.join(output, name));
 await copyFile(path.join(root, "public", "cloud-demo.html"), path.join(output, "demo.html"));
 const $ = load(await readFile(path.join(root, "public", "link-monitor.html"), "utf8"));
-$(".monitor-header nav a").attr("href", "/?view=drafts").text("下書きQ");
+$(".monitor-header nav a").remove();
+$(".monitor-header h1").text("Amazon・ヤフオク 商品紐付けツール");
 const scheduleLabel = $("#monitoringEnabled").parent();
 scheduleLabel.contents().filter((_, node) => node.type === "text").remove();
 scheduleLabel.append("定期確認（クラウドは未接続）");
 $("#testRegistrationMail").appendTo("#cloudMailControls");
 await writeFile(path.join(output, "cloud-view.html"), $("main").toString(), "utf8");
 const queue = load(await readFile(path.join(root, "public", "index.html"), "utf8"));
+queue("header h1").first().text("Amazon → ヤフオク 出品下書きツール");
+queue("header h1").first().siblings("p").remove();
 for (const section of queue(".guide").toArray()) {
   const element = queue(section); const title = element.find("h2").first().text(); element.find("h2").first().remove();
   element.replaceWith(queue("<details class='guide cloud-help'></details>").append(queue("<summary></summary>").text(title), element.contents()));
