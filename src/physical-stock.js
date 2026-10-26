@@ -39,7 +39,7 @@ export function validatePhysicalStock(state) {
 }
 function productFields(data) {
   const task = choice(data.catalogTask || "none", ["none", "pending", "working", "registered"]);
-  const result = {title: text(data.title, 200, true), unit: choice(data.unit, ["個", "台", "箱", "セット", "冊"]), condition: choice(data.condition, ["new", "used", "parts", "unknown"]),
+  const result = {title: text(data.title, 200, true), unit: choice(data.unit || "個", ["個", "台", "箱", "セット", "冊"]), condition: choice(data.condition, ["new", "used", "parts", "unknown"]),
     setContents: text(data.setContents, 300), memo: text(data.memo, 500), asin: asin(data.asin), sellerSku: text(data.sellerSku, 200),
     catalogTask: task, fbaEligibility: choice(data.fbaEligibility || "unknown", ["unknown", "possible", "not_possible"]),
     linkedLinkIds: data.linkedLinkIds || [], reviewDate: text(data.reviewDate, 10)};
@@ -54,7 +54,7 @@ export function applyStockCommand(state, command, {actor, at = new Date().toISOS
   if (!command || !uuid(command.operationId)) throw fail("保存用の操作IDを確認してください");
   const digest = stockCommandDigest(command), previous = state.receipts.find((r) => r.id === command.operationId);
   if (previous) {if (previous.digest !== digest || previous.actor !== actor) throw fail("同じ操作IDで内容が異なります", 409); return {...previous, replayed: true};}
-  const kind = choice(command.kind, ["create", "edit", "add", "remove", "count", "reserve", "release", "unusable", "recover", "dispatch", "receive_transfer", "return_transfer"]);
+  const kind = choice(command.kind, ["create", "edit", "add", "remove", "count", "count_locations", "reserve", "release", "unusable", "recover", "dispatch", "receive_transfer", "return_transfer"]);
   const reason = text(command.reason, 300, !["create", "edit"].includes(kind));
   const before = [], changes = [];
   const balance = (productId, locationId, requireKnown = true) => {
@@ -72,14 +72,31 @@ export function applyStockCommand(state, command, {actor, at = new Date().toISOS
     if (!uuid(id) || state.products.some((p) => p.id === id || p.managementId === "ST-" + id.slice(0, 8).toUpperCase())) throw fail("管理IDが重複しています。新規入力を開き直してください", 409);
     product = {...fields, id, managementId: "ST-" + id.slice(0, 8).toUpperCase(), createdAt: at, updatedAt: at};
     state.products.push(product);
-    const b = balance(id, choice(command.locationId, [...local]), false);
-    if (command.quantity !== null) Object.assign(b, {usable: quantity(command.quantity, true), reserved: 0, unusable: 0, checkedAt: at});
+    if (command.initialCounts !== undefined) {
+      if (!command.initialCounts || Array.isArray(command.initialCounts) || Object.keys(command.initialCounts).length !== 2 || ![...local].every((id) => Object.hasOwn(command.initialCounts, id))) throw fail("コンテナと自宅・会社の数量を確認してください");
+      for (const locationId of local) {
+        const b = balance(id, locationId, false), amount = command.initialCounts[locationId];
+        if (amount !== null) Object.assign(b, {usable: quantity(amount, true), reserved: 0, unusable: 0, checkedAt: at});
+      }
+    } else {
+      const b = balance(id, choice(command.locationId, [...local]), false);
+      if (command.quantity !== null) Object.assign(b, {usable: quantity(command.quantity, true), reserved: 0, unusable: 0, checkedAt: at});
+    }
   } else {
     if (!product) throw fail("在庫商品が見つかりません", 404);
     if (kind === "edit") {
       metadataBefore = structuredClone(product); const fields = productFields(command.product || {});
       if (fields.unit !== product.unit || fields.condition !== product.condition || fields.setContents !== product.setContents) throw fail("単位・状態・セットの変更は別の管理商品として登録してください。数量を自動変換しません", 409);
       Object.assign(product, fields, {updatedAt: at});
+    } else if (kind === "count_locations") {
+      const entries = command.locations;
+      if (!entries || typeof entries !== "object" || Array.isArray(entries) || !Object.keys(entries).length || Object.keys(entries).some((id) => !local.has(id))) throw fail("修正する保管場所を確認してください");
+      // Both places are one revision-checked transaction; omitted places remain untouched.
+      for (const [locationId, counts] of Object.entries(entries)) {
+        const b = balance(product.id, locationId, false);
+        for (const bucket of buckets) b[bucket] = quantity(counts?.[bucket], true);
+        b.checkedAt = at;
+      }
     } else if (["receive_transfer", "return_transfer"].includes(kind)) {
       const transfer = state.transfers.find((t) => t.id === command.transferId && t.productId === product.id);
       if (!transfer || !transfer.remaining) throw fail("未完了の移動が見つかりません", 409);

@@ -7,12 +7,12 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   await page.locator(".cloud-account nav").getByText("手元在庫", {exact: true}).click();
   await page.waitForFunction(() => document.querySelector("#stockSummary")?.textContent.includes("0商品"));
   await page.locator("#stockNew").click();
+  assert.equal(await page.locator('#stockProductForm select[name=unit]').count(), 0);
+  await page.locator("#stockExtraFields summary").click();
   if (await page.locator("#stockLinked option").count() > 1) await page.locator("#stockLinked").selectOption({index: 1});
   await page.locator('#stockProductForm [name=title]').fill("手元在庫の試験用モニター");
-  await page.locator('#stockProductForm [name=unit]').selectOption("台");
   await page.locator('#stockProductForm [name=setContents]').fill("スタンドなし");
-  await page.locator('#stockProductForm [name=quantity]').fill("6");
-  await page.locator("#stockExtraFields summary").click();
+  await page.locator('#stockProductForm [name=containerQuantity]').fill("6");
   await page.locator('#stockProductForm [name=catalogTask]').selectOption("pending");
   const preview = async (form) => {await page.locator(form).getByRole("button", {name: "変更内容を確認", exact: true}).click(); await page.locator("#stockConfirmDialog[open]").waitFor();};
   const commit = async () => {await page.locator("#stockCommit").click(); await page.locator("#stockConfirmDialog[open]").waitFor({state: "hidden"});};
@@ -21,13 +21,25 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   await preview("#stockProductForm"); await commit();
   assert.equal((await stockStore.read()).products.length, 1); assert.equal((await stockStore.read()).balances[0].usable, 6);
   pass("physical-stock preview is read-only; confirmed registration persists a separate management item");
-  async function openAction(kind) {await page.locator("[data-stock-action]").first().click(); await page.locator("#stockActionKind").selectOption(kind); await page.locator('#stockActionForm [name=reason]').fill("隔離画面の試験");}
+  async function openAction(kind) {await page.locator("[data-stock-action]").first().click(); if (["add", "remove", "dispatch"].includes(kind)) await page.locator(`[data-stock-mode=${kind}]`).click(); else {await page.locator("#stockAdvancedActions summary").click(); await page.locator("#stockActionKind").selectOption(kind);} await page.locator('#stockActionForm [name=reason]').fill("隔離画面の試験");}
   async function changeQuantity(kind, amount) {await openAction(kind); await page.locator('#stockActionForm [name=quantity]').fill(String(amount)); await preview("#stockActionForm"); await commit();}
   await changeQuantity("add", 3); assert.equal((await stockStore.read()).balances[0].usable, 9);
   await openAction("count"); await page.locator('#stockActionForm [name=usable]').fill("3"); await preview("#stockActionForm"); await commit();
   assert.equal((await stockStore.read()).balances[0].usable, 3);
+  await page.locator('[data-stock-places][data-place=home]').first().click();
+  assert.equal(await page.locator('#stockPlacesForm [name=home]').inputValue(), "");
+  assert.equal(await page.locator('#stockPlacesForm [name=container]').inputValue(), "3");
+  await page.locator('#stockPlacesForm [name=home]').fill("1"); await preview("#stockPlacesForm");
+  assert.equal((await stockStore.read()).balances.find((b) => b.locationId === "home").usable, null);
+  await commit(); assert.equal((await stockStore.read()).balances.find((b) => b.locationId === "home").usable, 1); assert.equal((await stockStore.read()).balances[0].usable, 3);
+  await page.locator('[data-stock-places][data-place=home]').first().click(); await page.locator('#stockPlacesForm [name=home]').fill("");
+  await page.locator("#stockPlacesForm").getByRole("button", {name:"変更内容を確認", exact:true}).click();
+  await page.waitForFunction(() => document.querySelector("#stockPlacesError").textContent.includes("確認済み"));
+  assert.equal((await stockStore.read()).balances.find((b) => b.locationId === "home").usable, 1);
+  await page.locator("#stockPlacesDialog").getByRole("button", {name:"取消",exact:true}).click();
+  pass("simple place editor records home stock without changing container stock and never turns a cleared field into zero");
   await openAction("count"); await page.locator('#stockActionForm [name=locationId]').selectOption("home");
-  assert.equal(await page.locator('#stockActionForm [name=usable]').inputValue(), "");
+  assert.equal(await page.locator('#stockActionForm [name=usable]').inputValue(), "1");
   for (const b of ["usable", "reserved", "unusable"]) await page.locator(`#stockActionForm [name=${b}]`).fill("0");
   await preview("#stockActionForm"); await commit();
   await openAction("dispatch"); await page.locator('#stockActionForm [name=quantity]').fill("2"); await page.locator('#stockActionForm [name=to]').selectOption("home");
@@ -62,6 +74,15 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   const csv = await page.evaluate(async () => {const token = (await (await import("/monitor-http.js")).monitorRequest("/api/physical-stock/export.csv")); return {status: token.status, text: await token.text()};});
   assert.equal(csv.status, 200); assert.match(csv.text, /手元在庫の試験用モニター/);
   pass("authenticated physical-stock CSV works through the actual generated Vercel rewrite");
+  await page.locator("#stockNew").click(); await page.locator('#stockProductForm [name=title]').fill("場所別在庫の試験商品");
+  await page.locator('#stockProductForm [name=containerQuantity]').fill("4"); await page.locator('#stockProductForm [name=homeQuantity]').fill("2");
+  await preview("#stockProductForm"); await commit();
+  const newProduct = (await stockStore.read()).products.find((p) => p.title === "場所別在庫の試験商品");
+  assert.equal(newProduct.unit, "個"); assert.equal(newProduct.setContents, "");
+  assert.deepEqual((await stockStore.read()).balances.filter((b) => b.productId === newProduct.id).map((b) => b.usable), [4, 2]);
+  const newRow = page.locator("#stockRows tr").filter({hasText: "場所別在庫の試験商品"});
+  assert.equal(await newRow.locator("details").getAttribute("open"), null); assert.equal(await newRow.getByText("移動中 0個").count(), 0);
+  pass("registration accepts both locations, fixed item units and blank optional contents; zero transit/FBA details stay out of the primary row");
   await mkdir(path.join(root, "output"), {recursive: true});
   await page.screenshot({path: path.join(root, "output", "physical-stock-fixture-desktop.png"), fullPage: true});
   await page.setViewportSize({width: 390, height: 844});
@@ -71,6 +92,16 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   assert.equal(await page.locator("#stockProductDialog").evaluate((e) => e.getBoundingClientRect().width <= innerWidth), true);
   await page.screenshot({path: path.join(root, "output", "physical-stock-fixture-mobile-form.png")});
   await page.locator("#stockProductDialog").getByRole("button", {name: "取消", exact: true}).click();
+  await page.locator('[data-stock-places][data-place=home]').first().click();
+  await page.screenshot({path: path.join(root, "output", "physical-stock-fixture-mobile-places.png")});
+  assert.equal(await page.locator("#stockPlacesDialog").evaluate((e) => e.scrollWidth <= e.clientWidth), true);
+  await page.locator("#stockPlacesDialog").getByRole("button", {name:"取消",exact:true}).click();
+  await openAction("dispatch");
+  await page.screenshot({path: path.join(root, "output", "physical-stock-fixture-mobile-actions.png")});
+  assert.equal(await page.locator("#stockAdvancedActions").getAttribute("open"), null);
+  await page.locator("#stockActionDialog").getByRole("button", {name:"取消",exact:true}).click();
+  await page.setViewportSize({width:320,height:740});
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth), true);
   await page.setViewportSize({width: 1440, height: 1080});
   pass("physical-stock desktop/mobile rows and registration dialog fit without horizontal overflow");
 }

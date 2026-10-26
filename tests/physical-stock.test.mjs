@@ -93,6 +93,28 @@ function storeFixture() {
     const next = structuredClone(state), receipt = fn(next); validatePhysicalStock(next); state = next; revision++; return receipt;
   }};
 }
+test("registration atomically records both locations with fixed default unit and optional contents", () => {
+  const p = product(); delete p.unit; delete p.setContents;
+  const state = emptyPhysicalStock(); applyStockCommand(state, command("create", {product: p, initialCounts: {container: 3, home: 1}}), {actor, at});
+  assert.equal(state.products[0].unit, "個"); assert.equal(state.products[0].setContents, "");
+  assert.deepEqual(state.balances.map((b) => b.usable), [3, 1]); assert.equal(state.events[0].changes.length, 2);
+  const unknown = emptyPhysicalStock(); applyStockCommand(unknown, command("create", {product: p, initialCounts: {container: 3, home: null}}), {actor, at});
+  assert.equal(unknown.balances[1].usable, null);
+  for (const initialCounts of [{container: 3}, {container: 3, home: -1}, {container: 3, fba: 1}]) assert.throws(() => execute(emptyPhysicalStock(), command("create", {product: p, initialCounts})));
+});
+
+test("place editing preserves other buckets and location, audits both changes and replays once", () => {
+  const {state} = fixture(); const id = idOf(state);
+  const reserved = action(state, "reserve", {quantity: 2});
+  const cmd = command("count_locations", {productId: id, locations: {home: {usable: 1, reserved: 0, unusable: 0}}, reason: "自宅を確認"});
+  const saved = execute(reserved, cmd); assert.deepEqual(saved.state.balances[0], reserved.balances[0]);
+  assert.equal(saved.state.balances[1].usable, 1); assert.equal(saved.state.events.at(-1).changes.length, 1);
+  assert.equal(execute(saved.state, cmd).state.events.length, saved.state.events.length);
+  const both = action(saved.state, "count_locations", {locations: {container: {usable: 3, reserved: 2, unusable: 0}, home: {usable: 2, reserved: 0, unusable: 0}}});
+  assert.equal(both.balances[0].reserved, 2); assert.equal(both.events.at(-1).changes.length, 2);
+  for (const locations of [{}, {fba: {usable: 1, reserved: 0, unusable: 0}}, {home: {usable: null, reserved: 0, unusable: 0}}, {home: {usable: 2}}]) assert.throws(() => action(saved.state, "count_locations", {locations}));
+});
+
 test("cloud preview changes nothing; commit and lost-response replay survive stale revision", async () => {
   const store = storeFixture(), monitorStore = {read: async () => emptyMonitor()}, service = createCloudStock({store, monitorStore, now: () => at});
   const cmd = command("create", {productId: randomUUID(), product: product(), locationId: "container", quantity: 3});

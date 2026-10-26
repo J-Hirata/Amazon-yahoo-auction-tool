@@ -36,5 +36,14 @@ try {
   assert.deepEqual(await store.readSnapshot(), before); pass("invalid final balances roll back the event, receipt and balance atomically");
   const readAgain = createPostgresDocumentStore({pool, key, validate: validatePhysicalStock});
   assert.deepEqual(await readAgain.read(), before.state); pass("an independent store restores the same balances, receipts and history");
+  const countPlaces = {operationId: randomUUID(), kind: "count_locations", productId, locations: {container: {usable: 3, reserved: 0, unusable: 0}, home: {usable: 1, reserved: 0, unusable: 0}}, reason: "2か所を同時に確認"};
+  await service.commit(countPlaces, {expectedRevision: before.revision, actor, confirmed: true});
+  const counted = await store.readSnapshot(); assert.deepEqual(counted.state.balances.map((b) => b.usable), [3, 1]);
+  assert.equal((await service.commit(countPlaces, {expectedRevision: before.revision, actor, confirmed: true})).receipt.replayed, true);
+  await assert.rejects(service.commit({...countPlaces, operationId: randomUUID()}, {expectedRevision: before.revision, actor, confirmed: true}), {code: "STORAGE_CONFLICT"});
+  pass("both place counts commit once and cannot overwrite later changes with a stale revision");
+  await assert.rejects(service.commit({...countPlaces, operationId: randomUUID(), locations: {container: {usable: 7, reserved: 0, unusable: 0}, home: {usable: -1, reserved: 0, unusable: 0}}}, {expectedRevision: counted.revision, actor, confirmed: true}));
+  assert.deepEqual(await store.readSnapshot(), counted);
+  pass("invalid second-place count rolls back the first place and its entire operation history");
   console.log(JSON.stringify({passed: checks, database: "real-development-neon", marketWrites: 0, liveEmails: 0}));
 } finally {await pool.query("DELETE FROM app_storage.documents WHERE document_key=$1", [key]); await pool.end();}
