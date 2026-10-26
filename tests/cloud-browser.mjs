@@ -283,6 +283,7 @@ try {
   if (fullWorkspace) {
     await page.locator(".cloud-account nav").getByText("出品下書きツール", {exact: true}).click();
     await page.locator("#cloudApp:not([hidden]) #summary").waitFor();
+    assert.match(await page.locator("#cloudApp h1").textContent(),/出品下書きツール/);
     assert.match(await page.locator("#summary").textContent(), /58/);
     assert.equal(await page.locator("#fetchProducts").isDisabled(), true);
     const editor = page.locator("[data-field=title]").first();

@@ -25,6 +25,7 @@
 .workspace-inventory {border-left:1px solid #d8e2dc;padding-left:24px;}
 .workspace-context {display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:14px 0;margin-bottom:20px;border-bottom:1px solid #d9e4dd;font-size:13px;}
 .workspace-context>span {font-size:12px;color:#697c70;}.workspace-context strong {font-size:14px;overflow-wrap:anywhere;}.workspace-context a {color:#256b9c;margin-left:auto;}.workspace-context a.workspace-next {font-weight:650;}.workspace-context-error {color:#9d2530;}
+.workspace-drafts .toolbar h1 {font-size:22px;line-height:1.45;margin:0;letter-spacing:0;overflow-wrap:anywhere;}
 .cloud-unavailable {opacity:0.65; cursor:not-allowed;}
 [hidden] {display:none !important;}
 @media (max-width:600px) {.login-shell {margin:24px auto; padding:20px;} .login-heading h1 {font-size:20px;} .cloud-account {padding:12px 16px 0;}}

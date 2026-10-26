@@ -24,14 +24,15 @@ scheduleLabel.append("定期確認（クラウドは未接続）");
 $("#testRegistrationMail").appendTo("#cloudMailControls");
 await writeFile(path.join(output, "cloud-view.html"), $("main").toString(), "utf8");
 const queue = load(await readFile(path.join(root, "public", "index.html"), "utf8"));
-queue("header h1").first().text("Amazon → ヤフオク 出品下書きツール");
-queue("header h1").first().siblings("p").remove();
+queue("main").addClass("workspace-drafts");
+queue(".toolbar h1").first().text("Amazon → ヤフオク 出品下書きツール");
+queue(".toolbar h1").first().siblings("p").remove();
 for (const section of queue(".guide").toArray()) {
   const element = queue(section); const title = element.find("h2").first().text(); element.find("h2").first().remove();
   element.replaceWith(queue("<details class='guide cloud-help'></details>").append(queue("<summary></summary>").text(title), element.contents()));
 }
 for (const selector of ["#fetchProducts", "#extensionSelected", "#extensionNext", "#copyYahooBookmarklet", "#copyYahooBookmarkletDraft"]) queue(selector).attr("disabled", "").attr("title", "このPC用入力補助・外部取得はクラウド接続の追加対応が必要です");
-queue("a[href='/link-monitor.html']").attr("href", "/");
+queue("a[href='/link-monitor.html']").attr("href", "/").text("商品紐付けツール");
 queue("a[href='/amazon-helper.html'],a[href='/yahoo-helper.html'],a[href='/stock-monitor.html'],a[href='/extension-helper.html']").removeAttr("href").attr("aria-disabled", "true").attr("title", "PC専用補助・旧監視は未接続です。登録データは保持しています").addClass("cloud-unavailable");
 await writeFile(path.join(output, "cloud-drafts-view.html"), queue("main").toString(), "utf8");
 console.log("Cloud assets built: dist/cloud (no credentials or business records included)");
