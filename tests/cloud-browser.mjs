@@ -27,6 +27,9 @@ import {emptyPhysicalStock, validatePhysicalStock} from "../src/physical-stock.j
 import {verifyPhysicalStockUI} from "./physical-stock-browser-flow.mjs";
 import {verifyStockWorkflow} from "./stock-workflow-browser-flow.mjs";
 import {verifyCatalogViews} from "./catalog-browser-flow.mjs";
+import {createCloudPlanning} from "../src/cloud-planning.js";
+import {emptySalesPlanning,validateSalesPlanning} from "../src/sales-planning.js";
+import {verifyPlanningUI} from "./sales-planning-browser-flow.mjs";
 
 const {chromium} = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -89,7 +92,9 @@ server.listen(0, "127.0.0.1");
 await once(server, "listening");
 const base = `http://127.0.0.1:${server.address().port}`;
 let browser;
-let databasePool, databaseKey, stockDatabaseKey;
+let databasePool, databaseKey, stockDatabaseKey,planningDatabaseKey;
+let planningData=emptySalesPlanning(),planningRevision=0;
+let planningStore={read:async()=>structuredClone(planningData),readSnapshot:async()=>({state:structuredClone(planningData),revision:planningRevision}),update:async(callback,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==planningRevision)throw Object.assign(new Error("更新競合"),{code:"STORAGE_CONFLICT"});const copy=structuredClone(planningData),result=await callback(copy);validateSalesPlanning(copy);planningData=copy;planningRevision++;return result;}};
 let stockData = emptyPhysicalStock(), stockRevision = 0;
 let stockStore = {read: async () => structuredClone(stockData), readSnapshot: async () => ({state: structuredClone(stockData), revision: stockRevision}), update: async (callback, {expectedRevision}) => {
   if (stockRevision !== expectedRevision) throw Object.assign(new Error("更新競合"), {code: "STORAGE_CONFLICT"});
@@ -109,6 +114,9 @@ try {
     stockDatabaseKey = `test-physical-stock-${randomUUID()}`;
     await databasePool.query("INSERT INTO app_storage.documents(document_key, payload) VALUES ($1, $2::jsonb)", [stockDatabaseKey, JSON.stringify(emptyPhysicalStock())]);
     stockStore = createPostgresDocumentStore({pool: databasePool, key: stockDatabaseKey, validate: validatePhysicalStock});
+    planningDatabaseKey=`test-sales-planning-${randomUUID()}`;
+    await databasePool.query("INSERT INTO app_storage.documents(document_key,payload) VALUES($1,$2::jsonb)",[planningDatabaseKey,JSON.stringify(emptySalesPlanning())]);
+    planningStore=createPostgresDocumentStore({pool:databasePool,key:planningDatabaseKey,validate:validateSalesPlanning});
   }
   let testEmails = 0, inventoryReads = 0;
   const accountKey = state.amazonAccountKey || "fixture-account";
@@ -123,9 +131,10 @@ try {
     readOrders: async ({after, before, targets}) => {orderReads++; return {complete: true, accountKey, sellerId, marketplaceId: "A1VC38T7YXB528", after, before, pages: 1,
       rows: orderReads > 1 ? [] : [{orderId: "fixture-private-order", itemId: "fixture-item", ...targets[0], quantity: 1, status: "UNSHIPPED", fulfillment: "AMAZON", createdAt: after, updatedAt: before}]};}}) : undefined;
   const stock = fullWorkspace ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
+  const planning=fullWorkspace?createCloudPlanning({store:planningStore,stock,monitorStore:store}):undefined;
   const stockPhotos = fullWorkspace ? createStockPhotoRefresh({store:stockStore,config:{},readPhotos:async({asins})=>({photos:asins.map(asin=>({asin,imageUrl:"https://m.media-amazon.com/images/I/fixture.jpg"})),errors:[]})}) : undefined;
   const stockAmazon = fullWorkspace ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:{accountKey,sellerId},readListings:async({asins})=>({version:1,status:"complete",source:"own_seller_listings",sellerId,accountKey,marketplaceId:"A1VC38T7YXB528",asins,checkedAt:new Date().toISOString(),rows:asins.map(asin=>({asin,sellerSku:"FIXTURE-"+asin,condition:asin==="B000TEST99"?"new_new":"used_good",statuses:["BUYABLE"],fulfillment:[{channel:"DEFAULT",quantity:1}]}))})}) : undefined;
-  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, stockPhotos, stockAmazon, ownerAccess, fba, mail, sales,
+  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, stockPhotos, stockAmazon, planning, ownerAccess, fba, mail, sales,
     verifyIdentity: createIdentityVerifier({authUrl, keySet: publicKey}),
     verifyOwner: createOwnerVerifier({authUrl, ownerUserId, keySet: publicKey, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})}),
     assets: await loadCloudAssets(vercelMode ? path.join(root, ".vercel", "output", "static") : undefined)});
@@ -221,6 +230,7 @@ try {
     await verifyPhysicalStockUI({page, stockStore, monitorStore: store, root, pass});
     await verifyStockWorkflow({page,stockStore,monitorStore:store,root,pass});
     await verifyCatalogViews({page,stockStore,monitorStore:store,draftStore,root,pass});
+    await verifyPlanningUI({page,planningStore,stockStore,monitorStore:store,draftStore,root,pass});
     assert.equal(testEmails, 0);
     await page.locator(".cloud-account nav").getByText("商品紐付けツール", {exact: true}).click();
     await page.locator("#cloudApp:not([hidden]) #linkRows tr").first().waitFor();
@@ -318,6 +328,7 @@ try {
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
   if (databasePool) {
+    if(planningDatabaseKey)await databasePool.query("DELETE FROM app_storage.documents WHERE document_key=$1",[planningDatabaseKey]);
     if (stockDatabaseKey) await databasePool.query("DELETE FROM app_storage.documents WHERE document_key = $1", [stockDatabaseKey]);
     if (databaseKey) await databasePool.query("DELETE FROM app_storage.documents WHERE document_key = $1", [databaseKey]);
     await databasePool.end();

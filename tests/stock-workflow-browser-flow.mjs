@@ -4,7 +4,7 @@ import path from "node:path";
 export async function verifyStockWorkflow({page,stockStore,monitorStore,root,pass}) {
   const monitor=await monitorStore.read(), first=monitor.links[0], catalog=monitor.catalog.find(p=>p.id===first.catalogId), asin=first.asin||catalog.asin;
   const nav=page.locator(".cloud-account nav");
-  assert.deepEqual(await nav.locator("a").allTextContents(),["商品紐付けツール","出品下書きツール","コンテナ・自社在庫"]);
+  assert.deepEqual(await nav.locator("a").allTextContents(),["商品紐付けツール","出品下書きツール","コンテナ・自社在庫","販売の見直し"]);
   assert.equal(await nav.locator(".workspace-market img").count(),1);
   await page.locator("#stockNew").click();
   await page.locator('#stockProductForm [name=title]').fill("併売導線の試験商品");

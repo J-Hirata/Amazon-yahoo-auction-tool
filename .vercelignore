@@ -28,6 +28,9 @@
 !public/catalog-grip.svg
 !public/catalog-prev.svg
 !public/catalog-next.svg
+!public/cloud-planning-view.html
+!public/sales-planning.js
+!public/sales-planning.css
 !public/extension-logo.png
 !scripts
 !scripts/build-cloud.mjs

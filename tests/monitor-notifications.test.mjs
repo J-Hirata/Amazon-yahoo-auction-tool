@@ -18,6 +18,28 @@ function fixture() {
   observeTrackedListing(state, link.id, {...state.listings[0], references: [{kind: "asin", value: link.asin}], observation: {status: "active", verified: true, checkedAt: at}});
   return {state, link, row};
 }
+
+test("zero-stock rehearsal reaches the fake SMTP outbox once, separates fetch failure, and notifies recurrence",async()=>{
+  const store=createMonitorStore(await mkdtemp(path.join(os.tmpdir(),"asin-zero-rehearsal-")));
+  await store.update(state=>Object.assign(state,fixture().state));
+  const delivered=[],service=createNotificationService({store,transport:{send:async message=>{delivered.push(structuredClone(message));return{status:"smtp_accepted"};}},now:()=>at});
+  await store.update(state=>queueMonitorResults(state,at));assert.equal((await store.read()).mailOutbox?.length||0,0);
+  await store.update(state=>{state.amazonInventory.items[0].fulfillableQuantity=0;queueMonitorResults(state,at);});
+  await service.drain();await store.update(state=>queueMonitorResults(state,at));await service.drain();
+  assert.equal(delivered.length,1);assert.match(delivered[0].text,/B000DEMO01/);assert.match(delivered[0].text,/d1000000001/);assert.match(delivered[0].text,/0個/);assert.match(delivered[0].text,/必要な対応/);assert.match(delivered[0].text,/確定ではありません/);
+  assert.equal((await store.read()).events.find(e=>e.kind==="inventory_observed_zero").delivery.status,"smtp_accepted");
+  await store.update(state=>{state.amazonInventory.status="failed";state.amazonInventory.complete=false;const events=queueMonitorResults(state,at);assert.deepEqual(events.map(e=>e.kind),["inventory_unknown"]);});await service.drain();
+  assert.equal(delivered.length,2);assert.match(delivered[1].text,/確認できません/);
+  await store.update(state=>{state.amazonInventory.status="complete";state.amazonInventory.complete=true;state.amazonInventory.items[0].fulfillableQuantity=3;queueMonitorResults(state,at);});await service.drain();assert.equal(delivered.length,3);
+  await store.update(state=>{state.amazonInventory.items[0].fulfillableQuantity=0;queueMonitorResults(state,at);});await service.drain();assert.equal(delivered.length,4);
+});
+
+test("zero-stock rehearsal holds uncertain delivery instead of automatically resending",async()=>{
+  const store=createMonitorStore(await mkdtemp(path.join(os.tmpdir(),"asin-zero-uncertain-")));
+  await store.update(state=>{const f=fixture();f.row.fulfillableQuantity=0;Object.assign(state,f.state);queueMonitorResults(state,at);});
+  let calls=0;const service=createNotificationService({store,transport:{send:async()=>{calls++;return{status:"uncertain"};}},now:()=>at});
+  await service.drain();await service.drain();assert.equal(calls,1);assert.equal((await store.read()).mailOutbox[0].status,"uncertain");
+});
 test("new registration queues once and never backfills old registrations when enabling mail", async () => {
   const store = createMonitorStore(await mkdtemp(path.join(os.tmpdir(), "asin-mail-")));
   const linkId = await store.update((state) => registerPageLink(state, input, at).id);

@@ -3,6 +3,8 @@ import {fileURLToPath} from "node:url";
 import path from "node:path";
 import {cloudConfiguration, createOwnerVerifier, createIdentityVerifier} from "./cloud-auth.js";
 import {storageConfiguration, databasePool} from "./storage-runtime.js";
+import {validateSalesPlanning} from "./sales-planning.js";
+import {createCloudPlanning} from "./cloud-planning.js";
 import {createPostgresDocumentStore} from "./postgres-document-store.js";
 import {validateMonitorState, validateDraftItems} from "./storage-validation.js";
 import {createCloudHandler} from "./cloud-handler.js";
@@ -17,6 +19,7 @@ import {createStockPhotoRefresh} from "./cloud-stock-photos.js";
 import {createStockAmazonRefresh} from "./stock-amazon-listings.js";
 
 const fileTypes = {
+  "sales-planning.js":"text/javascript; charset=utf-8", "sales-planning.css":"text/css; charset=utf-8", "cloud-planning-view.html":"text/html; charset=utf-8",
   "cloud-login.html": "text/html; charset=utf-8", "cloud-view.html": "text/html; charset=utf-8", "cloud-drafts-view.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "demo.html": "text/html; charset=utf-8", "cloud-demo.js": "text/javascript; charset=utf-8",
   "cloud-login.js": "text/javascript; charset=utf-8", "monitor-http.js": "text/javascript; charset=utf-8", "link-monitor.js": "text/javascript; charset=utf-8",
   "cloud-stock-view.html": "text/html; charset=utf-8", "physical-stock.js": "text/javascript; charset=utf-8", "physical-stock.css": "text/css; charset=utf-8",
@@ -39,13 +42,15 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const draftStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "draft-items", validate: validateDraftItems}) : undefined;
   const stockStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "physical-stock", validate: validatePhysicalStock}) : undefined;
   const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
+  const planningStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"sales-planning",validate:validateSalesPlanning}):undefined;
+  const planning=planningStore?createCloudPlanning({store:planningStore,stock,monitorStore:store}):undefined;
   const stockPhotos = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockPhotoRefresh({store: stockStore, config: cloudAmazonConfig(env)}) : undefined;
   const stockAmazon = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:cloudAmazonConfig(env)}) : undefined;
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
   const sales = env.ASIN_AMAZON_CLIENT_ID ? createCloudSales({store, config: cloudAmazonConfig(env)}) : undefined;
   const mail = env.ASIN_GMAIL_USER ? createCloudMail({store, transport: createCloudMailTransport(cloudMailConfig(env))}) : undefined;
-  const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, ownerAccess, fba, mail, sales, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
+  const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, ownerAccess, fba, mail, sales, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
   return {config, handler, pool};
 }

@@ -4,7 +4,7 @@ import {readFile, writeFile} from "node:fs/promises";
 const origin = "https://amazon-yahoo-inventory.vercel.app";
 const deployment = process.argv[2] || null;
 if (deployment && !/^dpl_[A-Za-z0-9]+$/.test(deployment)) throw new Error("Deployment ID required");
-const paths = [["/", 200], ["/?view=drafts", 200], ["/?view=stock", 200], ["/api/cloud-config", 200], ["/api/link-monitor", 401], ["/api/items", 401], ["/api/physical-stock", 401], ["/api/physical-stock/export.csv", 401], ["/api/demo", 404]];
+const paths = [["/", 200], ["/?view=drafts", 200], ["/?view=stock", 200], ["/?view=planning",200], ["/api/cloud-config", 200], ["/api/link-monitor", 401], ["/api/items", 401], ["/api/physical-stock", 401], ["/api/sales-planning",401], ["/api/sales-planning/operations/00000000-0000-4000-8000-000000000000",401], ["/api/physical-stock/export.csv", 401], ["/api/demo", 404]];
 const checks = [];
 for (const [path, expected] of paths) {
   const response = await fetch(origin + path);

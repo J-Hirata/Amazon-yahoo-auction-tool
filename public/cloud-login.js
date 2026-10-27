@@ -41,7 +41,8 @@ async function openApplication() {
   const session = await response.json();
   const drafts = new URLSearchParams(location.search).get("view") === "drafts";
   const stock = new URLSearchParams(location.search).get("view") === "stock";
-  const htmlResponse = await fetch(stock ? "/cloud-stock-view.html" : drafts ? "/cloud-drafts-view.html" : "/cloud-view.html", {cache: "no-store"});
+  const planning = new URLSearchParams(location.search).get("view") === "planning";
+  const htmlResponse = await fetch(planning ? "/cloud-planning-view.html" : stock ? "/cloud-stock-view.html" : drafts ? "/cloud-drafts-view.html" : "/cloud-view.html", {cache: "no-store"});
   if (!htmlResponse.ok) throw new Error("画面を読み込めませんでした。");
   const main = new DOMParser().parseFromString(await htmlResponse.text(), "text/html").querySelector("main");
   if (!main) throw new Error("画面を読み込めませんでした。");
@@ -61,17 +62,18 @@ async function openApplication() {
       location.replace("/");
     } catch (error) {logout.disabled = false; mode.textContent = error.message;}
   });
-  const navigation = workspaceNavigation({drafts,stock,physicalStock:session.physicalStock});
+  const navigation = workspaceNavigation({drafts,stock,planning,physicalStock:session.physicalStock,salesPlanning:session.salesPlanning});
   account.append(navigation, mode, logout);
   panel.append(account, main);
   configureMonitorRequest(authenticatedRequest);
-  if (stock) {const {openStock} = await import("./physical-stock.js"); await openStock({userId: session.userId, readOnly: session.readOnly});}
+  if (planning) {const {openPlanning}=await import("./sales-planning.js");await openPlanning({userId:session.userId,readOnly:session.readOnly});}
+  else if (stock) {const {openStock} = await import("./physical-stock.js"); await openStock({userId: session.userId, readOnly: session.readOnly});}
   else await import(drafts ? "./app.js" : "./link-monitor.js");
-  if (!stock && session.physicalStock) {
+  if (!stock && !planning && session.physicalStock) {
     try {await stockWorkflowContext({drafts,main,request:authenticatedRequest});}
     catch (error) {const warning=document.createElement("p");warning.className="workspace-context-error";warning.setAttribute("role","alert");warning.textContent=error.message;main.prepend(warning);}
   }
-  document.title = `${stock ? "コンテナ・自社在庫" : drafts ? "出品下書きツール" : "商品紐付けツール"} | Amazon・ヤフオク`;
+  document.title = `${planning ? "販売の見直し" : stock ? "コンテナ・自社在庫" : drafts ? "出品下書きツール" : "商品紐付けツール"} | Amazon・ヤフオク`;
   document.querySelector("#loginPanel").hidden = true;
   document.querySelector("#authLoading").hidden = true;
   panel.hidden = false;

@@ -8,10 +8,12 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 const output = path.join(root, "dist", "cloud");
 await mkdir(output, {recursive: true});
 await build({entryPoints: [path.join(root, "public", "cloud-login.js")], outfile: path.join(output, "cloud-login.js"), bundle: true,
-  format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./link-monitor.js", "./physical-stock.js", "./app.js"], logLevel: "warning"});
+  format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./link-monitor.js", "./physical-stock.js", "./app.js", "./sales-planning.js"], logLevel: "warning"});
 await build({entryPoints: [path.join(root, "public", "physical-stock.js")], outfile: path.join(output, "physical-stock.js"), bundle: true,
   format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./catalog-view.js"], logLevel: "warning"});
 const files = ["cloud-login.html", "cloud-login.css", "cloud-demo.js", "app.js", "monitor-http.js", "link-monitor.js", "link-monitor.css", "physical-stock.css", "cloud-stock-view.html", "styles.css", "extension-logo.png"];
+files.push("cloud-planning-view.html","sales-planning.css");
+await build({entryPoints:[path.join(root,"public","sales-planning.js")],outfile:path.join(output,"sales-planning.js"),bundle:true,format:"esm",target:["es2022"],platform:"browser",minify:true,external:["./monitor-http.js","./catalog-view.js"],logLevel:"warning"});
 for (const name of files) await copyFile(path.join(root, "public", name), path.join(output, name));
 for(const name of ["catalog-view.js","catalog-view.css","catalog-list.svg","catalog-tiles.svg","catalog-image.svg","catalog-grip.svg","catalog-prev.svg","catalog-next.svg"])await copyFile(path.join(root,"public",name),path.join(output,name));
 await build({stdin:{contents:'export {default} from "sortablejs";',resolveDir:root},outfile:path.join(output,"catalog-sortable.js"),bundle:true,format:"esm",platform:"browser",target:["es2022"],minify:true,legalComments:"inline",banner:{js:"/*\n"+await readFile(path.join(root,"node_modules","sortablejs","LICENSE"),"utf8")+"\n*/"}});
