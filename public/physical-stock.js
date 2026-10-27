@@ -1,4 +1,5 @@
 import {monitorRequest} from "./monitor-http.js";
+import {createCatalogView} from "./catalog-view.js";
 import {createElement, Boxes, Warehouse, House, Plus, Minus, Truck, History, NotebookPen, RefreshCw, Download, Search, X, ArrowRight, Check, Pencil, Package, ArrowLeftRight, Image as ImageIcon, Link2, FilePenLine} from "lucide";
 
 const icons = {boxes: Boxes, warehouse: Warehouse, house: House, plus: Plus, minus: Minus, truck: Truck, history: History, notebook: NotebookPen, refresh: RefreshCw, download: Download, search: Search, x: X, arrow: ArrowRight, check: Check, pencil: Pencil, package: Package, move: ArrowLeftRight, image: ImageIcon, link:Link2, draft:FilePenLine};
@@ -19,6 +20,8 @@ export async function openStock({userId, readOnly}) {
   let view, activeProduct, editingProduct, placesProduct, linkProduct, preview, busy = false, dirty = false, pending;
   const pendingKey = "physical-stock-pending:" + userId;
   const productForm = $("#stockProductForm"), actionForm = $("#stockActionForm"), placesForm = $("#stockPlacesForm");
+  const displayHost=document.createElement("div");$(".stock-table-wrap").before(displayHost);
+  const catalog=createCatalogView({key:"stock",host:displayHost,roots:[$("#stockRows")],measureLabels:["確認済み数量 多い順","確認済み数量 少ない順"]});
   for (const element of document.querySelectorAll("[data-stock-icon]")) element.innerHTML = icon(element.dataset.stockIcon);
   const status = (message, error = false) => {$("#stockStatus").textContent = message; $("#stockStatus").classList.toggle("error", error);};
   try {pending = JSON.parse(sessionStorage.getItem(pendingKey) || "null");} catch {pending = null;}
@@ -80,6 +83,10 @@ export async function openStock({userId, readOnly}) {
     $("#stockTransferRows").innerHTML = view.transfers.length ? [...view.transfers].reverse().map((t) => `<div class="stock-transfer"><span><strong>${escape(view.products.find((p) => p.id === t.productId)?.title || "商品")}</strong><br>${locationName(t.from)} → ${locationName(t.to)} ／ 移動中 ${t.remaining} ／ 到着 ${t.received} ／ 出荷元へ戻し ${t.returned}<br><small>${escape(t.reference)} ／ ${when(t.updatedAt)}</small></span>${t.remaining ? `<button type="button" data-stock-transfer="${escape(t.id)}">到着を記録</button>` : ""}</div>`).join("") : "<p>移動の記録はありません。</p>";
     for (const button of document.querySelectorAll("[data-stock-transfer]")) {button.disabled = readOnly || Boolean(pending); button.addEventListener("click", () => {const t = view.transfers.find((t) => t.id === button.dataset.stockTransfer); openAction(t.productId, "receive_transfer", t.id);});}
     $("#stockHistory").innerHTML = view.events.length ? view.events.map((e) => `<li>${when(e.at)} ／ ${escape(view.products.find((p) => p.id === e.productId)?.title)} ／ ${labels[e.kind]} ／ ${escape(e.reason)}${e.changes.map((c) => `<br>${locationName(c.locationId)}：${["usable", "reserved", "unusable"].map((b) => `${({usable:"使用可能",reserved:"取り置き",unusable:"使用不可"})[b]} ${c.before[b] ?? "未確認"} → ${c.after[b] ?? "未確認"}`).join(" ／ ")}`).join("")}${e.transferAfter ? `<br>移動中 ${e.transferBefore?.remaining ?? 0} → ${e.transferAfter.remaining} ／ 到着 ${e.transferBefore?.received ?? 0} → ${e.transferAfter.received} ／ 戻し ${e.transferBefore?.returned ?? 0} → ${e.transferAfter.returned}` : ""}${e.evidence ? `<br>確認根拠：${escape(e.evidence)}` : ""}${e.metadataAfter ? `<br>ASIN：${escape(e.metadataBefore.asin || "なし")} → ${escape(e.metadataAfter.asin || "なし")} ／ ${escape(tasks[e.metadataAfter.catalogTask])}` : ""}</li>`).join("") : "<li>まだ変更履歴はありません。</li>";
+    catalog.update($("#stockRows"),products.map((p,index)=>({node:$("#stockRows").children[index],id:p.id,title:p.title,imageUrl:p.photo?.url,imageLabel:p.photo?.label,
+      badges:[conditions[p.condition],purposes[p.fbaEligibility]],metrics:p.totals.locations.map(b=>({label:locationName(b.locationId),value:b.usable??"未確認",unit:p.unit})),
+      status:`Amazon：${p.amazon.status==="buyable"?"販売中":p.amazon.status==="present"?"出品あり":p.amazon.status==="variant_mismatch"?"状態要確認":"要確認"} ／ ヤフオク${p.linked.length?` ${p.linked.length}件`:"未登録"}`,
+      measure:p.totals.unknownLocations===0?p.totals.usable:null})));
     controls();
   }
   async function load() {view = await request(); render();}

@@ -1,5 +1,8 @@
 import {monitorRequest} from "./monitor-http.js";
+import {createCatalogView} from "./catalog-view.js";
 const $ = (selector) => document.querySelector(selector);
+const displayHost=document.createElement("div");$("#linkRows").closest("table").before(displayHost);
+const catalog=createCatalogView({key:"links",host:displayHost,roots:[$("#linkRows")],measureLabels:["FBA取得数 多い順","FBA取得数 少ない順"]});
 const escape = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[char]);
 const inventoryLabels = {available: "在庫あり", zero: "充当可能在庫なし", unknown: "確認できず", unlinked: "紐付け要確認"};
 const yahooLabels = {active: "出品中", ended: "終了確認済み", ending: "終了検知・再確認待ち", unknown: "確認できず", unlinked: "紐付け要確認"};
@@ -322,6 +325,14 @@ function render() {
   });
   document.querySelectorAll("[data-product-preview]").forEach((button) => button.addEventListener("click", () => action(() => fetchProductPreview(button.dataset.productPreview))));
   document.querySelectorAll(".linked-product img").forEach((img) => img.addEventListener("error", () => {img.hidden = true;}));
+  catalog.update($("#linkRows"),data.links.map((link,index)=>{
+    const a=link.assessment,p=a.product,y=a.listing,age=Date.now()-Date.parse(p?.checkedAt);
+    const known=Number.isFinite(age)&&age>=-60000&&age<=90*60000&&!p?.error&&a.inventory!=="unlinked"&&typeof p?.fulfillableQuantity==="number";
+    const sales=saved.salesHistory?.products.find(s=>s.linkId===link.id),photo=$("#linkRows").children[index].querySelector(".linked-product img");
+    return {node:$("#linkRows").children[index],id:link.id,title:y?.title||(p?.title!==p?.asin?p?.title:"")||p?.asin||"商品名未取得",imageUrl:photo?.src,imageLabel:photo?.alt||"出品画像",
+      badges:[p?.asin||"ASIN不明",`ヤフオク：${yahooLabels[a.yahoo]}`],metrics:[{label:"FBA取得数",value:known?p.fulfillableQuantity:"未確認",unit:"個"},{label:"追跡後注文",value:currentMode==="saved"&&sales?.status==="complete"?sales.confirmedQuantity:"未確認",unit:"個"}],
+      status:known?(a.inventory==="available"?"MCF条件確認済み":a.inventory==="zero"?"数量・出荷条件を要確認":"MCF出荷可否未確認"):"在庫情報は要確認",measure:known?p.fulfillableQuantity:null};
+  }));
   const events = [...data.events].reverse();
   const selected = $("#eventSelect").value;
   $("#eventSelect").innerHTML = events.length ? events.map((event) => `<option value="${event.id}">${escape(event.title)} ／ ${date(event.at)} ／ ${event.delivery.status === "test_failed" ? "模擬送信失敗" : event.delivery.status === "test_sent" ? "模擬送信成功" : deliveryLabels[event.delivery.status] || "未送信"}</option>`).join("") : '<option value="">通知はありません</option>';

@@ -20,6 +20,11 @@
 !public/link-monitor.js
 !public/link-monitor.css
 !public/styles.css
+!public/catalog-view.js
+!public/catalog-view.css
+!public/catalog-list.svg
+!public/catalog-tiles.svg
+!public/catalog-image.svg
 !public/extension-logo.png
 !scripts
 !scripts/build-cloud.mjs

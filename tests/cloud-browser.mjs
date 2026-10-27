@@ -26,6 +26,7 @@ import {createStockAmazonRefresh} from "../src/stock-amazon-listings.js";
 import {emptyPhysicalStock, validatePhysicalStock} from "../src/physical-stock.js";
 import {verifyPhysicalStockUI} from "./physical-stock-browser-flow.mjs";
 import {verifyStockWorkflow} from "./stock-workflow-browser-flow.mjs";
+import {verifyCatalogViews} from "./catalog-browser-flow.mjs";
 
 const {chromium} = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -219,6 +220,7 @@ try {
   if (fullWorkspace) {
     await verifyPhysicalStockUI({page, stockStore, monitorStore: store, root, pass});
     await verifyStockWorkflow({page,stockStore,monitorStore:store,root,pass});
+    await verifyCatalogViews({page,stockStore,monitorStore:store,draftStore,root,pass});
     assert.equal(testEmails, 0);
     await page.locator(".cloud-account nav").getByText("商品紐付けツール", {exact: true}).click();
     await page.locator("#cloudApp:not([hidden]) #linkRows tr").first().waitFor();
