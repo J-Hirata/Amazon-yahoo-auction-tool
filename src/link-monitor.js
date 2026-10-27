@@ -129,7 +129,7 @@ export function confirmAsinLink(state, {listingId, asin, reviewed, unitsPerListi
     unitsPerListing: Number(unitsPerListing), reviewNote: text(reviewNote),
     referenceFingerprint: JSON.stringify(listing.references || [])};
   if (previous) {Object.assign(previous, fields); return previous;}
-  const link = {id: randomUUID(), ...fields, history: [], signals: {}};
+  const link = {id: randomUUID(), ...fields, createdAt: at, history: [], signals: {}};
   state.links.push(link);
   return link;
 }
@@ -148,7 +148,7 @@ export function confirmLink(state, {listingId, catalogId, reviewed, unitsPerList
     Object.assign(previous, {verified: true, reviewedAt: at, reviewNote: text(reviewNote), unitsPerListing: Number(unitsPerListing), productFingerprint: JSON.stringify([product.asin, product.fnSku, product.condition, product.setContents]), referenceFingerprint: JSON.stringify(listing.references || [])});
     return previous;
   }
-  const link = {id: randomUUID(), catalogId, listingId, unitsPerListing: Number(unitsPerListing), verified: true, reviewedAt: at, reviewNote: text(reviewNote), referenceFingerprint: JSON.stringify(listing.references || []), productFingerprint: JSON.stringify([product.asin, product.fnSku, product.condition, product.setContents]), history: [], signals: {}};
+  const link = {id: randomUUID(), catalogId, listingId, unitsPerListing: Number(unitsPerListing), verified: true, createdAt: at, reviewedAt: at, reviewNote: text(reviewNote), referenceFingerprint: JSON.stringify(listing.references || []), productFingerprint: JSON.stringify([product.asin, product.fnSku, product.condition, product.setContents]), history: [], signals: {}};
   state.links.push(link);
   return link;
 }

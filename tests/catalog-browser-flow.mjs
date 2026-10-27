@@ -10,11 +10,33 @@ export async function verifyCatalogViews({page,stockStore,monitorStore,draftStor
   const grid=page.locator("#stockRows"), count=(await stockStore.read()).products.length;
   assert.equal(await grid.locator(".catalog-summary").count(),count);
   assert.equal(await grid.getAttribute("data-catalog-layout"),"tiles");
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector("#stockRows")).gridTemplateColumns.split(" ").length===5);
   const square=await grid.locator(".catalog-item").first().boundingBox();assert.ok(Math.abs(square.width-square.height)<2);
   await controls("stock").locator("select").selectOption("measureDesc");
   assert.equal(await grid.locator(".catalog-title").first().textContent(),"場所別在庫の試験商品");
   await controls("stock").locator("select").selectOption("original");
   assert.match(await grid.locator(".catalog-metrics").first().textContent(),/コンテナ/);assert.match(await grid.locator(".catalog-metrics").first().textContent(),/自宅・会社/);
+  const originalIds=await grid.locator(".catalog-item").evaluateAll(els=>els.map(el=>el.dataset.catalogId));
+  const visibleIds=()=>grid.locator(".catalog-item").evaluateAll(els=>els.map(el=>el.dataset.catalogId));
+  const stockData=await stockStore.read();
+  for(const [mode,direction] of [["dateAsc",1],["dateDesc",-1]]){
+    await controls("stock").locator("select").selectOption(mode);
+    const expected=stockData.products.map((p,i)=>({p,i})).sort((a,b)=>(Date.parse(a.p.createdAt)-Date.parse(b.p.createdAt))*direction||a.i-b.i).map(({p})=>p.id);
+    assert.deepEqual(await visibleIds(),expected);
+  }
+  await controls("stock").locator("select").selectOption("original");
+  await grid.locator(".catalog-item").nth(1).locator(".catalog-move").first().click();
+  assert.equal((await visibleIds())[0],originalIds[1]);assert.equal(await controls("stock").locator("select").inputValue(),"manual");
+  await page.waitForFunction(()=>Boolean(document.querySelector("#stockRows")[Object.keys(document.querySelector("#stockRows")).find(k=>k.startsWith("Sortable"))]));
+  const first=grid.locator(".catalog-item").first(),last=grid.locator(".catalog-item").last();
+  const from=await first.locator(".catalog-drag").boundingBox(),to=await last.boundingBox(),dragged=(await visibleIds())[0];
+  await page.mouse.move(from.x+from.width/2,from.y+from.height/2);await page.mouse.down();await page.mouse.move(to.x+to.width-12,to.y+to.height/2,{steps:15});await page.waitForTimeout(350);await page.mouse.up();
+  await page.waitForFunction(id=>document.querySelector("#stockRows").lastElementChild.dataset.catalogId===id,dragged);
+  const customOrder=await visibleIds();await page.reload();await grid.locator(".catalog-summary").first().waitFor();assert.deepEqual(await visibleIds(),customOrder);
+  await page.locator("#stockSearch").fill("場所別在庫");assert.equal(await grid.locator(".catalog-item").count(),1);
+  await page.locator("#stockSearch").fill("");assert.deepEqual(await visibleIds(),customOrder);
+  await setMode("stock","list");assert.deepEqual(await visibleIds(),customOrder);await setMode("stock","tiles");
+  await controls("stock").locator("select").selectOption("original");
   await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(root,"output","catalog-stock-desktop.png")});
   for(const width of [390,320]){
     await page.setViewportSize({width,height:844});await fit();
@@ -24,15 +46,19 @@ export async function verifyCatalogViews({page,stockStore,monitorStore,draftStor
     if(width===390){await page.evaluate(()=>document.querySelector("#stockRows").scrollIntoView({block:"start"}));await page.screenshot({path:path.join(root,"output","catalog-stock-mobile.png")});}
   }
   await page.setViewportSize({width:1440,height:1080});
+  await grid.locator(".catalog-item").first().locator(".catalog-drag").focus();await page.keyboard.press("End");
+  assert.equal((await visibleIds()).at(-1),originalIds[0]);await controls("stock").locator("select").selectOption("original");
   await grid.locator(".catalog-open").first().click();
   await grid.locator(".catalog-expanded [data-stock-places]").first().click();await page.locator("#stockPlacesDialog[open]").waitFor();
   await page.locator("#stockPlacesDialog").getByRole("button",{name:"取消",exact:true}).click();
   await grid.locator(".catalog-expanded .catalog-open").click();
   await page.reload();await page.locator("#stockRows[data-catalog-layout=tiles]").waitFor();
-  pass("stock tiles are square on desktop, readable at 390/320px, sortable and persistent; detail quantity controls still work without saving");
+  pass("five-column square tiles, registration/quantity sorting, real drag, keyboard/arrows and reload persistence work; mobile and detail controls remain readable without business writes");
   await page.locator(".cloud-account nav").getByText("商品紐付けツール",{exact:true}).click();await page.locator("#cloudApp:not([hidden]) #linkRows .catalog-item").first().waitFor();
   assert.equal(await page.locator("#linkRows").getAttribute("data-catalog-layout"),"list");
   await setMode("links","tiles");const links=page.locator("#linkRows");
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector("#linkRows")).gridTemplateColumns.split(" ").length===5);
+  assert.equal(await links.locator(".catalog-state").first().evaluate(el=>el.clientHeight>=parseFloat(getComputedStyle(el).lineHeight)),true);
   assert.equal(await links.locator(".catalog-item").count(),(await monitorStore.read()).links.length);
   await links.locator(".catalog-open").first().click();const expanded=links.locator(".catalog-expanded");
   await expanded.locator(".memo-edit").click();await expanded.locator("textarea[name=memo]").fill("切替中の未保存メモ");
@@ -47,6 +73,10 @@ export async function verifyCatalogViews({page,stockStore,monitorStore,draftStor
   pass("linkage tiles preserve FBA/unknown labels, all listing IDs, unsaved memo input and original operations without API writes");
   await page.locator(".cloud-account nav").getByText("出品下書きツール",{exact:true}).click();await page.locator("#cloudApp:not([hidden]) #summary").waitFor();
   const visibleCount=await page.locator("#active .item,#waiting .item,#recentHistory .item").count();await setMode("drafts","tiles");
+  await page.setViewportSize({width:1440,height:1080});
+  await page.waitForFunction(()=>getComputedStyle(document.querySelector("#active")).gridTemplateColumns.split(" ").length===5);
+  await page.waitForFunction(()=>Boolean(document.querySelector("#active")[Object.keys(document.querySelector("#active")).find(k=>k.startsWith("Sortable"))]));
+  assert.equal(await page.locator("#active").evaluate(el=>{const sortable=el[Object.keys(el).find(k=>k.startsWith("Sortable"))];return sortable.options.group.checkPull(sortable,sortable)===false&&sortable.options.group.checkPut(sortable,sortable)===false;}),true);
   assert.equal(await page.locator("#active .catalog-item,#waiting .catalog-item,#recentHistory .catalog-item").count(),visibleCount);assert.match(await page.locator("#summary").textContent(),/58/);
   await controls("drafts").locator("select").selectOption("measureDesc");
   await page.locator("#active .catalog-open").first().click();assert.equal(await page.locator("#active .catalog-expanded [data-action=delete]").isDisabled(),true);

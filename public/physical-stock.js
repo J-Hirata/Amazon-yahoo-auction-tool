@@ -86,7 +86,7 @@ export async function openStock({userId, readOnly}) {
     catalog.update($("#stockRows"),products.map((p,index)=>({node:$("#stockRows").children[index],id:p.id,title:p.title,imageUrl:p.photo?.url,imageLabel:p.photo?.label,
       badges:[conditions[p.condition],purposes[p.fbaEligibility]],metrics:p.totals.locations.map(b=>({label:locationName(b.locationId),value:b.usable??"未確認",unit:p.unit})),
       status:`Amazon${p.amazon.status==="buyable"?"販売中":p.amazon.status==="present"?"出品あり":p.amazon.status==="variant_mismatch"?"状態要確認":"要確認"}／ヤフオク${p.linked.length?`${p.linked.length}件`:"未登録"}`,
-      measure:p.totals.unknownLocations===0?p.totals.usable:null})));
+      measure:p.totals.unknownLocations===0?p.totals.usable:null,registeredAt:p.createdAt})));
     controls();
   }
   async function load() {view = await request(); render();}

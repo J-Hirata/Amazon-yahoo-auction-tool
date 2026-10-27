@@ -1,11 +1,25 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {presentationSettings,presentationOrder,catalogImage} from "../public/catalog-view.js";
+import {presentationSettings,presentationOrder,mergeManualOrder,catalogImage} from "../public/catalog-view.js";
 
 test("presentation settings reject unknown modes and never infer a default tile preference",()=>{
-  assert.deepEqual(presentationSettings(),{mode:"list",sort:"original"});
-  assert.deepEqual(presentationSettings({mode:"tiles",sort:"measureAsc"}),{mode:"tiles",sort:"measureAsc"});
-  assert.deepEqual(presentationSettings({mode:"other",sort:"other"}),{mode:"list",sort:"original"});
+  assert.deepEqual(presentationSettings(),{mode:"list",sort:"original",order:[]});
+  assert.deepEqual(presentationSettings({mode:"tiles",sort:"measureAsc"}),{mode:"tiles",sort:"measureAsc",order:[]});
+  assert.deepEqual(presentationSettings({mode:"other",sort:"other"}),{mode:"list",sort:"original",order:[]});
+});
+
+test("registration sorting keeps missing dates last and never substitutes a mutable review date",()=>{
+  const entries=[{id:"unknown",reviewedAt:"2030-01-01"},{id:"new",registeredAt:"2026-10-27T01:00:00Z"},{id:"old",registeredAt:"2026-10-01T01:00:00Z"},{id:"invalid",registeredAt:"bad"}];
+  assert.deepEqual(presentationOrder(entries,"dateAsc").map(x=>x.id),["old","new","unknown","invalid"]);
+  assert.deepEqual(presentationOrder(entries,"dateDesc").map(x=>x.id),["new","old","unknown","invalid"]);
+});
+
+test("manual order survives filtering, appends new products, and validates stored IDs",()=>{
+  assert.deepEqual(mergeManualOrder(["a","hidden","b"],["b","a","new"]),["b","hidden","a","new"]);
+  assert.deepEqual(mergeManualOrder(["a","b"],[]),["a","b"]);
+  assert.deepEqual(presentationSettings({mode:"tiles",sort:"manual",order:["b","b",null,{},"","a"]}).order,["b","a"]);
+  const input=[{id:"a"},{id:"new"},{id:"b"}],before=structuredClone(input);
+  assert.deepEqual(presentationOrder(input,"manual",["b","a"]).map(x=>x.id),["b","a","new"]);assert.deepEqual(input,before);
 });
 test("visual sorting is stable and never modifies the original collection or business records",()=>{
   const input=[{id:1,title:"商品10",measure:2},{id:2,title:"商品2",measure:0},{id:3,title:"商品3",measure:2}],before=structuredClone(input);

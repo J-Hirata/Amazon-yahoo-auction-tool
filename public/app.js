@@ -138,7 +138,7 @@ function renderList(selector, items, compact) {
   }
   for (const item of items) root.appendChild(card(item, compact));
   catalog.update(root,items.map((item,index)=>({node:root.children[index],id:item.asin,title:item.title||item.asin,imageUrl:item.imageUrls?.[0],imageLabel:"Amazon商品画像（現物写真ではありません）",badges:[statusLabel(item.status),item.asin],
-    metrics:[{label:"初回案",value:yen(item.startPrice),kind:"price"},{label:"7日後案",value:yen(item.stalePrice),kind:"price"}],status:reviewBadge(item)?"価格の確認あり":"出品下書き",measure:typeof item.startPrice==="number"?item.startPrice:null})));
+    metrics:[{label:"初回案",value:yen(item.startPrice),kind:"price"},{label:"7日後案",value:yen(item.stalePrice),kind:"price"}],status:reviewBadge(item)?"価格の確認あり":"出品下書き",measure:typeof item.startPrice==="number"?item.startPrice:null,registeredAt:item.createdAt})));
 }
 
 function card(item, compact) {
@@ -194,7 +194,7 @@ function renderHistory() {
     return;
   }
   for (const item of items) root.appendChild(historyCard(item));
-  catalog.update(root,items.map((item,index)=>({node:root.children[index],id:item.asin,title:item.title||item.asin,imageUrl:item.imageUrls?.[0],imageLabel:"Amazon商品画像（現物写真ではありません）",badges:["下書き保存済み",item.asin],metrics:[{label:"初回案",value:yen(item.startPrice),kind:"price"},{label:"7日後案",value:yen(item.stalePrice),kind:"price"}],status:formatDate(item.draftSavedAt),measure:typeof item.startPrice==="number"?item.startPrice:null})));
+  catalog.update(root,items.map((item,index)=>({node:root.children[index],id:item.asin,title:item.title||item.asin,imageUrl:item.imageUrls?.[0],imageLabel:"Amazon商品画像（現物写真ではありません）",badges:["下書き保存済み",item.asin],metrics:[{label:"初回案",value:yen(item.startPrice),kind:"price"},{label:"7日後案",value:yen(item.stalePrice),kind:"price"}],status:formatDate(item.draftSavedAt),measure:typeof item.startPrice==="number"?item.startPrice:null,registeredAt:item.createdAt})));
 }
 
 function historyCard(item) {

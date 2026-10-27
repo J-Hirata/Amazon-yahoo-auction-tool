@@ -331,7 +331,7 @@ function render() {
     const sales=saved.salesHistory?.products.find(s=>s.linkId===link.id),photo=$("#linkRows").children[index].querySelector(".linked-product img");
     return {node:$("#linkRows").children[index],id:link.id,title:y?.title||(p?.title!==p?.asin?p?.title:"")||p?.asin||"商品名未取得",imageUrl:photo?.src,imageLabel:photo?.alt||"出品画像",
       badges:[p?.asin||"ASIN不明",`ヤフオク：${yahooLabels[a.yahoo]}`],metrics:[{label:"FBA取得数",value:known?p.fulfillableQuantity:"未確認",unit:"個"},{label:"追跡後注文",value:currentMode==="saved"&&sales?.status==="complete"?sales.confirmedQuantity:"未確認",unit:"個"}],
-      status:known?(a.inventory==="available"?"MCF条件確認済み":a.inventory==="zero"?"数量・出荷条件を要確認":"MCF出荷可否未確認"):"在庫情報は要確認",measure:known?p.fulfillableQuantity:null};
+      status:known?(a.inventory==="available"?"MCF条件確認済み":a.inventory==="zero"?"数量・出荷条件を要確認":"MCF出荷可否未確認"):"在庫情報は要確認",measure:known?p.fulfillableQuantity:null,registeredAt:link.createdAt};
   }));
   const events = [...data.events].reverse();
   const selected = $("#eventSelect").value;

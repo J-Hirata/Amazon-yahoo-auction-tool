@@ -21,6 +21,7 @@ const fileTypes = {
   "cloud-login.js": "text/javascript; charset=utf-8", "monitor-http.js": "text/javascript; charset=utf-8", "link-monitor.js": "text/javascript; charset=utf-8",
   "cloud-stock-view.html": "text/html; charset=utf-8", "physical-stock.js": "text/javascript; charset=utf-8", "physical-stock.css": "text/css; charset=utf-8",
   "catalog-view.js":"text/javascript; charset=utf-8", "catalog-view.css":"text/css; charset=utf-8", "catalog-list.svg":"image/svg+xml", "catalog-tiles.svg":"image/svg+xml", "catalog-image.svg":"image/svg+xml",
+  "catalog-sortable.js":"text/javascript; charset=utf-8", "catalog-grip.svg":"image/svg+xml", "catalog-prev.svg":"image/svg+xml", "catalog-next.svg":"image/svg+xml",
   "cloud-login.css": "text/css; charset=utf-8", "link-monitor.css": "text/css; charset=utf-8", "styles.css": "text/css; charset=utf-8", "extension-logo.png": "image/png"
 };
 export async function loadCloudAssets(directory = fileURLToPath(new URL("../dist/cloud/", import.meta.url))) {

@@ -4,7 +4,7 @@ import {mkdtemp, readFile} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import {demoMonitor, advanceDemo} from "../src/link-monitor-demo.js";
-import {parseCatalog, normalizeCatalog, quantity, candidatesFor, confirmLink, assessLink, observeListing, registerSuccessor, runPreview, notificationText, notificationPreview, testDelivery, PREVIEW_CONFIG} from "../src/link-monitor.js";
+import {parseCatalog, normalizeCatalog, quantity, candidatesFor, confirmLink, confirmAsinLink, assessLink, observeListing, registerSuccessor, runPreview, notificationText, notificationPreview, testDelivery, PREVIEW_CONFIG} from "../src/link-monitor.js";
 import {parseYahooPage, managementReferences, yahooListingUrl, fetchYahooListing} from "../src/yahoo-observation.js";
 import {createMonitorStore} from "../src/link-monitor-store.js";
 
@@ -12,6 +12,15 @@ const at = "2026-10-21T05:00:00.000Z";
 const later = (seconds) => new Date(Date.parse(at) + seconds * 1000).toISOString();
 const fixture = () => demoMonitor(at);
 const kinds = (state) => state.events.map((event) => event.kind);
+test("new links retain their creation time on re-review; legacy dates remain unknown",()=>{
+  for(const byAsin of [false,true]){
+    const state=fixture();state.links=[];
+    const input={listingId:state.listings[0].listingId,asin:state.catalog[0].asin,catalogId:state.catalog[0].id,reviewed:true};
+    const confirm=byAsin?confirmAsinLink:confirmLink,link=confirm(state,input,at);
+    assert.equal(link.createdAt,at);confirm(state,input,later(60));assert.equal(link.createdAt,at);assert.equal(link.reviewedAt,later(60));
+    delete link.createdAt;confirm(state,input,later(120));assert.equal(link.createdAt,undefined);
+  }
+});
 function observe(state, status, seconds) {
   return observeListing(state, {...state.listings[0], observation: {status, verified: status !== "unknown", checkedAt: later(seconds), reason: "unknown", source: "test", evidence: "fixture"}});
 }

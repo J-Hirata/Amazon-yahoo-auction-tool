@@ -25,6 +25,9 @@
 !public/catalog-list.svg
 !public/catalog-tiles.svg
 !public/catalog-image.svg
+!public/catalog-grip.svg
+!public/catalog-prev.svg
+!public/catalog-next.svg
 !public/extension-logo.png
 !scripts
 !scripts/build-cloud.mjs
