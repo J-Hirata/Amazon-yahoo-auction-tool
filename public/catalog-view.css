@@ -19,6 +19,7 @@
 .catalog-image:not(.loaded) {background:url('/catalog-image.svg') center/48px 48px no-repeat;}.catalog-image:not(.loaded) img {opacity:0;}
 .catalog-title {display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;font:600 14px/20px system-ui;color:#26392f;overflow-wrap:anywhere;}
 .catalog-badges {display:flex;gap:5px;overflow:hidden;min-width:0;}.catalog-badges span {display:block;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:3px;background:#eef4f0;padding:2px 6px;color:#526e5e;font:11px/16px system-ui;}
+.catalog-badges span:first-child {flex:none;max-width:55%;}
 .catalog-metrics {display:flex;gap:10px;min-width:0;}.catalog-metrics>div {flex:1;min-width:0;white-space:nowrap;}.catalog-metrics span {display:block;color:#738277;font:11px/16px system-ui;}.catalog-metrics strong {font:650 22px/24px system-ui;color:#253f31;font-variant-numeric:tabular-nums;}.catalog-metrics .catalog-unknown {font-size:12px;font-weight:500;color:#8b6d2e;}.catalog-metrics small {font:11px system-ui!important;color:#718176;display:inline!important;margin-left:4px;}
 .catalog-state {display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font:11px/18px system-ui!important;color:#6c7b71!important;}
 .catalog-metrics .catalog-price {font-size:16px;color:#245d8c;}.catalog-metrics .catalog-long-number {font-size:14px;}

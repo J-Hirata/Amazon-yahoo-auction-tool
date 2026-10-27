@@ -20,6 +20,7 @@ export async function verifyCatalogViews({page,stockStore,monitorStore,draftStor
     await page.setViewportSize({width,height:844});await fit();
     const boxes=await grid.locator(".catalog-summary").first().evaluate(el=>{const rect=s=>{const r=el.querySelector(s).getBoundingClientRect();return{top:r.top,bottom:r.bottom,height:r.height};};return{image:rect(".catalog-image"),title:rect(".catalog-title"),metrics:rect(".catalog-metrics")};});
     assert.ok(boxes.image.height>30);assert.ok(boxes.image.bottom<=boxes.title.top);assert.ok(boxes.title.bottom<=boxes.metrics.top);
+    assert.equal(await grid.locator(".catalog-badges span").first().evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     if(width===390){await page.evaluate(()=>document.querySelector("#stockRows").scrollIntoView({block:"start"}));await page.screenshot({path:path.join(root,"output","catalog-stock-mobile.png")});}
   }
   await page.setViewportSize({width:1440,height:1080});
