@@ -12,6 +12,7 @@ let currentMode = "saved";
 let running = 0;
 const memoDrafts = new Map();
 let notificationSettingsDirty = false;
+let salesAutomationDirty=false;
 let mailPoll;
 const deliveryLabels = {pending: "送信待ち", sending: "送信処理中", smtp_accepted: "Gmail送信受付済み", failed: "送信失敗", uncertain: "送信結果不明・受信箱を確認", cancelled: "送信対象外", info_only: "補足情報・メール対象外"};
 function amazonImage(value) {
@@ -81,6 +82,7 @@ function applyCapabilities() {
     $("#verifyCloudMail").disabled = Boolean(readOnly || !capabilities.mailTest);
     $("#testRegistrationMail").disabled = Boolean(readOnly || !capabilities.mailTest || saved.cloudMail?.status !== "verified" || saved.mailOutbox?.some((entry) => entry.key === "cloud-registration-test:v1"));
   }
+  if($("#salesAutomationTest"))$("#salesAutomationTest").disabled=Boolean(readOnly || saved.cloudMail?.status!=="verified" || saved.mailOutbox?.some(item=>item.key==="sales-automation-test:v1"));
   for (const selector of ["#pageLinkForm", "#batchRegistration", "#previewCheck", ".memo-edit", ".link-memo"]) {
     document.querySelectorAll(selector).forEach((element) => {if (readOnly) element.hidden = true;});
   }
@@ -188,7 +190,22 @@ function renderMail() {
   $("#notificationRecipient").textContent = settings ? `通知先：${settings.recipient}` : "通知機能はまだ反映されていません。";
   if (!notificationSettingsDirty) {$("#mailEnabled").checked = Boolean(settings?.mailEnabled); $("#monitoringEnabled").checked = Boolean(settings?.monitoringEnabled);}
   const records = saved?.mailOutbox || [];
+  const automation=saved?.salesAutomation;
+  if($("#salesAutomationControls")){
+    $("#salesAutomationControls").hidden=!automation;
+    $("#notificationSettingsForm").hidden=Boolean(automation);
+    if(automation){
+      $("#notificationRuntimeWarning").hidden=true;
+      $("#mailSettingLabel").textContent=`販売メール：${automation.enabled?"有効":"オフ"}`;
+      $("#monitorSettingLabel").textContent=`自動確認：${automation.enabled?"1日1回":"オフ"}`;
+      if(!salesAutomationDirty)for(const [id,key] of [["salesAutoEnabled","enabled"],["salesAutoFba","fbaSales"],["salesAutoMerchant","merchantSales"],["salesAutoErrors","errorAlerts"]])$("#"+id).checked=automation[key];
+      $("#salesAutomationFields").disabled=Boolean(saved.config.capabilities?.readOnly);
+      $("#salesAutomationStatus").textContent=`${automation.enabled?automation.schedule:"自動確認はオフ"} ／ 最終実行：${date(automation.job.startedAt)} ／ ${{not_run:"まだ実行していません",running:"確認中",complete:"完了",failed:"要確認"}[automation.job.status] || automation.job.status}${automation.job.error?` ／ ${automation.job.error}`:""}`;
+      $("#salesAutomationRun").disabled=!automation.enabled;
+    }
+  }
   if ($("#cloudMailStatus")) $("#cloudMailStatus").textContent = saved?.cloudMail?.status === "verified" ? "Gmail接続済み・自動送信オフ" : saved?.cloudMail?.status === "failed" ? "Gmail接続失敗・未送信" : "Gmail接続は未確認・未送信";
+  if(automation && saved.cloudMail?.status==="verified")$("#cloudMailStatus").textContent="Gmail接続済み（到着は受信箱で確認）";
   $("#mailSummary").textContent = `送信受付 ${records.filter((item) => item.status === "smtp_accepted").length}件 ／ 待ち ${records.filter((item) => ["pending", "sending"].includes(item.status)).length}件 ／ 失敗・要確認 ${records.filter((item) => ["failed", "uncertain"].includes(item.status)).length}件`;
   $("#mailOutbox").innerHTML = records.slice(-10).reverse().map((item) => {
     const first = item.targets[0], listing = saved.listings.find((entry) => entry.listingId === first?.listingId);
@@ -198,6 +215,19 @@ function renderMail() {
     saved = await api(`/mail/${encodeURIComponent(button.dataset.mailRetry)}/retry`, {}); render(); scheduleMailPoll(); status("再試行の結果を更新しました。");
   })));
 }
+$("#salesAutomationForm")?.addEventListener("change",()=>{salesAutomationDirty=true;});
+$("#salesAutomationForm")?.addEventListener("submit",event=>{event.preventDefault();action(async()=>{
+  saved=await api("/automation/settings",{enabled:$("#salesAutoEnabled").checked,fbaSales:$("#salesAutoFba").checked,merchantSales:$("#salesAutoMerchant").checked,errorAlerts:$("#salesAutoErrors").checked});salesAutomationDirty=false;render();status("販売通知の設定を保存しました。");
+});});
+$("#salesAutomationTest")?.addEventListener("click",()=>action(async()=>{
+  if(!window.confirm(`${saved.salesAutomation.recipient} へ販売通知の経路テストを1通送ります。実注文の通知ではありません。`))return;
+  saved=await api("/automation/test",{confirmed:true});render();status("テスト結果を更新しました。Gmailの受信箱で到着を確認してください。同じテストは重複送信しません。");
+}));
+$("#salesAutomationRun")?.addEventListener("click",()=>action(async()=>{
+  status("登録商品の自社SKUと注文を確認しています。数分かかる場合があります。");
+  try{saved=await api("/automation/run",{});render();status(saved.salesAutomation.job.status==="complete"?"販売の確認が完了しました。新しい販売があれば通知します。":saved.salesAutomation.job.error,saved.salesAutomation.job.status!=="complete");}
+  catch(error){saved=await api();render();throw error;}
+}));
 $("#productRefresh").addEventListener("click", () => action(async () => {
   const ids = saved.links.map((item) => item.id);
   let failed = 0;
@@ -210,7 +240,7 @@ $("#productRefresh").addEventListener("click", () => action(async () => {
 }));
 window.addEventListener("beforeunload", (event) => {
   const batchPending = [...document.querySelectorAll('.batch-row input:not([readonly])')].some((input) => input.value.trim());
-  if (memoDrafts.size || batchPending || notificationSettingsDirty || $("#pairAmazon").value || $("#pairYahoo").value) {event.preventDefault(); event.returnValue = "";}
+  if (memoDrafts.size || batchPending || notificationSettingsDirty || salesAutomationDirty || $("#pairAmazon").value || $("#pairYahoo").value) {event.preventDefault(); event.returnValue = "";}
 });
 $("#refreshMonitor").addEventListener("click", () => action(async () => {saved = await api(); render(); status("保存済みの情報を更新しました。Amazon在庫の自動取得は行っていません。");}));
 $("#demoForm").addEventListener("submit", (event) => {event.preventDefault(); action(async () => {
@@ -377,8 +407,9 @@ function render() {
 function renderSales() {
   if (!$("#salesSection") || !saved?.config.capabilities?.salesRead) return;
   const sales = saved.salesHistory;
+  if($("#salesTargetSummary"))$("#salesTargetSummary").innerHTML=(sales?.unresolved || []).map(item=>`<p class="error">${escape(item.title || item.asin)}：${escape(item.reason)}（登録した新品・中古と自社出品の状態を確認してください）</p>`).join("")+(sales?.trackedProducts || []).map(item=>`<p><strong>${escape(item.title)}</strong><br>${escape(item.asin)} ／ ${escape(item.sellerSku)}<br>追跡期間の注文確定：${number(item.confirmedQuantity)} ／ 保留：${number(item.pendingQuantity)}</p>`).join("");
   const labels = {not_started: "販売追跡：未開始", idle: "販売追跡：開始済み・注文未取得", running: "Amazon注文を確認中", complete: "注文確認済み", failed: "注文確認：失敗・販売数は未確認"};
-  $("#salesSummary").textContent = `${labels[sales?.status] || "販売履歴：未確認"} ／ 手動確認・自動通知オフ${sales?.error ? ` ／ ${sales.error}` : ""}`;
+  $("#salesSummary").textContent = `${labels[sales?.status] || "販売履歴：未確認"} ／ ${sales?.automatic?"1日1回の自動確認が有効":"自動通知オフ"}${sales?.error ? ` ／ ${sales.error}` : ""}${sales?.targets?` ／ 追跡 ${new Set(sales.targets.map(t=>t.sellerSku)).size} SKU・自社SKU未確認 ${sales.unresolved.length}件`:""}`;
   $("#salesSummary").classList.toggle("error", sales?.status === "failed");
   const tracked = sales?.products.filter((item) => item.status !== "untracked").length || 0;
   const unresolved = sales?.products.filter((item) => item.status === "unknown").length || 0;
@@ -393,9 +424,9 @@ function renderSales() {
   $("#salesPreview").innerHTML = groups.size ? [...groups.values()].map((group) => {
     const links = sales.products.filter((item) => item.asin === group.asin && item.sellerSku === group.sellerSku).map((item) => saved.links.find((link) => link.id === item.linkId)).filter(Boolean);
     const listing = saved.listings.find((item) => item.listingId === links[0]?.listingId);
-    return `<div class="sales-preview-row"><strong>${escape(listing?.title || group.asin)}</strong><p>今回の注文確定：${group.added}個 ／ 取消・訂正：${group.corrected}個</p><p><a href="https://www.amazon.co.jp/dp/${escape(group.asin)}" target="_blank" rel="noreferrer">ASIN：${escape(group.asin)}</a> ${links.map((link) => `<a href="https://auctions.yahoo.co.jp/jp/auction/${escape(link.listingId)}" target="_blank" rel="noreferrer">ヤフオク：${escape(link.listingId)}</a>`).join(" ")}</p><small>プレビュー・メール未送信 ／ 併売を続けるか確認</small></div>`;
+    return `<div class="sales-preview-row"><strong>${escape(listing?.title || sales.targets?.find(t=>t.asin===group.asin&&t.sellerSku===group.sellerSku)?.title || group.asin)}</strong><p>今回の注文確定：${group.added}個 ／ 取消・訂正：${group.corrected}個</p><p><a href="https://www.amazon.co.jp/dp/${escape(group.asin)}" target="_blank" rel="noreferrer">ASIN：${escape(group.asin)}</a> ${links.map((link) => `<a href="https://auctions.yahoo.co.jp/jp/auction/${escape(link.listingId)}" target="_blank" rel="noreferrer">ヤフオク：${escape(link.listingId)}</a>`).join(" ")}</p><small>今回取得した販売の確認用表示 ／ 送信結果はメール通知欄で確認</small></div>`;
   }).join("") : `<p>${sales?.status === "complete" && !unresolved ? "今回の確認で新しい販売・訂正はありません。メール未送信。" : "今回の販売通知はまだ判定できない商品があります。メール未送信。"}</p>`;
-  $("#salesEvents").innerHTML = (sales?.recentEvents || []).map((event) => `<li>${date(event.at)} ／ ${escape(event.asin)} ／ ${event.delta > 0 ? `注文確定 +${event.delta}個` : `取消・訂正 ${event.delta}個`} ／ プレビュー・未送信</li>`).join("");
+  $("#salesEvents").innerHTML = (sales?.recentEvents || []).map((event) => `<li>${date(event.at)} ／ ${escape(event.asin)} ／ ${event.delta > 0 ? `注文確定 +${event.delta}個` : `取消・訂正 ${event.delta}個`} ／ ${escape(({historical:"過去期間の補完・通知対象外",muted:"この種類は通知オフ",queued:"通知待ち",preview:"プレビュー・未送信",...deliveryLabels})[event.delivery] || event.delivery)}</li>`).join("");
 }
 $("#salesStart")?.addEventListener("click", () => action(async () => {
   saved = await api("/sales/start", {}); render(); status("販売追跡の開始時刻を保存しました。過去の販売数は遡って推定しません。注文確認は2分ほど後から利用できます。");

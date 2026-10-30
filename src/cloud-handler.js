@@ -32,7 +32,7 @@ export async function jsonBody(request) {
   catch {throw fail("入力データを読み取れません", 400);}
 }
 
-export function createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, ownerAccess, fba, mail, sales, verifyIdentity, verifyOwner, assets = new Map()}) {
+export function createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
@@ -42,7 +42,7 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
   const reply = (data, status = 200, extra = {}) => new Response(JSON.stringify(data), {status, headers: {...headers, "Content-Type": "application/json; charset=utf-8", ...extra}});
   const present = ({state, revision}) => ({...monitorView(mail ? mail.view(state) : state, {backend: "postgres", revision, fbaStatus: fba ? fba.status(state) : inactive, notificationStatus: inactive,
     runtimeMessage: fba || mail ? "自動メール・定期確認はオフです。FBA在庫はボタンから更新し、メールは接続確認後に1通だけテストできます。" : "クラウド試行中：実メール・定期確認・外部在庫取得は無効です。",
-      capabilities: {cloud: true, readOnly: config.readOnly, inventoryRead: Boolean(fba), mailTest: Boolean(mail), salesRead: Boolean(sales), externalReads: false, legacyDrafts: Boolean(draftStore), preserveControls: Boolean(draftStore)}}), salesHistory: salesHistoryView(state)});
+      capabilities: {cloud: true, readOnly: config.readOnly, inventoryRead: Boolean(fba), mailTest: Boolean(mail), salesRead: Boolean(sales), salesAutomation:Boolean(automation), externalReads: false, legacyDrafts: Boolean(draftStore), preserveControls: Boolean(draftStore)}}), salesHistory: salesHistoryView(state),...(automation ? {salesAutomation:automation.view(state)} : {})});
   const snapshot = async () => {
     const data = present(await store.readSnapshot());
     if (stock) data.physicalInventory = (await stock.view()).products.map((p) => ({id: p.id, title: p.title, asin: p.asin, unit:p.unit, linkedLinkIds: p.linkedLinkIds, locations: p.totals.locations}));
@@ -125,6 +125,15 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
       if (request.method === "GET" && url.pathname === apiRoot) return reply(await snapshot());
       if (request.method === "GET" && url.pathname === apiRoot + "/fba-status") return reply(fba ? fba.status(await store.read()) : inactive);
       if (request.method === "GET" && url.pathname === apiRoot + "/notification-status") return reply(inactive);
+      if(automation && request.method==="POST" && ["/automation/settings","/automation/test","/automation/run"].some(route=>url.pathname===apiRoot+route)){
+        if(config.readOnly)return reply({error:"現在は閲覧のみです"},403);
+        const match=request.headers.get("if-match");if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match || ""))return reply({error:"最新の保存内容を読み込んでください"},428);
+        const data=await jsonBody(request),expectedRevision=Number(match.slice(1,-1));
+        if(url.pathname.endsWith("/settings"))await automation.settings({...data,expectedRevision});
+        else if(url.pathname.endsWith("/test"))await automation.test({expectedRevision,confirmed:data.confirmed});
+        else {if((await store.readSnapshot()).revision!==expectedRevision)return reply({error:"一覧を更新してください"},409);await automation.run();}
+        return reply(await snapshot());
+      }
       if (request.method === "POST" && ((fba && url.pathname === apiRoot + "/fba-check") || (sales && ["/sales/start", "/sales/check"].some((route) => url.pathname === apiRoot + route)) || (mail && ["/mail/verify", "/mail/test-registration"].some((route) => url.pathname === apiRoot + route)))) {
         if (config.readOnly) return reply({error: "現在は閲覧のみです"}, 403);
         const match = request.headers.get("if-match");

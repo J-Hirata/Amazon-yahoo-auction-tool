@@ -12,7 +12,7 @@ let checks = 0;
 const pass = (message) => {checks++; console.log(`PASS ${message}`);};
 const manifest = JSON.parse(await readFile(path.join(output, "config.json"), "utf8"));
 assert.equal(manifest.version, 3);
-assert.equal(manifest.crons?.length || 0, 0);
+assert.deepEqual(manifest.crons,[{path:"/api/cron/sales",schedule:"0 0 * * *"}]);
 const route = manifest.routes.find((item) => item.dest?.startsWith("/api/inventory?__route="));
 assert.ok(route);
 for (const routePath of ["/api/cloud-config", "/api/session", "/api/link-monitor", "/api/link-monitor/links/fixture-id/memo", "/api/link-monitor/page-links/batch", "/api/physical-stock/preview", "/api/physical-stock/amazon-listings", "/api/physical-stock/export.csv", "/api/export/drafts.csv"]) {
@@ -43,10 +43,10 @@ const forbidden = files.filter((entry) => entry.isFile()).map((entry) => path.re
 assert.deepEqual(forbidden, []);
 pass("private function excludes business records, Windows mail helpers and legacy servers");
 const secrets = [];
-for (const name of ["data/cloud-private/main-admin.env", "data/cloud-private/app-runtime.env", "data/cloud-private/connections.env", ".vercel/.env.production.local", ".vercel/.env.preview.local"]) {
+for (const name of ["data/cloud-private/main-admin.env", "data/cloud-private/app-runtime.env", "data/cloud-private/connections.env", "data/cloud-private/sales-cron.env", ".vercel/.env.production.local", ".vercel/.env.preview.local"]) {
   let values; try {values = parse(await readFile(path.join(root, name)));} catch (error) {if (error.code === "ENOENT") continue; throw error;}
   for (const [key, value] of Object.entries(values)) {
-    if (/DATABASE_URL|OIDC_TOKEN|CLIENT_SECRET|REFRESH_TOKEN|APP_PASSWORD/.test(key) && value) secrets.push(value);
+    if (/DATABASE_URL|OIDC_TOKEN|CLIENT_SECRET|REFRESH_TOKEN|APP_PASSWORD|CRON_SECRET/.test(key) && value) secrets.push(value);
     if (/DATABASE_URL/.test(key) && value) secrets.push(decodeURIComponent(new URL(value).password));
   }
 }

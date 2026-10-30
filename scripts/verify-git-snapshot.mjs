@@ -5,11 +5,11 @@ import {parse} from "dotenv";
 const git = (args) => execFileSync("git", args, {maxBuffer: 16 * 1024 * 1024});
 const names = git(["ls-files", "--cached", "-z"]).toString("utf8").split("\0").filter(Boolean);
 const secrets = [];
-for (const file of [".env.neon-dev", "data/cloud-private/main-admin.env", "data/cloud-private/app-runtime.env", "data/cloud-private/connections.env", ".vercel/.env.production.local", ".vercel/.env.preview.local"]) {
+for (const file of [".env.neon-dev", "data/cloud-private/main-admin.env", "data/cloud-private/app-runtime.env", "data/cloud-private/connections.env", "data/cloud-private/sales-cron.env", ".vercel/.env.production.local", ".vercel/.env.preview.local"]) {
   let values;
   try {values = parse(await readFile(file));} catch (error) {if (error.code === "ENOENT") continue; throw new Error("秘密設定を検査できません。内容は表示しません");}
   for (const [name, value] of Object.entries(values)) {
-    if (!value || !/DATABASE_URL|OIDC_TOKEN|CLIENT_SECRET|REFRESH_TOKEN|APP_PASSWORD/.test(name)) continue;
+    if (!value || !/DATABASE_URL|OIDC_TOKEN|CLIENT_SECRET|REFRESH_TOKEN|APP_PASSWORD|CRON_SECRET/.test(name)) continue;
     secrets.push(value);
     if (/DATABASE_URL/.test(name)) {
       try {secrets.push(decodeURIComponent(new URL(value).password));} catch {throw new Error("DB秘密設定の形式を検査できません。内容は表示しません");}

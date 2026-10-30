@@ -100,12 +100,26 @@
     <div class="section-heading"><h2>Amazonの販売履歴</h2><div class="monitor-inline"><button id="salesStart" type="button">販売追跡を開始</button><button id="salesCheck" type="button">注文を確認</button></div></div>
     <p id="salesSummary" role="status"></p>
     <p id="salesPeriod" class="meta"></p>
+    <details><summary>追跡中の商品・自社SKUの確認</summary><div id="salesTargetSummary"></div></details>
     <details id="salesHistoryDetails"><summary>販売履歴・通知プレビュー</summary><div id="salesPreview"></div><ul id="salesEvents" class="monitor-logs"></ul></details>
   </section>
   <section class="monitor-section">
     <details id="notificationSetup"><summary>メール通知・自動確認</summary>
       <p id="notificationRecipient" class="meta"></p>
       <p id="notificationRuntimeWarning" class="error" hidden>通知機能の反映にはツールの再起動が必要です。</p>
+      <div id="salesAutomationControls" hidden>
+        <p>登録した商品のAmazon販売を1日1回、午前9時台に確認します。画面・PCを閉じても動きます。販売がない日は販売メールを送りません。</p>
+        <form id="salesAutomationForm"><fieldset id="salesAutomationFields">
+          <label class="monitor-check"><input id="salesAutoEnabled" type="checkbox">販売の自動確認・メールを有効にする</label>
+          <label class="monitor-check"><input id="salesAutoFba" type="checkbox">FBAの販売・取消を通知する</label>
+          <label class="monitor-check"><input id="salesAutoMerchant" type="checkbox">自社発送の販売・取消を通知する</label>
+          <label class="monitor-check"><input id="salesAutoErrors" type="checkbox">自動確認の失敗を通知する</label>
+          <button type="submit">販売通知の設定を保存</button>
+        </fieldset></form>
+        <div class="monitor-inline"><button id="salesAutomationTest" type="button">販売通知の経路を1通テスト</button><button id="salesAutomationRun" type="button">今すぐ販売を確認して通知する</button></div>
+        <p id="salesAutomationStatus" role="status"></p>
+        <p class="meta">過去期間の補完は新着メールにしません。数量は自動減算しません。在庫切れ通知・販売見直しの期限メールは今後対応します。</p>
+      </div>
       <form id="notificationSettingsForm"><fieldset id="notificationSettingsFields" disabled>
         <label class="monitor-check"><input id="mailEnabled" type="checkbox">新しい紐付けと確認結果をメールで通知する</label>
         <label class="monitor-check"><input id="monitoringEnabled" type="checkbox">PC稼働中、30分ごとに在庫・出品状態を確認する</label>

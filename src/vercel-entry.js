@@ -2,6 +2,7 @@ import path from "node:path";
 import {createCloudRuntime} from "./cloud-runtime.js";
 import {attachDatabasePool} from "@vercel/functions";
 import {publicDemo} from "./public-demo.js";
+import {timingSafeEqual} from "node:crypto";
 
 export function vercelCloudRequest(request) {
   const url = new URL(request.url);
@@ -37,11 +38,23 @@ export function createVercelEntry({runtimeFactory = createCloudRuntime, environm
       const canonical = vercelCloudRequest(request);
       if (!canonical) return Response.json({error: "未対応のURLです"}, {status: 404, headers: {"Cache-Control": "no-store"}});
       if (new URL(canonical.url).pathname === "/api/demo") return publicDemo(canonical, environment());
+      const isCron=new URL(canonical.url).pathname==="/api/cron/sales";
+      if(isCron){
+        const env=environment(),secret=env.CRON_SECRET || "",header=canonical.headers.get("authorization") || "";
+        const expected=`Bearer ${secret}`;
+        if(canonical.method!=="GET" || new URL(canonical.url).search || env.VERCEL_ENV!=="production" || new URL(canonical.url).origin!==env.ASIN_PUBLIC_ORIGIN || secret.length<32 || Buffer.byteLength(header)!==Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(header),Buffer.from(expected)))return Response.json({error:"認証が必要です"},{status:401,headers:{"Cache-Control":"no-store"}});
+      }
       runtime ||= Promise.resolve(runtimeFactory({assetDirectory: path.resolve("dist/cloud"), env: vercelCloudEnvironment(environment())})).then((value) => {
         if (value.pool) attachPool(value.pool);
         return value;
       });
-      return await (await runtime).handler(canonical);
+      const active=await runtime;
+      if(isCron){
+        if(!active.runSalesAutomation)return Response.json({error:"自動確認は未設定です"},{status:503});
+        const result=await active.runSalesAutomation();
+        return Response.json(result,{status:result.status==="failed"?503:200,headers:{"Cache-Control":"no-store"}});
+      }
+      return await active.handler(canonical);
     } catch {
       runtime = undefined;
       return Response.json({error: "公開設定を確認中です。既存データは変更していません"}, {

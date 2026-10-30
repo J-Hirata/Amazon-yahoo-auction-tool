@@ -57,12 +57,12 @@ test("failed Vercel initialization returns no secrets and can recover without em
   assert.doesNotMatch(await failed.text(), /password|private\.example|postgres:/);
   assert.equal((await entry(new Request("https://inventory.example/api/link-monitor"))).status, 200);
 });
-test("Vercel deployment configuration has no scheduler, proxy rewrite or production side effect", async () => {
+test("Vercel deployment has one daily authenticated sales job and retains canonical routing", async () => {
   const config = JSON.parse(await readFile(new URL("../vercel.json", import.meta.url), "utf8"));
   assert.equal(config.outputDirectory, "dist/cloud");
   assert.equal(config.framework, null);
   assert.deepEqual(config.regions, ["sin1"]);
-  assert.equal(config.crons, undefined);
+  assert.deepEqual(config.crons,[{path:"/api/cron/sales",schedule:"0 0 * * *"}]);
   assert.deepEqual(config.rewrites, [{source: "/api/:path*", destination: "/api/inventory?__route=/:path*"}]);
   assert.equal(config.functions["api/**/*.js"].includeFiles, "dist/cloud/**");
 });

@@ -16,8 +16,10 @@ import {cloudMailConfig, createCloudMailTransport, createCloudMail} from "./clou
 import {validatePhysicalStock} from "./physical-stock.js";
 import {createCloudStock} from "./cloud-stock.js";
 import {createStockPhotoRefresh} from "./cloud-stock-photos.js";
-import {createStockAmazonRefresh} from "./stock-amazon-listings.js";
+import {createStockAmazonRefresh,readOwnAmazonListings} from "./stock-amazon-listings.js";
 import {readPlanningCatalog} from "./planning-catalog.js";
+import {resolveSalesSources} from "./sales-sources.js";
+import {createCloudSalesAutomation} from "./cloud-sales-automation.js";
 
 const fileTypes = {
   "sales-planning.js":"text/javascript; charset=utf-8", "sales-planning.css":"text/css; charset=utf-8", "cloud-planning-view.html":"text/html; charset=utf-8",
@@ -50,9 +52,23 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const stockAmazon = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:cloudAmazonConfig(env)}) : undefined;
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
-  const sales = env.ASIN_AMAZON_CLIENT_ID ? createCloudSales({store, config: cloudAmazonConfig(env)}) : undefined;
-  const mail = env.ASIN_GMAIL_USER ? createCloudMail({store, transport: createCloudMailTransport(cloudMailConfig(env))}) : undefined;
-  const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, ownerAccess, fba, mail, sales, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
+  const readTargets=async()=>{
+    const [monitor,physical,plans]=await Promise.all([store.read(),stockStore?.read(),planningStore?.read()]);
+    const sources=monitor.links.filter(l=>l.verified&&!l.observationConflict).map(l=>{const p=monitor.catalog.find(p=>p.id===l.catalogId),y=monitor.listings.find(y=>y.listingId===l.listingId);return{sourceId:`link:${l.id}`,linkId:l.id,asin:l.asin || p?.asin,sellerSku:l.matchBy==="asin"?"":p?.sellerSku,title:y?.title || p?.title,condition:l.matchBy==="asin"?"unknown":/^new/i.test(p?.condition || "")?"new":/^used/i.test(p?.condition || "")?"used":"unknown"};});
+    for(const p of physical?.products || [])if(p.asin)sources.push({sourceId:`stock:${p.id}`,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
+    for(const p of plans?.plans || [])if(p.asin)sources.push({sourceId:`plan:${p.id}`,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
+    const asins=[...new Set(sources.map(s=>s.asin).filter(a=>/^[A-Z0-9]{10}$/.test(a)))];
+    if(!asins.length)throw new Error("追跡するASINを登録してください");
+    const amazon=cloudAmazonConfig(env),rows=[];
+    let snapshot;
+    for(let i=0;i<asins.length;i+=20){snapshot=await readOwnAmazonListings({asins:asins.slice(i,i+20),config:amazon});rows.push(...snapshot.rows);}
+    return resolveSalesSources(sources.filter(s=>asins.includes(s.asin)),{...snapshot,asins,rows},amazon);
+  };
+  const sales = env.ASIN_AMAZON_CLIENT_ID ? createCloudSales({store, config: cloudAmazonConfig(env),readTargets}) : undefined;
+  const transport=env.ASIN_GMAIL_USER ? createCloudMailTransport(cloudMailConfig(env)) : undefined;
+  const mail = transport ? createCloudMail({store,transport}) : undefined;
+  const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport}) : undefined;
+  const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
-  return {config, handler, pool};
+  return {config, handler, pool,sales,automation,runSalesAutomation:automation ? ()=>automation.run() : undefined};
 }

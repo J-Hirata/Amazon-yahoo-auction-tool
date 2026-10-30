@@ -24,7 +24,7 @@ export async function readAmazonSales({config, targets, after, before, fetchImpl
   const rows = new Map(), seenTokens = new Set();
   let nextToken, pages = 0, scanned = 0;
   do {
-    if (++pages > maxPages) throw new Error("注文の確認がページ上限で停止しました。期間を完了済みにはしません");
+    if (++pages > maxPages) throw Object.assign(new Error("注文の確認がページ上限で停止しました。期間を完了済みにはしません"),{code:"SALES_PAGE_LIMIT"});
     const url = new URL("https://sellingpartnerapi-fe.amazon.com/orders/2026-01-01/orders");
     for (const [key, value] of Object.entries({marketplaceIds: config.marketplaceId, lastUpdatedAfter: after, lastUpdatedBefore: before,
       maxResultsPerPage: "100", includedData: "FULFILLMENT,CANCELLATION", ...(nextToken ? {paginationToken: nextToken} : {})})) url.searchParams.set(key, value);

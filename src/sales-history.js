@@ -36,8 +36,8 @@ export function applySalesResult(tracking, result, at) {
       const delta = next.confirmedQuantity - (previous?.confirmedQuantity || 0);
       if (delta) {
         const event = {id: createHash("sha256").update(JSON.stringify([id, row.updatedAt, next.confirmedQuantity, previous?.updatedAt || ""])).digest("hex"),
-          orderId: row.orderId, itemId: row.itemId, asin: row.asin, sellerSku: row.sellerSku, at, eligibleFromAt: next.eligibleFromAt,
-          kind: delta > 0 ? "order_confirmed" : "order_corrected", delta, delivery: "preview"};
+          orderId: row.orderId, itemId: row.itemId, asin: row.asin, sellerSku: row.sellerSku, at, updatedAt:row.updatedAt, eligibleFromAt: next.eligibleFromAt,
+          kind: delta > 0 ? "order_confirmed" : "order_corrected", delta, fulfillment:row.fulfillment || "UNKNOWN", delivery: "preview"};
         tracking.events.push(event); created.push(event);
       }
     }
@@ -57,18 +57,26 @@ export function salesHistoryView(state, at = new Date().toISOString()) {
   const interrupted = sync.status === "running" && Date.parse(sync.leaseUntil || "") <= Date.parse(at);
   const status = interrupted ? "failed" : sync.status || "idle";
   const products = state.links.map((link) => {
-    const target = tracking.trackers.find((t) => t.linkId === link.id);
+    const targetsForLink=tracking.trackers.filter(t=>t.linkId===link.id);
+    const target = targetsForLink[0];
     if (!target) return {linkId: link.id, status: "untracked", confirmedQuantity: null};
-    const rows = tracking.orders.filter((row) => row.sellerSku === target.sellerSku && row.asin === target.asin && row.eligibleFromAt && Date.parse(row.eligibleFromAt) >= Date.parse(target.startedAt));
+    const rows = tracking.orders.filter((row) => targetsForLink.some(t=>row.sellerSku === t.sellerSku && row.asin===t.asin && row.eligibleFromAt && Date.parse(row.eligibleFromAt)>=Date.parse(t.startedAt)));
     const unknown = rows.some((row) => row.status === "UNKNOWN");
     const complete = status === "complete" && Boolean(tracking.checkedThrough) && Date.parse(tracking.checkedThrough) >= Date.parse(target.startedAt);
-    return {...target, status: !complete || unknown ? "unknown" : "complete", confirmedQuantity: complete && !unknown ? rows.reduce((sum, row) => sum + row.confirmedQuantity, 0) : null,
+    return {...target, sellerSkus:[...new Set(targetsForLink.map(t=>t.sellerSku))], status: !complete || unknown ? "unknown" : "complete", confirmedQuantity: complete && !unknown ? rows.reduce((sum, row) => sum + row.confirmedQuantity, 0) : null,
       pendingQuantity: rows.filter((row) => pending.has(row.status)).reduce((sum, row) => sum + (row.quantity || 0), 0),
       checkedThrough: tracking.checkedThrough};
   });
   const last = new Set(tracking.lastBatchEventIds || []);
+  const trackedProducts=[...new Map(tracking.trackers.map(t=>[t.sellerSku,t])).values()].map(target=>{
+    const rows=tracking.orders.filter(row=>row.sellerSku===target.sellerSku&&row.asin===target.asin&&row.eligibleFromAt);
+    const complete=status==="complete" && Boolean(tracking.checkedThrough),unknown=rows.some(row=>row.status==="UNKNOWN");
+    return{asin:target.asin,sellerSku:target.sellerSku,title:target.title || target.asin,condition:target.condition,
+      confirmedQuantity:complete&&!unknown?rows.reduce((sum,row)=>sum+row.confirmedQuantity,0):null,
+      pendingQuantity:rows.filter(row=>pending.has(row.status)).reduce((sum,row)=>sum+(row.quantity || 0),0)};
+  });
   return {status, startedAt: tracking.startedAt, checkedThrough: tracking.checkedThrough, checkedAt: sync.checkedAt, nextAllowedAt: sync.nextAllowedAt,
     error: interrupted ? "前回の注文確認が途中で停止しました。販売ゼロとは扱いません" : sync.error || null,
     catchingUp: Boolean(tracking.checkedThrough && Date.parse(tracking.checkedThrough) < Date.parse(at) - 15 * 60000),
-    products, events: status === "complete" ? tracking.events.filter((event) => last.has(event.id)) : [], recentEvents: tracking.events.slice(-50).reverse(), automatic: false};
+    products, trackedProducts, targets:tracking.trackers, unresolved:state.salesTargets?.unresolved || [], events: status === "complete" ? tracking.events.filter((event) => last.has(event.id)) : [], recentEvents: tracking.events.slice(-50).reverse(), automatic: Boolean(state.salesAutomation?.enabled)};
 }
