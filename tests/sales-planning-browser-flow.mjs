@@ -9,9 +9,9 @@ export async function verifyPlanningUI({page,planningStore,stockStore,monitorSto
   await nav().getByText("販売の見直し",{exact:true}).click();await page.locator("#cloudApp:not([hidden]) #planningCount").waitFor();
   assert.equal(await rows.count(),0);assert.equal(await page.locator("#loginPanel").isVisible(),false);
   await page.locator("#planningNew").click();
-  const source=await form.locator('[name="source"] option').evaluateAll(els=>els.find(el=>el.value.startsWith("stock:"))?.value);assert.ok(source);
-  await form.locator('[name="source"]').selectOption(source);assert.equal(await form.locator('[name="asin"]').evaluate(el=>el.readOnly),true);
-  await form.locator('[name="availableOn"]').fill(date(-20));await form.locator('[name="availabilityNote"]').fill("テスト：対象SKUの販売可能を確認");await form.locator('[name="salesMemo"]').fill("確認した20日間で2個。手入力メモ。");
+  await form.locator('#planningSources summary').click();const source=form.locator('[data-plan-source^="stock:"]').first();assert.ok(await source.count());
+  await source.click();assert.equal(await form.locator('[name="asin"]').evaluate(el=>el.readOnly),true);
+  await form.locator('[name="availableOn"]').fill(date(-20));await form.locator('[name="salesMemo"]').fill("確認した20日間で2個。手入力メモ。");
   await save();assert.match(await rows.first().textContent(),/見直し時期/);assert.match(await rows.first().textContent(),/コンテナ/);
   await page.reload();await rows.first().waitFor();assert.equal((await planningStore.read()).plans.length,1);assert.equal((await planningStore.read()).plans[0].durationDays,14);
   pass("sales-planning page saves an explicit stock reference and actual availability date without copying quantities; reload preserves the due review");
@@ -20,10 +20,10 @@ export async function verifyPlanningUI({page,planningStore,stockStore,monitorSto
   assert.equal((await planningStore.read()).plans[1].availableOn,"");
   await page.locator('[data-plan-filter="waiting"]').click();assert.equal(await rows.count(),1);assert.match(await rows.textContent(),/販売・広告開始待ち/);
   await page.locator('[data-plan-filter="all"]').click();
-  await page.locator("#planningNew").click();await form.locator('[name="title"]').fill("広告を2週間確認する商品");await form.locator('[name="kind"]').selectOption("advertising");await form.locator('[name="availableOn"]').fill(date(-10));await form.locator('[name="availabilityNote"]').fill("テスト：販売可能を確認");await form.locator('[name="adStartedOn"]').fill(date(-3));await save();
+  await page.locator("#planningNew").click();await form.locator('[name="title"]').fill("広告を2週間確認する商品");await form.locator('[name="kind"]').selectOption("advertising");await form.locator('[name="availableOn"]').fill(date(-10));await form.locator('[name="adStartedOn"]').fill(date(-3));await save();
   assert.equal((await planningStore.read()).plans[2].adStartedOn,date(-3));assert.match(await page.locator("#planningRows").textContent(),/広告テスト中/);
   const firstId=(await planningStore.read()).plans[0].id;
-  await page.locator(`[data-plan-edit="${firstId}"]`).click();await form.locator('[name="decision"]').selectOption("yahoo");await form.locator('[name="note"]').fill("売れ行きを見てヤフオク併売を検討。まだ出品しない。");await save();
+  await page.locator(`[data-plan-edit="${firstId}"]`).click();await form.locator('[name="decisions"][value="yahoo"]').check();await form.locator('[name="note"]').fill("売れ行きを見てヤフオク併売を検討。まだ出品しない。");await save();
   await page.locator(`[data-plan-history="${firstId}"]`).click();assert.match(await page.locator("#planningHistoryRows").textContent(),/方針未定 → ヤフオク併売を検討/);await page.locator("#planningHistoryClose").click();
   pass("pre-delivery plans never start from registration; separate ad start, adjustable period, decision history and due/waiting filters work without executing ads or listings");
 

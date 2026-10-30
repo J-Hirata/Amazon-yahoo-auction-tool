@@ -31,8 +31,35 @@ test("advertising has a separate actual start date; hold and completed plans nev
   p.status="closed";assert.equal(planningSchedule(p,at).dueOn,"");
   const scheduled={...plan(),kind:"review",reviewOn:"2026-11-03"};assert.equal(planningSchedule(scheduled,at).stage,"scheduled");assert.equal(planningSchedule(scheduled,at).dueOn,"2026-11-03");
 });
-test("invalid/future dates, unsupported periods and dates without evidence cannot be saved",()=>{
-  for(const values of [{availableOn:"2026-02-30",availabilityNote:"確認"},{availableOn:"2026-11-01",availabilityNote:"予定"},{availableOn:"2026-10-01"},{durationDays:0},{durationDays:1.5},{durationDays:366},{adStartedOn:"2026-10-01"}])assert.throws(()=>applyPlanningCommand(emptySalesPlanning(),command(values),{actor,at}));
+test("invalid/future dates and unsupported periods cannot be saved; evidence text is optional",()=>{
+  for(const values of [{availableOn:"2026-02-30",availabilityNote:"確認"},{availableOn:"2026-11-01",availabilityNote:"予定"},{durationDays:0},{durationDays:1.5},{durationDays:366},{adStartedOn:"2026-10-01"}])assert.throws(()=>applyPlanningCommand(emptySalesPlanning(),command(values),{actor,at}));
+  const state=emptySalesPlanning();applyPlanningCommand(state,command({availableOn:"2026-10-01",availabilityNote:"",durationDays:10}),{actor,at});
+  assert.equal(planningSchedule(state.plans[0],at).dueOn,"2026-10-11");
+});
+test("ASIN-only registration remains waiting and saves catalog images without inventing stock",()=>{
+  const state=emptySalesPlanning(),input=command({title:"",sellerSku:"",condition:"unknown",setContents:"",imageUrl:"https://m.media-amazon.com/images/I/fixture.jpg"});
+  applyPlanningCommand(state,input,{actor,at});assert.equal(state.plans[0].title,"B000TEST01");assert.equal(state.plans[0].imageSource,"amazon_catalog");assert.equal(planningSchedule(state.plans[0],at).stage,"waiting");
+  const edit={...input,kind:"edit",operationId:randomUUID(),plan:{...input.plan,title:"本人の商品名"}};delete edit.plan.imageUrl;
+  applyPlanningCommand(state,edit,{actor,at});assert.equal(state.plans[0].imageUrl,"https://m.media-amazon.com/images/I/fixture.jpg");assert.equal(state.plans.length,1);
+  assert.throws(()=>applyPlanningCommand(emptySalesPlanning(),command({title:"",asin:""}),{actor,at}),/ASINまたは商品名/);
+  assert.throws(()=>applyPlanningCommand(emptySalesPlanning(),command({imageUrl:"https://other.invalid/a.png"}),{actor,at}),/画像/);
+});
+test("multiple next actions persist together, preserve history and reject old-client loss",()=>{
+  const state=emptySalesPlanning(),input=command({decisions:["amazon","advertising","yahoo","rakuten","catalog","replenish"]});
+  applyPlanningCommand(state,input,{actor,at});assert.equal(state.plans[0].decisions.length,6);assert.equal(state.plans[0].decision,"amazon");
+  const next={...input,kind:"edit",operationId:randomUUID(),plan:{...input.plan,note:"追加納品も検討"}};applyPlanningCommand(state,next,{actor,at});assert.equal(state.events[1].before.decisions.length,6);
+  const old={...next,operationId:randomUUID(),plan:{...next.plan}};delete old.plan.decisions;assert.throws(()=>applyPlanningCommand(state,old,{actor,at}),/複数の方針/);
+  for(const decisions of [[],["undecided","amazon"],["amazon","amazon"],["invalid"]])assert.throws(()=>applyPlanningCommand(emptySalesPlanning(),command({decisions}),{actor,at}));
+});
+test("catalog lookup is owner-only, read-only, validates ASIN and leaves documents unchanged",async()=>{
+  const {store,monitorStore}=setup(),stock={view:async()=>({products:[]})},calls=[];
+  const planning=createCloudPlanning({store,stock,monitorStore,readCatalog:async asin=>{calls.push(asin);return{asin,title:"取得した名前",imageUrl:""};}});
+  const base="https://inventory.example",handle=createCloudHandler({config:{origin:base,authUrl:"https://auth.example",readOnly:false},store:monitorStore,planning,verifyOwner:async req=>({status:req.headers.get("authorization")==="Bearer owner"?200:401,userId:actor})});
+  const req=(asin,headers={})=>new Request(base+"/api/sales-planning/catalog",{method:"POST",headers:{"Content-Type":"application/json",...headers},body:JSON.stringify({asin})});
+  assert.equal((await handle(req("B000TEST01"))).status,401);
+  assert.equal((await handle(req("bad",{Authorization:"Bearer owner"}))).status,400);
+  assert.equal((await handle(req("B000TEST01",{Authorization:"Bearer owner",Origin:"https://other.invalid"}))).status,403);
+  const before=await store.readSnapshot(),result=await handle(req("B000TEST01",{Authorization:"Bearer owner"}));assert.equal(result.status,200);assert.equal((await result.json()).title,"取得した名前");assert.deepEqual(await store.readSnapshot(),before);assert.deepEqual(calls,["B000TEST01"]);
 });
 test("plans never merge same-ASIN condition/SKU variants or replace identity during review",()=>{
   const state=emptySalesPlanning(),first=command();applyPlanningCommand(state,first,{actor,at});

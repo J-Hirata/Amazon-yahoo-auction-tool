@@ -17,6 +17,7 @@ import {validatePhysicalStock} from "./physical-stock.js";
 import {createCloudStock} from "./cloud-stock.js";
 import {createStockPhotoRefresh} from "./cloud-stock-photos.js";
 import {createStockAmazonRefresh} from "./stock-amazon-listings.js";
+import {readPlanningCatalog} from "./planning-catalog.js";
 
 const fileTypes = {
   "sales-planning.js":"text/javascript; charset=utf-8", "sales-planning.css":"text/css; charset=utf-8", "cloud-planning-view.html":"text/html; charset=utf-8",
@@ -43,7 +44,8 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const stockStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "physical-stock", validate: validatePhysicalStock}) : undefined;
   const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
   const planningStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"sales-planning",validate:validateSalesPlanning}):undefined;
-  const planning=planningStore?createCloudPlanning({store:planningStore,stock,monitorStore:store}):undefined;
+  const planning=planningStore?createCloudPlanning({store:planningStore,stock,monitorStore:store,
+    readCatalog:env.ASIN_AMAZON_CLIENT_ID?asin=>readPlanningCatalog({asin,config:cloudAmazonConfig(env)}):undefined}):undefined;
   const stockPhotos = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockPhotoRefresh({store: stockStore, config: cloudAmazonConfig(env)}) : undefined;
   const stockAmazon = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:cloudAmazonConfig(env)}) : undefined;
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;

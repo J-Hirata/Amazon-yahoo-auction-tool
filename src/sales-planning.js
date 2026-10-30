@@ -1,4 +1,5 @@
 import {createHash} from "node:crypto";
+import {stockImageUrl} from "./stock-images.js";
 
 const uuid=value=>typeof value==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
@@ -12,11 +13,18 @@ function fields(input,at){
   const asin=text(input.asin,10).toUpperCase();if(asin&&!/^[A-Z0-9]{10}$/.test(asin))throw fail("ASINは英数字10文字で入力してください");
   const source={kind:choose(input.source?.kind||"manual",["manual","stock","link"]),id:text(input.source?.id,200)};
   if(source.kind==="manual"?source.id:!uuid(source.id))throw fail("参照する在庫・紐付け商品を確認してください");
-  const result={title:text(input.title,200,true),asin,sellerSku:text(input.sellerSku,200),condition:choose(input.condition,["new","used","parts","unknown"]),setContents:text(input.setContents,300),source,
+  const title=text(input.title,200)||asin;
+  if(!title)throw fail("ASINまたは商品名を入力してください");
+  const imageUrl=text(input.imageUrl,2048);
+  if(imageUrl&&!stockImageUrl(imageUrl))throw fail("商品画像のURLを確認してください");
+  const allowedDecisions=["undecided","amazon","advertising","yahoo","rakuten","catalog","replenish","price","return","hold"];
+  const decisions=input.decisions===undefined?[input.decision||"undecided"]:input.decisions;
+  if(!Array.isArray(decisions)||!decisions.length||decisions.length>allowedDecisions.length||new Set(decisions).size!==decisions.length||decisions.some(d=>!allowedDecisions.includes(d))||decisions.length>1&&decisions.includes("undecided"))throw fail("次の方針を選び直してください");
+  const result={title,asin,imageUrl,imageSource:imageUrl?"amazon_catalog":"",sellerSku:text(input.sellerSku,200),condition:choose(input.condition,["new","used","parts","unknown"]),setContents:text(input.setContents,300),source,
     kind:choose(input.kind,["amazon","advertising","review"]),status:choose(input.status,["active","hold","closed"]),availableOn:date(input.availableOn),availabilityNote:text(input.availabilityNote,500),adStartedOn:date(input.adStartedOn),
-    durationDays:input.durationDays,reviewOn:date(input.reviewOn),decision:choose(input.decision||"undecided",["undecided","amazon","advertising","yahoo","rakuten","price","return","hold"]),note:text(input.note,1000),salesMemo:text(input.salesMemo,500)};
+    durationDays:input.durationDays,reviewOn:date(input.reviewOn),decision:decisions[0],decisions:[...decisions],note:text(input.note,1000),salesMemo:text(input.salesMemo,500)};
   if(!Number.isSafeInteger(result.durationDays)||result.durationDays<1||result.durationDays>365)throw fail("確認期間は1〜365日の整数で入力してください");
-  if(result.availableOn&&(!result.availabilityNote||result.availableOn>planningToday(at)))throw fail("実際に販売可能だった日と確認根拠を入力してください。未来日や登録日からの推定では開始しません");
+  if(result.availableOn&&result.availableOn>planningToday(at))throw fail("実際に販売可能だった日を入力してください。未来日では開始しません");
   if(result.adStartedOn&&(!result.availableOn||result.adStartedOn<result.availableOn||result.adStartedOn>planningToday(at)))throw fail("広告開始日は販売可能日以降の実際の日付を入力してください");
   return result;
 }
@@ -42,7 +50,9 @@ export function applyPlanningCommand(state,command,{actor,at=new Date().toISOStr
   if(!uuid(command?.operationId)||!uuid(command?.planId)||typeof actor!=="string"||!actor||actor.length>256||!Number.isFinite(Date.parse(at)))throw fail("保存用のIDと本人を確認してください");
   const digest=planningDigest(command),previous=state.receipts.find(r=>r.id===command.operationId);
   if(previous){if(previous.digest!==digest||previous.actor!==actor)throw fail("同じ操作IDの内容が異なります",409);return{...previous,replayed:true};}
-  const kind=choose(command.kind,["create","edit"]),values=fields(command.plan||{},at),existing=state.plans.find(p=>p.id===command.planId);
+  const kind=choose(command.kind,["create","edit"]),existing=state.plans.find(p=>p.id===command.planId);
+  if(existing?.decisions?.length>1&&command.plan?.decisions===undefined)throw fail("複数の方針が保存されています。画面を更新してから編集してください",409);
+  const values=fields({...command.plan,imageUrl:command.plan?.imageUrl===undefined?existing?.imageUrl||"":command.plan.imageUrl},at);
   if(kind==="create"&&existing||kind==="edit"&&!existing)throw fail("販売計画が更新されています。一覧を確認してください",409);
   const identityChanged=existing&&["asin","sellerSku","condition","setContents"].some(k=>existing[k]!==values[k]);
   if(existing&&(["asin","sellerSku","setContents"].some(k=>existing[k]&&existing[k]!==values[k])||existing.condition!=="unknown"&&existing.condition!==values.condition||existing.source.kind!==values.source.kind||existing.source.id!==values.source.id))throw fail("別の商品・SKU・状態へ変更する場合は計画を分けて登録してください",409);

@@ -280,6 +280,8 @@ function render() {
       ${currentMode === "demo" ? "" : `<button type="button" class="product-preview-button" data-product-preview="${escape(link.id)}">画像・商品名を再取得</button><button type="button" class="unlink-button" data-unlink="${escape(link.id)}">解除</button>`}</details></td></tr>`;
   }).join("") : '<tr><td colspan="4">まだ紐付けはありません。</td></tr>';
   if (currentMode === "saved") data.links.forEach((link, index) => {
+    const review=document.createElement("a");review.href=`/?view=planning#plan=link:${encodeURIComponent(link.id)}`;review.textContent="販売の見直しへ追加";review.className="planning-entry-link";review.style.display="block";
+    $("#linkRows").children[index].lastElementChild.append(review);
     const asin = link.assessment.product?.asin || link.asin;
     const ownStock = (saved.physicalInventory || []).filter((p) => p.linkedLinkIds.includes(link.id) || asin && p.asin === asin);
     if (ownStock.length) {

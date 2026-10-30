@@ -73,6 +73,9 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
       if (owner.status !== 200) return reply({error: owner.status === 403 ? "このアカウントには利用権限がありません" : "ログインが必要です"}, owner.status);
       if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly, physicalStock: Boolean(stock),salesPlanning:Boolean(planning)});
       if(planning&&request.method==="GET"&&url.pathname==="/api/sales-planning")return reply(await planning.view());
+      if(planning&&request.method==="POST"&&url.pathname==="/api/sales-planning/catalog"){
+        const data=await jsonBody(request);return reply(await planning.lookup(data.asin));
+      }
       const planningOperation=url.pathname.match(/^\/api\/sales-planning\/operations\/([0-9a-f-]{36})$/i);
       if(planning&&planningOperation&&request.method==="GET")return reply(await planning.operation(planningOperation[1],owner.userId));
       if(planning&&url.pathname==="/api/sales-planning/operations"&&request.method==="POST"){
