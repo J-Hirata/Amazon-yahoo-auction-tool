@@ -131,6 +131,7 @@ export async function openPlanning({userId,readOnly}){
   function open(plan){
     lookupSerial++;lookupAsin="";lookupPromise=null;autoTitle="";clearTimeout(lookupTimer);
     editing=plan||null;planId=plan?.id||crypto.randomUUID();form.reset();$("#planningFormStatus").textContent="";
+    form.elements.imageUrl.value="";form.elements.availabilityNote.value="";
     $("#planningCatalogStatus").textContent="";$("#planningSourceSearch").value="";$("#planningSources").open=false;$("#planningSources").hidden=Boolean(plan);$("#planningManual").hidden=true;
     $("#planningDialogTitle").textContent=plan?"方針・確認日を変更":"商品を追加";
     const selected=new Set(plan?.decisions||[plan?.decision||"undecided"]);
