@@ -180,7 +180,7 @@ export async function openPlanning({userId,readOnly}){
     if(validAsin(asin))lookupTimer=setTimeout(()=>void lookupProduct(),350);
   });
   form.elements.asin.addEventListener("blur",()=>{clearTimeout(lookupTimer);void lookupProduct();});
-  dialog.addEventListener("close",()=>{lookupSerial++;clearTimeout(lookupTimer);});
+  dialog.addEventListener("close",()=>{if(!dialog.open){lookupSerial++;clearTimeout(lookupTimer);}});
   form.elements.availableOn.addEventListener("change",updateFields);
   for(const button of document.querySelectorAll("[data-plan-close]"))button.addEventListener("click",()=>dialog.close());
   $("#planningHistoryClose").addEventListener("click",()=>$("#planningHistory").close());
