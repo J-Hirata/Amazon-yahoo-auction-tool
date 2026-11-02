@@ -12,6 +12,18 @@ const command=values=>({operationId:randomUUID(),planId:randomUUID(),kind:"creat
 function memory(state){let value=structuredClone(state),revision=0;return{read:async()=>structuredClone(value),readSnapshot:async()=>({state:structuredClone(value),revision}),update:async(fn,options={})=>{if(options.expectedRevision!==undefined&&options.expectedRevision!==revision)throw Object.assign(new Error("更新競合"),{code:"STORAGE_CONFLICT"});const copy=structuredClone(value),result=await fn(copy);value=copy;revision++;return result;}};}
 const setup=()=>{const store=memory(emptySalesPlanning()),monitorStore=memory(emptyMonitor()),stock={view:async()=>({products:[]})};return{store,monitorStore,planning:createCloudPlanning({store,stock,monitorStore,now:()=>at})};};
 
+test("a confirmed correction follows the same stock source and preserves dates, decisions and history",()=>{
+  const state=emptySalesPlanning(),source={kind:"stock",id:randomUUID(),asin:"B000TEST01",sellerSku:"USED-ONE",condition:"used",setContents:"スタンドなし",imageUrl:""};
+  const c=command({source:{kind:source.kind,id:source.id},availableOn:"2026-10-20",decisions:["amazon","advertising"]});
+  applyPlanningCommand(state,c,{actor,at,sources:[source]});const before=structuredClone(state.plans[0]);
+  const fixed={...source,asin:"B000TEST02",sellerSku:"USED-TWO"},operation={operationId:randomUUID(),kind:"reconcile_source",planId:c.planId,expectedAsin:before.asin,confirmed:true,reason:"元在庫の誤登録訂正"};
+  for(const patch of [{confirmed:false},{expectedAsin:"B000TEST03"},{reason:""}])assert.throws(()=>applyPlanningCommand(state,{...operation,...patch},{actor,at,sources:[fixed]}));
+  assert.throws(()=>applyPlanningCommand(state,operation,{actor,at,sources:[{...fixed,condition:"new"}]}));
+  applyPlanningCommand(state,operation,{actor,at,sources:[fixed]});const after=state.plans[0];
+  assert.equal(after.asin,fixed.asin);assert.equal(after.sellerSku,fixed.sellerSku);assert.equal(after.availableOn,before.availableOn);assert.deepEqual(after.decisions,before.decisions);assert.equal(after.id,before.id);assert.equal(state.events.at(-1).before.asin,before.asin);
+  assert.equal(applyPlanningCommand(state,operation,{actor,at,sources:[fixed]}).replayed,true);
+});
+
 test("registration and shipment dates never start a sales test; unknown availability remains waiting",()=>{
   const state=emptySalesPlanning(),input=command();applyPlanningCommand(state,input,{actor,at});
   assert.equal(planningSchedule(state.plans[0],at).stage,"waiting");assert.equal(planningSchedule(state.plans[0],at).dueOn,"");

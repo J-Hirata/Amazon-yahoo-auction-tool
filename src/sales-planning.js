@@ -50,7 +50,16 @@ export function applyPlanningCommand(state,command,{actor,at=new Date().toISOStr
   if(!uuid(command?.operationId)||!uuid(command?.planId)||typeof actor!=="string"||!actor||actor.length>256||!Number.isFinite(Date.parse(at)))throw fail("保存用のIDと本人を確認してください");
   const digest=planningDigest(command),previous=state.receipts.find(r=>r.id===command.operationId);
   if(previous){if(previous.digest!==digest||previous.actor!==actor)throw fail("同じ操作IDの内容が異なります",409);return{...previous,replayed:true};}
-  const kind=choose(command.kind,["create","edit"]),existing=state.plans.find(p=>p.id===command.planId);
+  const kind=choose(command.kind,["create","edit","reconcile_source"]),existing=state.plans.find(p=>p.id===command.planId);
+  if(kind==="reconcile_source"){
+    if(!existing||existing.source.kind!=="stock"||command.expectedAsin!==existing.asin||command.confirmed!==true||!text(command.reason,300,true))throw fail("訂正する元在庫と変更前のASINを確認してください",409);
+    const source=sources.find(s=>s.kind==="stock"&&s.id===existing.source.id);
+    if(!source?.asin||source.condition!==existing.condition||source.setContents!==existing.setContents)throw fail("元在庫の状態・セット内容が異なります。別商品として確認してください",409);
+    const before=structuredClone(existing);
+    Object.assign(existing,{asin:source.asin,sellerSku:source.sellerSku||"",imageUrl:source.imageUrl||"",imageSource:source.imageUrl?"amazon_catalog":"",updatedAt:at});
+    const receipt={id:command.operationId,planId:existing.id,digest,actor,at};state.receipts.push(receipt);state.events.push({operationId:receipt.id,planId:existing.id,actor,at,reason:command.reason,before,after:structuredClone(existing)});
+    validateSalesPlanning(state);return receipt;
+  }
   if(existing?.decisions?.length>1&&command.plan?.decisions===undefined)throw fail("複数の方針が保存されています。画面を更新してから編集してください",409);
   const values=fields({...command.plan,imageUrl:command.plan?.imageUrl===undefined?existing?.imageUrl||"":command.plan.imageUrl},at);
   if(kind==="create"&&existing||kind==="edit"&&!existing)throw fail("販売計画が更新されています。一覧を確認してください",409);

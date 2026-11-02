@@ -70,7 +70,7 @@ export async function openPlanning({userId,readOnly}){
   for(const el of document.querySelectorAll("[data-plan-icon]"))el.innerHTML=icon(el.dataset.planIcon);
   function controls(){
     for(const button of document.querySelectorAll(".planning-shell button"))button.disabled=busy;
-    for(const button of document.querySelectorAll("#planningNew,#planningSave,[data-plan-edit]"))button.disabled=busy||readOnly||Boolean(pending)||!view;
+    for(const button of document.querySelectorAll("#planningNew,#planningSave,[data-plan-edit],[data-plan-source-fix]"))button.disabled=busy||readOnly||Boolean(pending)||!view;
     $("#planningFields").disabled=busy||readOnly||Boolean(pending);$("#planningPending").hidden=!pending;
     $("#planningRetry").disabled=busy||readOnly;
   }
@@ -98,16 +98,29 @@ export async function openPlanning({userId,readOnly}){
           ${p.sellerSku?`<span class="planning-meta">SKU：${escape(p.sellerSku)}</span>`:""}${p.setContents?`<span class="planning-meta">${escape(p.setContents)}</span>`:""}</div></div></td>
         <td data-label="現在の取り組み"><span class="planning-badge ${escape(schedule.stage)}">${escape(stages[schedule.stage])}</span>
           <div>${escape(kinds[p.kind])}${p.kind!=="review"?` ／ ${p.durationDays}日`:""}</div><span class="planning-meta">販売可能日：${escape(p.availableOn||"未確認")}</span>
-          ${p.kind==="advertising"?`<span class="planning-meta">広告開始日：${escape(p.adStartedOn||"未確認")}</span>`:""}${sales}</td>
+          ${p.kind==="advertising"?`<span class="planning-meta">広告開始日：${escape(p.adStartedOn||"未確認")}</span>`:""}<span class="planning-meta">広告配信状況：未確認（広告API未接続）</span>${sales}</td>
         <td data-label="確認日"><div class="planning-date ${schedule.stage==="due"?"planning-due":""}">${escape(date)}</div><span class="planning-meta">${remaining===null?"":remaining===0?"今日確認":remaining<0?`${-remaining}日経過`:`あと${remaining}日`}</span></td>
         <td data-label="在庫・販売先の参照"><div class="planning-reference">${references}</div></td>
         <td data-label="次の方針・操作"><strong>${escape(decisionText(p))}</strong>${p.note?`<p class="planning-note">${escape(p.note)}</p>`:""}
           <div class="planning-row-actions"><button type="button" data-plan-edit="${p.id}">${icon("pencil")}方針・日付</button>
-          <button type="button" data-plan-history="${p.id}" class="planning-secondary" aria-label="${escape(p.title)}の履歴" title="判断の履歴">${icon("history")}</button>${copy}</div></td></tr>`;
+          <button type="button" data-plan-history="${p.id}" class="planning-secondary" aria-label="${escape(p.title)}の履歴" title="判断の履歴">${icon("history")}</button>${copy}${p.referenceIssue&&p.source.kind==="stock"?`<button type="button" data-plan-source-fix="${p.id}">元在庫のASIN・SKUに合わせる</button>`:""}</div></td></tr>`;
     }).join(""):`<tr><td class="planning-empty" colspan="5">${icon("calendar")}${view.plans.length?"条件に一致する商品がありません":"まだ販売計画は登録されていません"}</td></tr>`;
     for(const img of document.querySelectorAll(".planning-photo"))img.addEventListener("error",()=>{if(img.getAttribute("src")!=="/catalog-image.svg")img.src="/catalog-image.svg";});
     for(const button of document.querySelectorAll("[data-plan-edit]"))button.addEventListener("click",()=>open(view.plans.find(p=>p.id===button.dataset.planEdit)));
     for(const button of document.querySelectorAll("[data-plan-history]"))button.addEventListener("click",()=>historyFor(button.dataset.planHistory));
+    for(const button of document.querySelectorAll("[data-plan-source-fix]"))button.addEventListener("click",()=>work(async()=>{
+      if(readOnly||pending)return;
+      const p=view.plans.find(p=>p.id===button.dataset.planSourceFix),s=view.sources.find(s=>s.kind==="stock"&&s.id===p.source.id);
+      if(!s)throw new Error("元在庫を確認してください");
+      $("#planningHistoryRows").innerHTML=`<h3>元在庫の商品情報に合わせる</h3><p>${escape(p.title)}</p><p>ASIN：${escape(p.asin)} → ${escape(s.asin)}</p><p>SKU：${escape(p.sellerSku||"未指定")} → ${escape(s.sellerSku||"未指定")}</p><p>同じ商品の登録訂正であることを確認してください。方針・日付・現物数量は維持します。</p><button id="planningSourceFixConfirm" type="button">この内容で訂正する</button>`;
+      $("#planningSourceFixConfirm").addEventListener("click",()=>work(async()=>{
+        if(readOnly||pending)return;
+        pending={command:{operationId:crypto.randomUUID(),planId:p.id,kind:"reconcile_source",expectedAsin:p.asin,confirmed:true,reason:"元在庫の商品情報訂正に合わせてASIN・SKUを再照合"},revision:view.revision};
+        try{sessionStorage.setItem(pendingKey,JSON.stringify(pending));}catch{pending=null;throw new Error("保存受付を記録できません");}
+        await sendPending();$("#planningHistory").close();
+      }));
+      $("#planningHistory").showModal();
+    }));
     for(const button of document.querySelectorAll("[data-plan-copy]"))button.addEventListener("click",()=>work(async()=>{await navigator.clipboard.writeText(button.dataset.planCopy);status("ASINをコピーしました。出品状態は変更していません。");}));
     controls();
   }
