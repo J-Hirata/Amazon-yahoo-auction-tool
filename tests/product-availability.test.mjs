@@ -47,6 +47,7 @@ test('separate seller SKUs never share FBA stock even if their ASIN is the same'
  const rows=attachAvailability([row(),row({sellerSku:'USED-VERY-GOOD',fba:{quantity:1},yahoo:[observation({listingId:'d1000000002',quantity:2})]})],{},at);
  assert.equal(rows[0].availability.level,'ok');assert.equal(rows[1].availability.level,'danger');
  assert.equal(conditionName('used_very_good'),'中古・非常に良い');assert.equal(conditionName('UsedGood'),'中古・良い');
+ assert.equal(conditionName('NewItem'),'新品');
 });
 
 test('a known partial overage warns even with another unknown listing; unknown does not imply safe',()=>{

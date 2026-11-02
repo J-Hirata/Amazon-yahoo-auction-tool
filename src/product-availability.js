@@ -1,7 +1,7 @@
 // Display stock counts separately from orders, reservations and physical locations.
 export const current = (date, at) => {const age=Date.parse(at)-Date.parse(date);return Number.isFinite(age)&&age>=-60000&&age<=26*3600000;};
 export const count = v => Number.isSafeInteger(v)&&v>=0?v:null;
-export const conditionName = v => ({newnew:'新品',new:'新品',usedlikenew:'中古・ほぼ新品',usedverygood:'中古・非常に良い',usedgood:'中古・良い',usedacceptable:'中古・可',used:'中古',unknown:'状態未確認'})[String(v||'').replace(/[_ -]/g,'').toLowerCase()]||v||'状態未確認';
+export const conditionName = v => ({newnew:'新品',newitem:'新品',new:'新品',usedlikenew:'中古・ほぼ新品',usedverygood:'中古・非常に良い',usedgood:'中古・良い',usedacceptable:'中古・可',used:'中古',unknown:'状態未確認'})[String(v||'').replace(/[_ -]/g,'').toLowerCase()]||v||'状態未確認';
 export function yahooAvailability(y,at){
  const valid=y?.verified&&current(y.checkedAt,at);
  if(!valid)return {...y,state:'unknown',quantity:null,quantitySource:'unknown'};
