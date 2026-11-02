@@ -4,6 +4,8 @@ import path from "node:path";
 import {fileURLToPath, pathToFileURL} from "node:url";
 import {vercelCloudRequest} from "../src/vercel-entry.js";
 import {parse} from "dotenv";
+import {authBoundaryViolations,inspectAuthBrowserBoundary} from './auth-build-boundary.mjs';
+import {createHash} from 'node:crypto';
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const output = path.join(root, ".vercel", "output");
@@ -42,6 +44,12 @@ const forbidden = files.filter((entry) => entry.isFile()).map((entry) => path.re
   .filter((name) => /^(?:data|scripts|tests|output|test-output|\.git|\.vercel)\//.test(name) || /(?:^|\/)\.env(?:\.|$)/.test(name) || /^(?:src\/(?:server|gmail-transport|manual-fba-job|amazon-local-config)\.js)$/.test(name));
 assert.deepEqual(forbidden, []);
 pass("private function excludes business records, Windows mail helpers and legacy servers");
+const runtimeFiles=files.filter(entry=>entry.isFile()).map(entry=>path.relative(functionDirectory,path.join(entry.parentPath||entry.path,entry.name)));
+assert.deepEqual(authBoundaryViolations(runtimeFiles,'function'),[]);
+const authBrowser=await inspectAuthBrowserBoundary(root);
+assert.deepEqual(authBrowser.violations,[]);
+assert.equal(createHash('sha256').update(await readFile(path.join(output,'static','cloud-login.js'))).digest('hex'),authBrowser.bundleHash,'Login artifact differs from inspected auth bundle');
+pass('browser and JWT-only API exclude the audited auth server handlers, adapters and email-rendering dependencies');
 const secrets = [];
 for (const name of ["data/cloud-private/main-admin.env", "data/cloud-private/app-runtime.env", "data/cloud-private/connections.env", "data/cloud-private/sales-cron.env", ".vercel/.env.production.local", ".vercel/.env.preview.local"]) {
   let values; try {values = parse(await readFile(path.join(root, name)));} catch (error) {if (error.code === "ENOENT") continue; throw error;}
