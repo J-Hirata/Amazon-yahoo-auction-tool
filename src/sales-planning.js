@@ -1,5 +1,6 @@
 import {createHash} from "node:crypto";
 import {stockImageUrl} from "./stock-images.js";
+import {normalizeActions} from "./planning-actions.js";
 
 const uuid=value=>typeof value==="string"&&/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
@@ -26,6 +27,7 @@ function fields(input,at){
   if(!Number.isSafeInteger(result.durationDays)||result.durationDays<1||result.durationDays>365)throw fail("確認期間は1〜365日の整数で入力してください");
   if(result.availableOn&&result.availableOn>planningToday(at))throw fail("実際に販売可能だった日を入力してください。未来日では開始しません");
   if(result.adStartedOn&&(!result.availableOn||result.adStartedOn<result.availableOn||result.adStartedOn>planningToday(at)))throw fail("広告開始日は販売可能日以降の実際の日付を入力してください");
+  result.actions=normalizeActions(input.actions,decisions);
   return result;
 }
 export function planningSchedule(plan,at=new Date().toISOString()){
@@ -61,7 +63,9 @@ export function applyPlanningCommand(state,command,{actor,at=new Date().toISOStr
     validateSalesPlanning(state);return receipt;
   }
   if(existing?.decisions?.length>1&&command.plan?.decisions===undefined)throw fail("複数の方針が保存されています。画面を更新してから編集してください",409);
+  if(existing?.actions?.length&&command.plan?.actions===undefined)throw fail("期間付きアクションが保存されています。画面を更新してから編集してください",409);
   const values=fields({...command.plan,imageUrl:command.plan?.imageUrl===undefined?existing?.imageUrl||"":command.plan.imageUrl},at);
+  for(const a of values.actions){const previous=existing?.actions?.find(p=>p.id===a.id);if(previous&&previous.decision!==a.decision)throw fail("別の方針は別のアクションとして登録してください",409);}
   if(kind==="create"&&existing||kind==="edit"&&!existing)throw fail("販売計画が更新されています。一覧を確認してください",409);
   const identityChanged=existing&&["asin","sellerSku","condition","setContents"].some(k=>existing[k]!==values[k]);
   if(existing&&(["asin","sellerSku","setContents"].some(k=>existing[k]&&existing[k]!==values[k])||existing.condition!=="unknown"&&existing.condition!==values.condition||existing.source.kind!==values.source.kind||existing.source.id!==values.source.id))throw fail("別の商品・SKU・状態へ変更する場合は計画を分けて登録してください",409);

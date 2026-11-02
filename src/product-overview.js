@@ -2,6 +2,8 @@ import {createHash} from "node:crypto";
 import {stockTotals} from "./physical-stock.js";
 import {planningSchedule,planningToday} from "./sales-planning.js";
 import {stockImageUrl} from "./stock-images.js";
+import {actionSchedules} from "./planning-actions.js";
+import {productChannels} from "./product-channels.js";
 export const WATCH_TAGS={watch:"監視対象",overstock:"在庫過多",large:"大型",heavy:"重量物"};
 const fail=(m,status=400)=>Object.assign(new Error(m),{status});
 const uuid=v=>/^[0-9a-f-]{36}$/i.test(v||"");
@@ -20,6 +22,7 @@ export function ruleFields(input,at){
   if(typeof input.replenishEnabled!=="boolean"||!number(input.threshold,1000000)||!number(input.minimumSales7,1000000)||!number(input.coverageDays,365)||!number(input.reviewDays,365)||input.reviewDays<1)throw fail("閾値・日数は指定範囲の整数で入力してください");
   const startedOn=text(input.startedOn||"",10);if(startedOn&&(!/^\d{4}-\d{2}-\d{2}$/.test(startedOn)||!Number.isFinite(Date.parse(startedOn))||new Date(startedOn+"T00:00:00Z").toISOString().slice(0,10)!==startedOn||startedOn>planningToday(at)))throw fail("確認済みの販売開始日を入力してください。予定日では開始しません");
   const result={key,tags:[...tags],replenishEnabled:input.replenishEnabled,threshold:input.threshold,minimumSales7:input.minimumSales7,coverageDays:input.coverageDays,reviewDays:input.reviewDays,startedOn,note:text(input.note||"",1000),updatedAt:at};
+  if(input.manualListingStatus!==undefined){if(!["unknown","mercari","none"].includes(input.manualListingStatus))throw fail("手動の出品状況を選んでください");result.manualListingStatus=input.manualListingStatus;}
   if(key.startsWith("watch:")){
     const asin=text(input.asin||"",10).toUpperCase(),title=text(input.title||"",200)||asin;
     if(!title||asin&&!/^[A-Z0-9]{10}$/.test(asin)||!["new","used","parts","unknown"].includes(input.condition))throw fail("監視商品の名前・ASIN・状態を確認してください");
@@ -66,7 +69,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     const source=p.source.kind==="stock"?byKey.get(`stock:${p.source.id}`):p.source.kind==="link"?linkRows.get(p.source.id):null;
     const match=source&&source.asin===p.asin&&(!p.sellerSku||!source.sellerSku||source.sellerSku===p.sellerSku)&&(!["new","used"].includes(source.condition)||p.condition===source.condition);
     const row=match?source:add(`plan:${p.id}`,{asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition,imageUrl:p.imageUrl,referenceIssue:Boolean(source&&!match)});
-    if(!row.sourceKeys.includes(`plan:${p.id}`))row.sourceKeys.push(`plan:${p.id}`);if(!row.sources.includes("plan"))row.sources.push("plan");row.plans.push({...p,schedule:planningSchedule(p,at)});if(!row.imageUrl)row.imageUrl=p.imageUrl||"";
+    if(!row.sourceKeys.includes(`plan:${p.id}`))row.sourceKeys.push(`plan:${p.id}`);if(!row.sources.includes("plan"))row.sources.push("plan");row.plans.push({...p,schedule:planningSchedule(p,at),actionSchedules:actionSchedules(p,at)});if(!row.imageUrl)row.imageUrl=p.imageUrl||"";
   }
   for(const p of drafts)add(`draft:${p.asin}`,{asin:p.asin,title:p.title||p.asin,condition:"unknown",imageUrl:p.imageUrls?.[0]||""});
   for(const rule of watch.rules.filter(r=>r.key.startsWith("watch:")))add(rule.key,{asin:rule.asin,title:rule.title,condition:rule.condition,sellerSku:rule.sellerSku,imageUrl:rule.imageUrl});
@@ -79,12 +82,15 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     row.localKnown=row.locations.some(l=>l.usable!==null);row.localAvailable=row.localKnown?row.locations.reduce((sum,l)=>sum+(l.usable||0),0):null;
     row.badges=[...(row.asin&&row.sources.some(s=>s!=="draft")?["amazon"]:[]),...(row.linkIds.length?["yahoo","parallel"]:[]),...(row.locations.some(l=>l.locationId==="container"&&l.usable>0)?["container"]:[]),...(row.locations.some(l=>l.locationId==="home"&&l.usable>0)?["home"]:[]),...row.tags,...(row.plans.length?["planning"]:[]),...(row.sources.includes("draft")?["draft"]:[])];
     row.watchDue=row.rule.startedOn?new Date(Date.parse(row.rule.startedOn+"T00:00:00Z")+row.rule.reviewDays*86400000).toISOString().slice(0,10):"";
-    row.dueDates=[...row.plans.map(p=>p.schedule.dueOn).filter(Boolean),...(row.watchDue?[row.watchDue]:[])].sort();
+    row.channels=productChannels(row,monitor,watch,at);
+    row.provenance=row.sources.map(s=>({stock:"コンテナ・自社在庫",link:"商品紐付け",plan:"販売の監視・見直し",draft:"出品下書き",watch:"監視専用登録"})[s]);
+    row.dueDates=[...row.plans.flatMap(p=>p.actionSchedules.some(a=>a.startsOn||a.endsOn)?p.actionSchedules.map(a=>a.nextOn).filter(Boolean):[p.schedule.dueOn].filter(Boolean)),...(row.watchDue?[row.watchDue]:[])].sort();
     row.attention=[];if(row.fba.quantity===0)row.attention.push("FBA販売可能0");if(row.yahoo?.some(y=>y.status==="ended"))row.attention.push("ヤフオク終了");if(row.dueDates[0]&&row.dueDates[0]<=planningToday(at))row.attention.push("見直し時期");
     if(row.yahoo?.some(y=>!y.verified||!Number.isFinite(Date.parse(y.checkedAt))||Date.parse(at)-Date.parse(y.checkedAt)>26*3600000))row.attention.push("ヤフオク未確認");
     row.replenishment=Boolean(row.rule.replenishEnabled&&row.fba.quantity!==null&&row.localAvailable>0&&(row.rule.minimumSales7===0||row.sales.fbaQuantity7!==null&&row.sales.fbaQuantity7>=row.rule.minimumSales7)&&(row.fba.quantity<=row.rule.threshold||row.rule.coverageDays>0&&row.daysRemaining!==null&&row.daysRemaining<=row.rule.coverageDays));
     if(row.replenishment)row.attention.push("追加納品を検討");
     if(row.referenceIssue)row.attention.push("参照先を要確認");
+    if(row.channels.manualConflict)row.attention.push("手動の出品なし記録と出品中の取得情報が不一致");
   }
   return rows;
 }
@@ -98,7 +104,7 @@ export function createProductOverview({monitorStore,stockStore,planningStore,dra
     const rule=ruleFields(command.rule,now());
     if(!rule.key.startsWith("watch:")&&!productOverview(data,now()).some(row=>row.sourceKeys.includes(rule.key)))throw fail("対象商品が見つかりません。一覧を更新してください",409);
     await watchStore.update(state=>{const old=state.receipts.find(r=>r.id===command.operationId);if(old){if(old.digest!==digest||old.actor!==actor)throw fail("同じ操作IDの内容が異なります",409);return;}
-      const previous=state.rules.find(r=>r.key===rule.key);if(previous&&rule.key.startsWith("watch:")&&previous.asin&&previous.asin!==rule.asin)throw fail("別のASINは新しい監視商品として追加してください",409);if(previous)Object.assign(previous,rule);else state.rules.push(rule);state.receipts.push({id:command.operationId,digest,actor,at:now()});validateProductWatch(state);
+      const previous=state.rules.find(r=>r.key===rule.key);if(previous&&rule.key.startsWith("watch:")&&previous.asin&&previous.asin!==rule.asin)throw fail("別のASINは新しい監視商品として追加してください",409);if(rule.manualListingStatus!==undefined)rule.manualListingAt=previous?.manualListingStatus===rule.manualListingStatus?previous.manualListingAt||now():now();if(previous)Object.assign(previous,rule);else state.rules.push(rule);state.receipts.push({id:command.operationId,digest,actor,at:now()});validateProductWatch(state);
     },{expectedRevision});return view();
   }
   return {view,commit,inputs};

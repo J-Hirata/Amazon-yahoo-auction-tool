@@ -1,6 +1,7 @@
 import {applyPlanningCommand,planningDigest,planningSchedule} from "./sales-planning.js";
 import {assessLink} from "./link-monitor.js";
 import {stockImageUrl} from "./stock-images.js";
+import {actionSchedules} from "./planning-actions.js";
 
 const fail=(message,status)=>Object.assign(new Error(message),{status});
 export function createCloudPlanning({store,stock,monitorStore,readCatalog,now=()=>new Date().toISOString()}){
@@ -16,7 +17,7 @@ export function createCloudPlanning({store,stock,monitorStore,readCatalog,now=()
   }
   async function view(){const saved=await store.readSnapshot(),rows=await sources(),at=now();return{revision:saved.revision,checkedAt:at,catalogRead:Boolean(readCatalog),sources:rows,events:saved.state.events.slice(-100).reverse(),plans:saved.state.plans.map(p=>{
     const source=rows.find(s=>s.kind===p.source.kind&&s.id===p.source.id),mismatch=source&&(source.asin!==p.asin||source.sellerSku!==p.sellerSku||source.condition!=="unknown"&&source.condition!==p.condition||source.setContents&&source.setContents!==p.setContents);
-    return{...p,schedule:planningSchedule(p,at),reference:mismatch?null:source||null,referenceIssue:mismatch?"参照先の商品情報が変わっています":!source&&p.source.kind!=="manual"?"参照先が見つかりません":""};
+    return{...p,actionSchedules:actionSchedules(p,at),schedule:planningSchedule(p,at),reference:mismatch?null:source||null,referenceIssue:mismatch?"参照先の商品情報が変わっています":!source&&p.source.kind!=="manual"?"参照先が見つかりません":""};
   })};}
   async function commit(command,{expectedRevision,actor}){
     const previous=(await store.read()).receipts.find(r=>r.id===command?.operationId);

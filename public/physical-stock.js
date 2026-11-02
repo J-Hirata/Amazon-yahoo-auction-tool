@@ -75,7 +75,7 @@ export async function openStock({userId, readOnly}) {
     for (const button of document.querySelectorAll("[data-stock-places]")) button.addEventListener("click", () => openPlaces(button.dataset.stockPlaces, button.dataset.place));
     for (const [index,row] of [...document.querySelectorAll("#stockRows tr")].entries()) {
       const product=products[index]; if(!product)continue;
-      const review=document.createElement("a");review.href=`/?view=planning#plan=stock:${encodeURIComponent(product.id)}`;review.textContent="販売の見直しへ追加";review.className="planning-entry-link";
+      const review=document.createElement("a");review.href=`/?view=planning#plan=stock:${encodeURIComponent(product.id)}`;review.textContent="販売の監視・見直しへ追加";review.className="planning-entry-link";
       row.querySelector(".stock-row-actions").append(review);
       let button=row.querySelector("[data-stock-connect]");
       if(!button){button=document.createElement("button");button.type="button";button.className="stock-text-button";button.dataset.stockConnect=product.id;row.querySelector(".stock-channel:last-child").append(button);}

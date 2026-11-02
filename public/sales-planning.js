@@ -1,19 +1,20 @@
 import {monitorRequest} from "./monitor-http.js";
 import {catalogImage} from "./catalog-view.js";
 import {createElement,CalendarClock,RefreshCw,Plus,Search,X,Save,Pencil,History,ClipboardCopy} from "lucide";
+import {ACTION_LABELS,ACTION_STAGES} from "../src/planning-actions.js";
 
 const $=s=>document.querySelector(s),escape=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 const shapes={calendar:CalendarClock,refresh:RefreshCw,plus:Plus,search:Search,x:X,save:Save,pencil:Pencil,history:History,copy:ClipboardCopy};
 const icon=name=>createElement(shapes[name],{width:18,height:18,"aria-hidden":"true","stroke-width":1.8}).outerHTML;
 const conditions={new:"新品",used:"中古",parts:"部品・現状品",unknown:"状態未確認"},kinds={amazon:"Amazonで様子見",advertising:"広告テスト",review:"販売方針の見直し"};
 const stages={waiting:"販売・広告開始待ち",watching:"様子見中",advertising:"広告テスト中",due:"見直し時期",hold:"保留",scheduled:"確認待ち",unscheduled:"確認日未設定",closed:"完了"};
-const decisions={undecided:"方針未定",amazon:"Amazon販売を継続",advertising:"広告を検討",yahoo:"ヤフオク併売を検討",rakuten:"楽天併売を検討",catalog:"カタログ再作成を検討",replenish:"FBA追加納品を検討",price:"価格を見直す",return:"返送・別の売却先を検討",hold:"保留して再確認"};
+const decisions={undecided:"方針未定",...ACTION_LABELS};
 const decisionText=plan=>(plan.decisions||[plan.decision||"undecided"]).map(d=>decisions[d]).join(" ／ ");
 const fields=["title","asin","sellerSku","condition","setContents","kind","status","availableOn","availabilityNote","adStartedOn","durationDays","reviewOn","decision","note","salesMemo","imageUrl"];
 const when=value=>new Date(value).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"});
 
 export async function openPlanning({userId,readOnly}){
-  let view,busy=false,filter="all",editing=null,planId,pending;
+  let view,busy=false,filter="all",editing=null,planId,pending,actionDrafts={};
   const form=$("#planningForm"),dialog=$("#planningDialog"),pendingKey="sales-planning-pending:"+userId;
   const status=(message,error=false)=>{$("#planningStatus").textContent=message;$("#planningStatus").classList.toggle("error",error);};
   let mode="list";try{mode=localStorage.getItem("planning-mode:"+userId)==="tiles"?"tiles":"list";}catch{}
@@ -79,14 +80,17 @@ export async function openPlanning({userId,readOnly}){
     const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error||"販売計画を保存できません"),{status:response.status});return data;
   }
   async function work(callback){if(busy)return;busy=true;controls();try{await callback();}catch(error){status(error.message,true);if(dialog.open)$("#planningFormStatus").textContent=error.message;}finally{busy=false;controls();}}
-  function matches(p,key){if(key==="all")return true;if(key==="waiting")return["waiting","unscheduled"].includes(p.schedule.stage);if(key==="active")return["watching","advertising","scheduled","hold"].includes(p.schedule.stage);return p.schedule.stage===key;}
+  const actionDue=p=>p.actionSchedules?.some(a=>["start","due"].includes(a.stage));
+  const datedActions=p=>p.actionSchedules?.some(a=>a.startsOn||a.endsOn);
+  const nextCheck=p=>datedActions(p)?p.actionSchedules.map(a=>a.nextOn).filter(Boolean).sort()[0]||"":p.schedule.dueOn;
+  function matches(p,key){if(key==="all")return true;if(p.status==="closed")return key==="closed";if(key==="due")return datedActions(p)?actionDue(p):p.schedule.stage==="due";if(key==="waiting")return datedActions(p)?p.actionSchedules.some(a=>["waiting","blocked","undated"].includes(a.stage)):["waiting","unscheduled"].includes(p.schedule.stage);if(key==="active")return datedActions(p)?p.actionSchedules.some(a=>a.stage==="active"):["watching","advertising","scheduled","hold"].includes(p.schedule.stage);return p.schedule.stage===key;}
   function render(){
-    $("#planningCount").textContent=`${view.plans.length}商品 ／ 見直し時期 ${view.plans.filter(p=>p.schedule.stage==="due").length}件`;
+    $("#planningCount").textContent=`${view.plans.length}商品 ／ 見直し時期 ${view.plans.filter(p=>matches(p,"due")).length}件`;
     for(const tab of document.querySelectorAll("[data-plan-filter]")){tab.setAttribute("aria-selected",String(tab.dataset.planFilter===filter));tab.querySelector("span").textContent=view.plans.filter(p=>matches(p,tab.dataset.planFilter)).length;}
     const query=$("#planningSearch").value.trim().toLowerCase(),sort=$("#planningSort").value;
-    const plans=view.plans.filter(p=>matches(p,filter)&&[p.title,p.asin,p.sellerSku,p.note,p.salesMemo].join(" ").toLowerCase().includes(query)).sort((a,b)=>sort==="new"?b.createdAt.localeCompare(a.createdAt):sort==="old"?a.createdAt.localeCompare(b.createdAt):(a.schedule.dueOn||"9999").localeCompare(b.schedule.dueOn||"9999")||a.createdAt.localeCompare(b.createdAt));
+    const plans=view.plans.filter(p=>matches(p,filter)&&[p.title,p.asin,p.sellerSku,p.note,p.salesMemo].join(" ").toLowerCase().includes(query)).sort((a,b)=>sort==="new"?b.createdAt.localeCompare(a.createdAt):sort==="old"?a.createdAt.localeCompare(b.createdAt):(nextCheck(a)||"9999").localeCompare(nextCheck(b)||"9999")||a.createdAt.localeCompare(b.createdAt));
     $("#planningRows").innerHTML=plans.length?plans.map(p=>{
-      const schedule=p.schedule,source=p.reference,photo=catalogImage(source?.imageUrl||p.imageUrl)||"/catalog-image.svg",date=schedule.dueOn||"未設定",remaining=schedule.remainingDays;
+      const schedule=p.schedule,source=p.reference,photo=catalogImage(source?.imageUrl||p.imageUrl)||"/catalog-image.svg",date=nextCheck(p)||"未設定",remaining=date==="未設定"?null:Math.round((Date.parse(date)-Date.parse(new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})))/86400000);
       const location=source?.locations?.map(l=>`${l.locationId==="container"?"コンテナ":"自宅・会社"} <b>${l.usable===null?"未確認":escape(l.usable)+"個"}</b>`).join("<br>")||"";
       const references=p.referenceIssue?`<span class="error">${escape(p.referenceIssue)}</span>`:source?`${location?`<span>${location}</span>`:""}<span>FBA取得分：<b>${source.fba?.quantity===null||source.fba?.quantity===undefined?"未確認":escape(source.fba.quantity)+"個"}</b></span><span>ヤフオク：${source.listingIds?.length?source.listingIds.map(id=>`<a href="https://auctions.yahoo.co.jp/jp/auction/${encodeURIComponent(id)}" target="_blank" rel="noopener noreferrer">${escape(id)}</a>`).join(" ／ "):"関連付けなし"}</span><a href="${escape(source.href)}">元の商品を確認</a>`:"在庫参照なし";
       const asinLink=p.asin?` ／ <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(p.asin)}" target="_blank" rel="noopener noreferrer">${escape(p.asin)}</a>`:" ／ ASIN未登録";
@@ -101,7 +105,7 @@ export async function openPlanning({userId,readOnly}){
           ${p.kind==="advertising"?`<span class="planning-meta">広告開始日：${escape(p.adStartedOn||"未確認")}</span>`:""}<span class="planning-meta">広告配信状況：未確認（広告API未接続）</span>${sales}</td>
         <td data-label="確認日"><div class="planning-date ${schedule.stage==="due"?"planning-due":""}">${escape(date)}</div><span class="planning-meta">${remaining===null?"":remaining===0?"今日確認":remaining<0?`${-remaining}日経過`:`あと${remaining}日`}</span></td>
         <td data-label="在庫・販売先の参照"><div class="planning-reference">${references}</div></td>
-        <td data-label="次の方針・操作"><strong>${escape(decisionText(p))}</strong>${p.note?`<p class="planning-note">${escape(p.note)}</p>`:""}
+        <td data-label="次の方針・操作"><strong>${escape(decisionText(p))}</strong>${(p.actionSchedules||[]).length?`<ol class="planning-timeline">${p.actionSchedules.map(a=>`<li class="${escape(a.stage)}"><b>${escape(a.label)}</b><span>${escape(a.startsOn||"開始日未設定")} → ${escape(a.endsOn||"締切未設定")}</span><span>${escape(ACTION_STAGES[a.stage])}${a.dependsOn?` ／ ${escape(a.conditionLabel)}`:""}</span>${a.outcome!=="pending"?`<span>結果：${escape(({good:"良好",poor:"不調",other:"その他"})[a.outcome])}</span>`:""}${a.note?`<span>${escape(a.note)}</span>`:""}</li>`).join("")}</ol>`:""}${p.note?`<p class="planning-note">${escape(p.note)}</p>`:""}
           <div class="planning-row-actions"><button type="button" data-plan-edit="${p.id}">${icon("pencil")}方針・日付</button>
           <button type="button" data-plan-history="${p.id}" class="planning-secondary" aria-label="${escape(p.title)}の履歴" title="判断の履歴">${icon("history")}</button>${copy}${p.referenceIssue&&p.source.kind==="stock"?`<button type="button" data-plan-source-fix="${p.id}">元在庫のASIN・SKUに合わせる</button>`:""}</div></td></tr>`;
     }).join(""):`<tr><td class="planning-empty" colspan="5">${icon("calendar")}${view.plans.length?"条件に一致する商品がありません":"まだ販売計画は登録されていません"}</td></tr>`;
@@ -148,7 +152,9 @@ export async function openPlanning({userId,readOnly}){
     $("#planningCatalogStatus").textContent="";$("#planningSourceSearch").value="";$("#planningSources").open=false;$("#planningSources").hidden=Boolean(plan);$("#planningManual").hidden=true;
     $("#planningDialogTitle").textContent=plan?"方針・確認日を変更":"商品を追加";
     const selected=new Set(plan?.decisions||[plan?.decision||"undecided"]);
+    actionDrafts=Object.fromEntries((plan?.actions||[]).map(a=>[a.decision,{...a}]));
     $("#planningDecisions").innerHTML=Object.entries(decisions).filter(([key])=>key!=="undecided").map(([key,label])=>`<label><input type="checkbox" name="decisions" value="${key}" ${selected.has(key)?"checked":""}>${escape(label)}</label>`).join("");
+    renderActionEditors();
     const source=form.elements.source;source.innerHTML='<option value="manual">ASIN・商品名から登録</option>';
     for(const [kind,label] of [["stock","コンテナ・自社在庫"],["link","Amazon・ヤフオクの紐付け商品"]]){const group=document.createElement("optgroup");group.label=label;for(const row of view.sources.filter(s=>s.kind===kind)){const option=document.createElement("option");option.value=kind+":"+row.id;option.textContent=`${row.title} ／ ${conditions[row.condition]} ／ ${row.sellerSku||row.asin||"ASINなし"}`;group.append(option);}source.append(group);}
     if(plan){if(plan.source.kind!=="manual"&&!view.sources.some(s=>s.kind===plan.source.kind&&s.id===plan.source.id)){const option=document.createElement("option");option.value=plan.source.kind+":"+plan.source.id;option.textContent="元の参照先（現在は確認できません）";source.append(option);}for(const name of fields)form.elements[name].value=plan[name]??"";source.value=plan.source.kind==="manual"?"manual":plan.source.kind+":"+plan.source.id;}
@@ -156,6 +162,15 @@ export async function openPlanning({userId,readOnly}){
     inputAsin=form.elements.asin.value;renderSources();showSelected(plan?.reference);updateFields();controls();if(!dialog.open)dialog.showModal();
     if(plan?.source.kind==="manual"&&(!plan.imageUrl||plan.title===plan.asin))void lookupProduct();
   }
+  function captureActions(){for(const panel of document.querySelectorAll('[data-action-editor]')){const a=actionDrafts[panel.dataset.actionEditor];for(const input of panel.querySelectorAll('[data-action-field]'))a[input.dataset.actionField]=input.value;}}
+  function renderActionEditors(){
+    const selected=[...form.querySelectorAll('[name="decisions"]:checked')].map(i=>i.value);
+    for(const d of selected)actionDrafts[d]||={id:crypto.randomUUID(),decision:d,startsOn:"",endsOn:"",dependsOn:"",trigger:"always",status:"planned",outcome:"pending",note:""};
+    const select=(a,field,title,options)=>`<label>${title}<select data-action-field="${field}" aria-label="${escape(decisions[a.decision]+"："+title)}">${options.map(([v,l])=>`<option value="${escape(v)}" ${a[field]===v?"selected":""}>${escape(l)}</option>`).join("")}</select></label>`;
+    $("#planningActionEditors").innerHTML=selected.map(d=>{const a=actionDrafts[d];return `<section data-action-editor="${d}" class="planning-action-editor"><h3>${escape(decisions[d])}</h3><div class="planning-action-fields"><label>開始日<input type="date" data-action-field="startsOn" value="${escape(a.startsOn)}" aria-label="${escape(decisions[d]+"：開始日")}"></label><label>締切日<input type="date" data-action-field="endsOn" value="${escape(a.endsOn)}" aria-label="${escape(decisions[d]+"：締切日")}"></label>${select(a,"dependsOn","前のアクション",[["","なし（日付だけで確認）"],...selected.filter(p=>p!==d).map(p=>[actionDrafts[p].id,decisions[p]])])}${select(a,"trigger","始める条件",[["always","日付／前の結果を記録したら"],["poor","前の結果が悪ければ"],["good","前の結果が良ければ"]])}${select(a,"status","進み具合",[["planned","予定"],["active","取り組み中"],["done","結果を記録済み"],["cancelled","取りやめ"]])}${select(a,"outcome","結果",[["pending","まだ判断していない"],["good","良好"],["poor","不調"],["other","その他"]])}<label class="planning-wide">実施内容・判断基準<input data-action-field="note" value="${escape(a.note)}" maxlength="500" aria-label="${escape(decisions[d]+"：実施内容・判断基準")}" placeholder="例：売れなければ次の販路へ／好調なら追加納品"></label></div></section>`;}).join("");
+  }
+  $("#planningDecisions").addEventListener("change",()=>{captureActions();renderActionEditors();});
+  $("#planningActionEditors").addEventListener("change",e=>{const panel=e.target.closest('[data-action-editor]');if(!panel)return;if(e.target.dataset.actionField==="outcome"&&e.target.value!=="pending")panel.querySelector('[data-action-field="status"]').value="done";if(e.target.dataset.actionField==="status"&&e.target.value!=="done")panel.querySelector('[data-action-field="outcome"]').value="pending";});
   function historyFor(id){
     const plan=view.plans.find(p=>p.id===id);$("#planningHistoryTitle").textContent=plan.title+"：判断の履歴";
     const events=view.events.filter(e=>e.planId===id).map(e=>`<section class="planning-event">
@@ -163,7 +178,7 @@ export async function openPlanning({userId,readOnly}){
       <p>${escape(e.before?decisionText(e.before)+" → ":"")}${escape(decisionText(e.after))}</p>
       <p>${escape(kinds[e.after.kind])} ／ ${e.after.durationDays}日 ／ ${escape(e.after.status==="hold"?"保留":e.after.status==="closed"?"完了":"確認継続")}</p>
       <p>販売可能日：${escape(e.after.availableOn||"未確認")} ／ 広告開始：${escape(e.after.adStartedOn||"未確認")} ／ 確認日：${escape(e.after.reviewOn||"期間から算出")}</p>
-      <p>${escape(e.after.availabilityNote)}</p><p>${escape(e.after.salesMemo)}</p><p>${escape(e.after.note)}</p></section>`).join("");
+      <p>${escape(e.after.availabilityNote)}</p><p>${escape(e.after.salesMemo)}</p><p>${escape(e.after.note)}</p>${(e.after.actions||[]).map(a=>`<p>${escape(decisions[a.decision])}：${escape(a.startsOn||"未設定")} → ${escape(a.endsOn||"未設定")} ／ ${escape(a.status)} ／ ${escape(a.outcome)}</p>`).join("")}</section>`).join("");
     $("#planningHistoryRows").innerHTML='<p class="planning-meta">全商品の直近100件の記録から表示</p>'+(events||"履歴はありません");$("#planningHistory").showModal();
   }
   function clearPending(){pending=null;sessionStorage.removeItem(pendingKey);}
@@ -177,6 +192,7 @@ export async function openPlanning({userId,readOnly}){
     clearTimeout(lookupTimer);await lookupProduct();
     const values=Object.fromEntries(fields.map(name=>[name,form.elements[name].value]));values.durationDays=Number(values.durationDays);const [kind,id]=form.elements.source.value.split(":");values.source={kind,id:id||""};
     values.decisions=[...form.querySelectorAll('[name="decisions"]:checked')].map(input=>input.value);if(!values.decisions.length)values.decisions=["undecided"];values.decision=values.decisions[0];
+    captureActions();values.actions=values.decisions.filter(d=>d!=="undecided").map(d=>({...actionDrafts[d]}));
     const command={operationId:crypto.randomUUID(),planId,kind:editing?"edit":"create",plan:values};
     pending={command,revision:view.revision};try{sessionStorage.setItem(pendingKey,JSON.stringify(pending));}catch{pending=null;throw new Error("保存受付をこのブラウザーへ記録できません。ブラウザーの保存設定を確認してください。");}
     await sendPending();
@@ -200,7 +216,8 @@ export async function openPlanning({userId,readOnly}){
   $("#planningReconcile").addEventListener("click",()=>work(async()=>{await request("/operations/"+pending.command.operationId);clearPending();await load();dialog.close();status("保存済みの計画を確認しました。重複登録していません。");}));
   $("#planningRetry").addEventListener("click",()=>work(sendPending));
   await load();
-  const requested=new URLSearchParams(location.hash.slice(1)).get("plan");
+  const hash=new URLSearchParams(location.hash.slice(1)),requested=hash.get("plan"),direct=hash.get("id");
+  if(direct){const p=view.plans.find(p=>p.id===direct);if(p&&!readOnly&&!pending)open(p);}
   if(requested){
     const match=requested.match(/^(stock|link):([0-9a-f-]{36})$/i),source=match&&view.sources.find(s=>s.kind===match[1]&&s.id===match[2]);
     history.replaceState(null,"",location.pathname+location.search);

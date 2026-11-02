@@ -75,7 +75,7 @@ async function openApplication() {
     try {await stockWorkflowContext({drafts,main,request:authenticatedRequest});}
     catch (error) {const warning=document.createElement("p");warning.className="workspace-context-error";warning.setAttribute("role","alert");warning.textContent=error.message;main.prepend(warning);}
   }
-  document.title = `${overview?"全商品一覧":planning ? "販売の見直し" : stock ? "コンテナ・自社在庫" : drafts ? "出品下書きツール" : "商品紐付けツール"} | Amazon・ヤフオク`;
+  document.title = `${overview?"全商品一覧":planning ? "販売の監視・見直し" : stock ? "コンテナ・自社在庫" : drafts ? "出品下書きツール" : "商品紐付けツール"} | Amazon・ヤフオク`;
   document.querySelector("#loginPanel").hidden = true;
   document.querySelector("#authLoading").hidden = true;
   panel.hidden = false;

@@ -5,9 +5,11 @@ import {productOverview} from "./product-overview.js";
 import {planningToday} from "./sales-planning.js";
 
 export function collectProductAlerts(state,rows,settings,at){
-  const signals=state.signals ||= {},pending=state.pendingAlerts ||= [];
+  const signals=state.signals ||= {},pending=state.pendingAlerts ||= [],observed=new Set();
   function observe(key,value,category,row,message){
+    observed.add(key);
     if(value===null||!settings[category])return;
+    if(value&&/^(action-|review-)/.test(key)&&pending.some(p=>p.key===key&&p.queuedAt))return;
     const previous=signals[key];
     if(value&&!previous?.active){const id=randomUUID();pending.push({id,key,category,at,title:row.title||"取得状況",asin:row.asin||"",message,eventKey:`product:${key}:${id}`});signals[key]={active:true,at};}
     else if(!value){signals[key]={active:false,at};for(const p of pending)if(p.key===key&&!p.queuedAt)p.dismissedAt=at;}
@@ -29,10 +31,18 @@ export function collectProductAlerts(state,rows,settings,at){
       observe(`yahoo-ended:${y.listingId}`,fresh&&y.verified?y.status==="ended":null,"yahooAlerts",row,`ヤフオク出品 ${y.listingId} の終了を確認しました。${y.reason==="unsold"?"落札なしの終了です。":y.reason==="sold"?"落札ありの終了です。":"落札の有無は未確認です。売れ残りとは断定していません。"}\nhttps://auctions.yahoo.co.jp/jp/auction/${y.listingId}\n再出品するか確認してください。`);
     }
     for(const p of row.plans)if(!planKeys.has(p.id)){
-      planKeys.add(p.id);if(p.schedule.dueOn)observe(`review-plan:${p.id}:${p.schedule.dueOn}`,p.schedule.stage==="due","reviewAlerts",row,`販売の見直し時期です。確認日：${p.schedule.dueOn}。期間内の売れ行き、価格、広告、併売、追加納品を検討してください。\nhttps://amazon-yahoo-inventory.vercel.app/?view=planning#plan=${p.source.kind}:${p.source.id}`);
+      planKeys.add(p.id);
+      const url=`https://amazon-yahoo-inventory.vercel.app/?view=planning#id=${p.id}`;
+      for(const a of p.actionSchedules||[]){
+        const message=`${a.label} ／ 開始日：${a.startsOn||"未設定"} ／ 締切日：${a.endsOn||"未設定"}。${a.conditionLabel}。${a.note}\n結果を記録して次の方針を確認してください。\n${url}`;
+        if(a.startsOn)observe(`action-start:${p.id}:${a.id}:${a.startsOn}`,Boolean(a.startDue&&!a.endDue),"reviewAlerts",row,`アクションの開始時期です。${message}`);
+        if(a.endsOn)observe(`action-end:${p.id}:${a.id}:${a.endsOn}`,Boolean(a.endDue),"reviewAlerts",row,`アクションの締切です。${message}`);
+      }
+      if(!(p.actionSchedules||[]).some(a=>a.startsOn||a.endsOn)&&p.schedule.dueOn)observe(`review-plan:${p.id}:${p.schedule.dueOn}`,p.schedule.stage==="due","reviewAlerts",row,`販売の見直し時期です。確認日：${p.schedule.dueOn}。期間内の売れ行き、価格、広告、併売、追加納品を検討してください。\n${url}`);
     }
     if(row.watchDue&&!row.plans.some(p=>p.schedule.dueOn===row.watchDue))observe(`review-watch:${row.rule.key}:${row.watchDue}`,row.watchDue<=planningToday(at),"reviewAlerts",row,`監視商品の見直し時期です。確認日：${row.watchDue}。タグ：${row.tags.join("・")}。${row.rule.note}`);
   }
+  for(const p of pending)if(/^(action-|review-)/.test(p.key||"")&&!observed.has(p.key)&&!p.queuedAt)p.dismissedAt=at;
   if(pending.length>5000)throw new Error("通知履歴の保存上限を確認してください");
   return pending.filter(p=>!p.queuedAt&&!p.dismissedAt);
 }

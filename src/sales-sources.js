@@ -13,5 +13,5 @@ export function resolveSalesSources(sources, snapshot, config) {
       fulfillment:row.fulfillment.map(f=>f.channel === "DEFAULT" ? "MERCHANT" : f.channel.startsWith("AMAZON") ? "AMAZON" : "UNKNOWN")});
   }
   if (new Set(targets.map(t=>t.sellerSku)).size > 100) throw new Error("追跡対象は100 SKUまでです。対象分割が必要です");
-  return {version:1,accountKey:config.accountKey,sellerId:config.sellerId,marketplaceId:config.marketplaceId,checkedAt:snapshot.checkedAt,targets,unresolved};
+  return {version:1,accountKey:config.accountKey,sellerId:config.sellerId,marketplaceId:config.marketplaceId,checkedAt:snapshot.checkedAt,targets,unresolved,listingSnapshot:{...snapshot,rows:structuredClone(snapshot.rows)}};
 }
