@@ -198,9 +198,9 @@ function renderMail() {
       $("#notificationRuntimeWarning").hidden=true;
       $("#mailSettingLabel").textContent=`販売メール：${automation.enabled?"有効":"オフ"}`;
       $("#monitorSettingLabel").textContent=`自動確認：${automation.enabled?"1日1回":"オフ"}`;
-      if(!salesAutomationDirty)for(const [id,key] of [["salesAutoEnabled","enabled"],["salesAutoFba","fbaSales"],["salesAutoMerchant","merchantSales"],["salesAutoErrors","errorAlerts"]])$("#"+id).checked=automation[key];
+      if(!salesAutomationDirty)for(const [id,key] of [["salesAutoEnabled","enabled"],["salesAutoFba","fbaSales"],["salesAutoMerchant","merchantSales"],["salesAutoErrors","errorAlerts"],["salesAutoStock","stockAlerts"],["salesAutoYahoo","yahooAlerts"],["salesAutoReview","reviewAlerts"]])$("#"+id).checked=automation[key];
       $("#salesAutomationFields").disabled=Boolean(saved.config.capabilities?.readOnly);
-      $("#salesAutomationStatus").textContent=`${automation.enabled?automation.schedule:"自動確認はオフ"} ／ 最終実行：${date(automation.job.startedAt)} ／ ${{not_run:"まだ実行していません",running:"確認中",complete:"完了",failed:"要確認"}[automation.job.status] || automation.job.status}${automation.job.error?` ／ ${automation.job.error}`:""}`;
+      $("#salesAutomationStatus").textContent=`${automation.enabled?automation.schedule:"自動確認はオフ"} ／ 最終実行：${date(automation.job.startedAt)} ／ ${{not_run:"まだ実行していません",running:"確認中",complete:"完了",partial:"一部未確認・全商品一覧を確認",failed:"要確認"}[automation.job.status] || automation.job.status}${automation.job.error?` ／ ${automation.job.error}`:""}`;
       $("#salesAutomationRun").disabled=!automation.enabled;
     }
   }
@@ -217,7 +217,7 @@ function renderMail() {
 }
 $("#salesAutomationForm")?.addEventListener("change",()=>{salesAutomationDirty=true;});
 $("#salesAutomationForm")?.addEventListener("submit",event=>{event.preventDefault();action(async()=>{
-  saved=await api("/automation/settings",{enabled:$("#salesAutoEnabled").checked,fbaSales:$("#salesAutoFba").checked,merchantSales:$("#salesAutoMerchant").checked,errorAlerts:$("#salesAutoErrors").checked});salesAutomationDirty=false;render();status("販売通知の設定を保存しました。");
+  saved=await api("/automation/settings",{enabled:$("#salesAutoEnabled").checked,fbaSales:$("#salesAutoFba").checked,merchantSales:$("#salesAutoMerchant").checked,errorAlerts:$("#salesAutoErrors").checked,stockAlerts:$("#salesAutoStock").checked,yahooAlerts:$("#salesAutoYahoo").checked,reviewAlerts:$("#salesAutoReview").checked});salesAutomationDirty=false;render();status("通知の種類を保存しました。");
 });});
 $("#salesAutomationTest")?.addEventListener("click",()=>action(async()=>{
   if(!window.confirm(`${saved.salesAutomation.recipient} へ販売通知の経路テストを1通送ります。実注文の通知ではありません。`))return;

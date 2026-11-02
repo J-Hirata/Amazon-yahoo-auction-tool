@@ -46,18 +46,21 @@ export function parseYahooPage(html, url, at = new Date().toISOString()) {
   if (!item || item.auctionId !== identity.listingId) throw new Error("商品情報を確認できません。ログイン画面やページ変更の可能性があります");
   const description = descriptionText(item.descriptionHtml || (item.description || []).join("\n"));
   const status = item.status === "open" ? "active" : item.status === "closed" ? "ended" : "unknown";
+  const bidCount=Number.isSafeInteger(item.bids)&&item.bids>=0?item.bids:null;
   return {
     ...identity, title: String(item.title || ""), imageUrl: yahooImageUrl($('meta[property="og:image"]').attr("content")), seller: String(item.seller?.aucUserId || ""),
     condition: String(item.conditionName || ""), description, references: managementReferences(description),
-    observation: {status, reason: "unknown", checkedAt: at, source: "public_page", verified: status !== "unknown", evidence: `商品ページの状態: ${String(item.status || "不明")}`},
+    bidCount,observation: {status, reason: status==="ended"&&bidCount===0?"unsold":"unknown", checkedAt: at, source: "public_page", verified: status !== "unknown", evidence: `商品ページの状態: ${String(item.status || "不明")}`},
     endTime: item.endTime || null
   };
 }
 
-export async function fetchYahooListing(url, {fetchImpl = fetch, now = () => new Date().toISOString()} = {}) {
+export async function fetchYahooListing(url, {fetchImpl = fetch, now = () => new Date().toISOString(),maxDurationMs=15000} = {}) {
+  const deadline=Date.now()+maxDurationMs;
   let target = yahooListingUrl(url).url;
   for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await fetchImpl(target, {redirect: "manual", signal: AbortSignal.timeout(15000), headers: {Accept: "text/html", "Accept-Language": "ja-JP"}});
+    if(Date.now()>=deadline)throw new Error("商品ページの確認が時間内に完了しませんでした");
+    const response = await fetchImpl(target, {redirect: "manual", signal: AbortSignal.timeout(Math.max(1,deadline-Date.now())), headers: {Accept: "text/html", "Accept-Language": "ja-JP"}});
     if (response.status >= 300 && response.status < 400) {
       target = yahooListingUrl(new URL(response.headers.get("location"), target).href).url;
       continue;

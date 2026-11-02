@@ -1,9 +1,9 @@
-import {createElement, Link2, FilePenLine, Warehouse, CalendarClock} from "lucide";
+import {createElement, Link2, FilePenLine, Warehouse, CalendarClock, LayoutGrid} from "lucide";
 
 const validId = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || "");
 const contextId = () => {const id = new URLSearchParams(location.hash.slice(1)).get("stock"); return validId(id) ? id : "";};
 
-export function workspaceNavigation({drafts, stock, planning, physicalStock, salesPlanning}) {
+export function workspaceNavigation({drafts, stock, planning, overview, physicalStock, salesPlanning,productOverview}) {
   const nav = document.createElement("nav"); nav.setAttribute("aria-label", "管理画面");
   const market = document.createElement("div"); market.className = "workspace-market";
   const logo = document.createElement("img"); Object.assign(logo, {src:"/extension-logo.png",alt:"Amazonからヤフオクへ",width:44,height:44});
@@ -16,12 +16,12 @@ export function workspaceNavigation({drafts, stock, planning, physicalStock, sal
     if (selected) a.setAttribute("aria-current","page"); return a;
   }
   const context = contextId(), hash = context ? "#stock=" + context : "";
-  links.append(item("商品紐付けツール","/"+hash,!drafts&&!stock&&!planning,Link2),item("出品下書きツール","/?view=drafts"+hash,drafts,FilePenLine));
+  links.append(item("商品紐付けツール","/"+hash,!drafts&&!stock&&!planning&&!overview,Link2),item("出品下書きツール","/?view=drafts"+hash,drafts,FilePenLine));
   marketBody.append(title,links); market.append(logo,marketBody); nav.append(market);
   if (physicalStock) {
     const inventory = document.createElement("div"), caption = document.createElement("span");
     inventory.className = "workspace-inventory"; caption.className = "workspace-group-title"; caption.textContent = "在庫管理";
-    inventory.append(caption,item("コンテナ・自社在庫","/?view=stock",stock,Warehouse)); nav.append(inventory);
+    inventory.append(caption);if(productOverview)inventory.append(item("全商品一覧","/?view=overview",overview,LayoutGrid));inventory.append(item("コンテナ・自社在庫","/?view=stock",stock,Warehouse)); nav.append(inventory);
   }
   if(salesPlanning){const group=document.createElement("div"),caption=document.createElement("span");group.className="workspace-inventory";caption.className="workspace-group-title";caption.textContent="販売方針";group.append(caption,item("販売の見直し","/?view=planning",planning,CalendarClock));nav.append(group);}
   return nav;

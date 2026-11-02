@@ -21,6 +21,12 @@ function fixture(){
 }
 async function enable(f,patch={}){const engine=createCloudSalesAutomation(f);await engine.settings({expectedRevision:f.revision(),enabled:true,fbaSales:true,merchantSales:true,errorAlerts:true,...patch});return engine;}
 
+test("product alert IDs prevent duplicate mail after replay across the watch and mail stores",async()=>{
+  const f=fixture();await enable(f,{stockAlerts:true});f.time(later);
+  const engine=createCloudSalesAutomation({...f,monitoring:{run:async({enqueueAlerts})=>{await enqueueAlerts([{id:"stable-alert",category:"stockAlerts",title:"補充",asin:"B000TEST01",message:"FBA10個・手元50個"}]);return{status:"complete"};}}});
+  await engine.run();await engine.run();assert.equal(f.calls(),1);assert.deepEqual((await f.store.read()).mailOutbox[0].alertIds,["stable-alert"]);
+});
+
 test("own seller SKU resolution includes merchant stock/plans without Yahoo and separates condition/SKU",()=>{
   const sources=[{sourceId:"stock:a",asin:"B000TEST01",condition:"used",title:"中古"},{sourceId:"plan:b",asin:"B000TEST02",condition:"new"}];
   const snapshot={...config,status:"complete",source:"own_seller_listings",asins:sources.map(s=>s.asin),checkedAt:at,rows:[{asin:sources[0].asin,sellerSku:"used",condition:"used_good",fulfillment:[{channel:"DEFAULT"}]},{asin:sources[0].asin,sellerSku:"new",condition:"new_new",fulfillment:[{channel:"AMAZON_JP"}]}]};

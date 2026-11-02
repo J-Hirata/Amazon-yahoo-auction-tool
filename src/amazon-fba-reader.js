@@ -141,6 +141,8 @@ export async function readFbaInventory({asins, config, fetchImpl = fetch, wait =
         reservedQuantity: quantity(row.inventoryDetails?.reservedQuantity?.totalReservedQuantity),
         unfulfillableQuantity: quantity(row.inventoryDetails?.unfulfillableQuantity?.totalUnfulfillableQuantity),
         totalQuantity: quantity(row.totalQuantity), lastUpdatedTime: row.lastUpdatedTime || null, checkedAt, source: "amazon_sp_api", listingInfo: listingInfoBySku.get(row.sellerSku)};
+      const inbound=[row.inventoryDetails?.inboundWorkingQuantity,row.inventoryDetails?.inboundShippedQuantity,row.inventoryDetails?.inboundReceivingQuantity].map(quantity);
+      item.inboundQuantity=inbound.every(v=>v!==null)?inbound.reduce((a,b)=>a+b,0):null;
       const key = JSON.stringify([item.asin, item.sellerSku, item.fnSku, item.condition]);
       const previous = rowsByKey.get(key);
       if (previous && JSON.stringify({...previous, checkedAt: ""}) !== JSON.stringify({...item, checkedAt: ""})) throw new Error("取得中に対象商品の情報が変わりました。再度確認してください");

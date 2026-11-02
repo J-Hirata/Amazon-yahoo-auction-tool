@@ -9,20 +9,22 @@ export function automationView(state,at=new Date().toISOString()) {
   const job=state.salesAutomationJob || {status:"not_run"};
   const interrupted=job.status==="running" && Date.parse(job.leaseUntil)<=Date.parse(at);
   return {enabled:Boolean(settings.enabled),fbaSales:settings.fbaSales!==false,merchantSales:settings.merchantSales!==false,errorAlerts:settings.errorAlerts!==false,
+    stockAlerts:Boolean(settings.stockAlerts),yahooAlerts:Boolean(settings.yahooAlerts),reviewAlerts:Boolean(settings.reviewAlerts),
     enabledAt:settings.enabledAt || null,recipient:NOTIFICATION_ADDRESS,schedule:"1日1回・午前9時台（日本時間）",job:interrupted?{...job,status:"failed",error:"前回の定期確認が途中で止まりました。次回再開します"}:job};
 }
 
-export function createCloudSalesAutomation({store,sales,transport,now=()=>new Date().toISOString()}) {
-  async function settings({expectedRevision,enabled,fbaSales,merchantSales,errorAlerts}) {
+export function createCloudSalesAutomation({store,sales,transport,monitoring,now=()=>new Date().toISOString()}) {
+  async function settings({expectedRevision,enabled,fbaSales,merchantSales,errorAlerts,stockAlerts,yahooAlerts,reviewAlerts}) {
     if([enabled,fbaSales,merchantSales,errorAlerts].some(v=>typeof v!=="boolean"))throw fail("通知の種類と自動確認を選択してください",400);
     await store.update(state=>{
       if(enabled && state.cloudMail?.status!=="verified")throw fail("先にGmail接続を確認してください");
       const old=state.salesAutomation;
-      if(!enabled || old && (old.fbaSales!==fbaSales || old.merchantSales!==merchantSales))for(const record of state.mailOutbox || [])if(record.automation && record.kind!=="automation_test" && ["pending","failed"].includes(record.status)){
+      const categories={};for(const [key,value] of Object.entries({stockAlerts,yahooAlerts,reviewAlerts})){if(value!==undefined&&typeof value!=="boolean")throw fail("通知の種類を選択してください",400);categories[key]=value??old?.[key]??false;}
+      if(!enabled || old && (old.fbaSales!==fbaSales || old.merchantSales!==merchantSales || Object.keys(categories).some(k=>Boolean(old[k])!==categories[k])))for(const record of state.mailOutbox || [])if(record.automation && record.kind!=="automation_test" && ["pending","failed"].includes(record.status)){
         record.status="cancelled";
         for(const event of state.salesTracking?.events || [])if(record.eventIds.includes(event.id))event.delivery=enabled?"preview":"muted";
       }
-      state.salesAutomation={version:1,enabled,fbaSales,merchantSales,errorAlerts,enabledAt:enabled && !old?.enabled ? now() : old?.enabledAt || null,updatedAt:now()};
+      state.salesAutomation={version:1,enabled,fbaSales,merchantSales,errorAlerts,...categories,enabledAt:enabled && !old?.enabled ? now() : old?.enabledAt || null,updatedAt:now()};
     },{expectedRevision});
   }
   function enqueue(state,{key,subject,text,targets=[],eventIds=[],kind="sales"}) {
@@ -90,18 +92,18 @@ export function createCloudSalesAutomation({store,sales,transport,now=()=>new Da
     });
   }
   async function run() {
-    const jobId=randomUUID(),at=now();
+    const jobId=randomUUID(),at=now(),started=performance.now();
     const claimed=await store.update(state=>{
       if(!state.salesAutomation?.enabled)return false;
       const job=state.salesAutomationJob;
       if(job?.status==="running" && Date.parse(job.leaseUntil)>Date.parse(at))return false;
-      state.salesAutomationJob={status:"running",jobId,startedAt:at,leaseUntil:new Date(Date.parse(at)+240000).toISOString()};return true;
+      state.salesAutomationJob={status:"running",jobId,startedAt:at,leaseUntil:new Date(Date.parse(at)+290000).toISOString()};return true;
     });
     if(!claimed)return {status:"skipped"};
     let error=null;
     try{
       await sales.start({});
-      for(let pass=0;pass<3;pass++){
+      for(let pass=0;pass<2;pass++){
         await sales.check({catchUp:true});
         const t=(await store.read()).salesTracking;
         if(t.sync.status!=="complete")throw fail(t.sync.error);
@@ -111,17 +113,33 @@ export function createCloudSalesAutomation({store,sales,transport,now=()=>new Da
       if(Date.parse(state.salesTracking.checkedThrough)<Date.parse(now())-15*60000)throw fail("不足期間の補完中です。次回は保存済みの続きから再開します");
       await queueSales();
     }catch(e){if(String(e.code || "").startsWith("STORAGE_"))throw e;error="販売確認を完了できません。販売ゼロとは扱いません。管理画面で取得状況を確認してください";}
+    let monitoringResult;
+    if(monitoring&&performance.now()-started<180000){
+      try{monitoringResult=await monitoring.run({settings:(await store.read()).salesAutomation,enqueueAlerts:queueProductAlerts});}
+      catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;monitoringResult={status:"failed",errors:["在庫・出品・期限の監視を完了できません。全商品一覧で確認してください"]};}
+    }else if(monitoring)monitoringResult={status:"partial",errors:["実行時間のため在庫・出品監視は次回に再開します"]};
     await store.update(state=>{
       if(state.salesAutomationJob?.jobId!==jobId)throw fail("定期実行の結果を確認してください");
-      state.salesAutomationJob={...state.salesAutomationJob,status:error?"failed":"complete",finishedAt:now(),error};
+      state.salesAutomationJob={...state.salesAutomationJob,status:error?"failed":monitoringResult&&monitoringResult.status!=="complete"?"partial":"complete",finishedAt:now(),error,monitoring:monitoringResult};
       if(error && state.salesAutomation.errorAlerts){
         state.salesAutomationIncident ||= {id:randomUUID(),startedAt:now()};
         enqueue(state,{key:`incident:${state.salesAutomationIncident.id}`,kind:"automation_error",subject:"【在庫管理ツール】販売の自動確認が止まっています",text:error+"\nhttps://amazon-yahoo-inventory.vercel.app/"});
       }else if(!error)state.salesAutomationIncident=null;
     });
     // At most 3 pending messages per invocation; SMTP ambiguity is never retried.
-    for(let i=0;i<3;i++)if(!await drain())break;
-    return {status:error?"failed":"complete"};
+    for(let i=0;i<3;i++){if(performance.now()-started>250000)break;if(!await drain())break;}
+    return {status:error?"failed":monitoringResult&&monitoringResult.status!=="complete"?"partial":"complete"};
+  }
+  async function queueProductAlerts(alerts){
+    await store.update(state=>{
+      if(!state.salesAutomation?.enabled)return;
+      const existing=new Set((state.mailOutbox||[]).flatMap(r=>r.alertIds||[]));
+      const fresh=alerts.filter(a=>state.salesAutomation[a.category]&&!existing.has(a.id));if(!fresh.length)return;
+      const ids=fresh.map(a=>a.id).sort(),key=`product-alerts:${hash(ids.join(","))}`;
+      enqueue(state,{key,kind:"product_alerts",subject:`【在庫管理ツール】在庫・出品・見直しの確認 ${fresh.length}件`,targets:fresh.filter(a=>a.asin).map(a=>({asin:a.asin})),
+        text:["日次確認で対応が必要な項目があります。",...fresh.map(a=>`${a.title}${a.asin?` ／ ${a.asin}`:""}\n確認：${new Date(a.at||now()).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})}\n${a.message}`),"全商品一覧：https://amazon-yahoo-inventory.vercel.app/?view=overview","数量・出品・広告は自動変更していません。"].join("\n\n")});
+      state.mailOutbox.find(r=>r.key===key).alertIds=ids;
+    });
   }
   return {settings,test,run,drain,queueSales,view:state=>automationView(state,now())};
 }

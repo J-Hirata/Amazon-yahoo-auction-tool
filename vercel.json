@@ -10,7 +10,7 @@
   "functions": {
     "api/**/*.js": {
       "includeFiles": "dist/cloud/**",
-      "maxDuration": 240
+      "maxDuration": 300
     }
   },
   "crons": [{"path":"/api/cron/sales","schedule":"0 0 * * *"}],

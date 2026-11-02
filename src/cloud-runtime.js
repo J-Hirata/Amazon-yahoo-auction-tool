@@ -20,8 +20,11 @@ import {createStockAmazonRefresh,readOwnAmazonListings} from "./stock-amazon-lis
 import {readPlanningCatalog} from "./planning-catalog.js";
 import {resolveSalesSources} from "./sales-sources.js";
 import {createCloudSalesAutomation} from "./cloud-sales-automation.js";
+import {createProductOverview,validateProductWatch} from "./product-overview.js";
+import {createProductMonitoring} from "./product-monitoring.js";
 
 const fileTypes = {
+  "cloud-overview-view.html":"text/html; charset=utf-8","product-overview.js":"text/javascript; charset=utf-8","product-overview.css":"text/css; charset=utf-8",
   "sales-planning.js":"text/javascript; charset=utf-8", "sales-planning.css":"text/css; charset=utf-8", "cloud-planning-view.html":"text/html; charset=utf-8",
   "cloud-login.html": "text/html; charset=utf-8", "cloud-view.html": "text/html; charset=utf-8", "cloud-drafts-view.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "demo.html": "text/html; charset=utf-8", "cloud-demo.js": "text/javascript; charset=utf-8",
   "cloud-login.js": "text/javascript; charset=utf-8", "monitor-http.js": "text/javascript; charset=utf-8", "link-monitor.js": "text/javascript; charset=utf-8",
@@ -46,6 +49,8 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const stockStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "physical-stock", validate: validatePhysicalStock}) : undefined;
   const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
   const planningStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"sales-planning",validate:validateSalesPlanning}):undefined;
+  const watchStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"product-watch",validate:validateProductWatch}):undefined;
+  const overview=watchStore?createProductOverview({monitorStore:store,stockStore,planningStore,draftStore,watchStore}):undefined;
   const planning=planningStore?createCloudPlanning({store:planningStore,stock,monitorStore:store,
     readCatalog:env.ASIN_AMAZON_CLIENT_ID?asin=>readPlanningCatalog({asin,config:cloudAmazonConfig(env)}):undefined}):undefined;
   const stockPhotos = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockPhotoRefresh({store: stockStore, config: cloudAmazonConfig(env)}) : undefined;
@@ -53,10 +58,11 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
   const readTargets=async()=>{
-    const [monitor,physical,plans]=await Promise.all([store.read(),stockStore?.read(),planningStore?.read()]);
+    const [monitor,physical,plans,watch]=await Promise.all([store.read(),stockStore?.read(),planningStore?.read(),watchStore?.read()]);
     const sources=monitor.links.filter(l=>l.verified&&!l.observationConflict).map(l=>{const p=monitor.catalog.find(p=>p.id===l.catalogId),y=monitor.listings.find(y=>y.listingId===l.listingId);return{sourceId:`link:${l.id}`,linkId:l.id,asin:l.asin || p?.asin,sellerSku:l.matchBy==="asin"?"":p?.sellerSku,title:y?.title || p?.title,condition:l.matchBy==="asin"?"unknown":/^new/i.test(p?.condition || "")?"new":/^used/i.test(p?.condition || "")?"used":"unknown"};});
     for(const p of physical?.products || [])if(p.asin)sources.push({sourceId:`stock:${p.id}`,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
     for(const p of plans?.plans || [])if(p.asin)sources.push({sourceId:`plan:${p.id}`,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
+    for(const p of watch?.rules || [])if(p.key.startsWith("watch:")&&p.asin)sources.push({sourceId:p.key,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
     const asins=[...new Set(sources.map(s=>s.asin).filter(a=>/^[A-Z0-9]{10}$/.test(a)))];
     if(!asins.length)throw new Error("追跡するASINを登録してください");
     const amazon=cloudAmazonConfig(env),rows=[];
@@ -67,8 +73,9 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const sales = env.ASIN_AMAZON_CLIENT_ID ? createCloudSales({store, config: cloudAmazonConfig(env),readTargets}) : undefined;
   const transport=env.ASIN_GMAIL_USER ? createCloudMailTransport(cloudMailConfig(env)) : undefined;
   const mail = transport ? createCloudMail({store,transport}) : undefined;
-  const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport}) : undefined;
-  const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
+  const monitoring=overview&&env.ASIN_AMAZON_CLIENT_ID?createProductMonitoring({overview,watchStore,config:cloudAmazonConfig(env)}):undefined;
+  const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring}) : undefined;
+  const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, overview, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
-  return {config, handler, pool,sales,automation,runSalesAutomation:automation ? ()=>automation.run() : undefined};
+  return {config, handler, pool,sales,automation,overview,runSalesAutomation:automation ? ()=>automation.run() : undefined};
 }

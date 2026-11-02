@@ -114,11 +114,14 @@
           <label class="monitor-check"><input id="salesAutoFba" type="checkbox">FBAの販売・取消を通知する</label>
           <label class="monitor-check"><input id="salesAutoMerchant" type="checkbox">自社発送の販売・取消を通知する</label>
           <label class="monitor-check"><input id="salesAutoErrors" type="checkbox">自動確認の失敗を通知する</label>
+          <label class="monitor-check"><input id="salesAutoStock" type="checkbox">FBA販売可能0・補充候補を通知する</label>
+          <label class="monitor-check"><input id="salesAutoYahoo" type="checkbox">ヤフオク出品の終了を通知する</label>
+          <label class="monitor-check"><input id="salesAutoReview" type="checkbox">販売見直し・監視商品の期限を通知する</label>
           <button type="submit">販売通知の設定を保存</button>
         </fieldset></form>
         <div class="monitor-inline"><button id="salesAutomationTest" type="button">販売通知の経路を1通テスト</button><button id="salesAutomationRun" type="button">今すぐ販売を確認して通知する</button></div>
         <p id="salesAutomationStatus" role="status"></p>
-        <p class="meta">過去期間の補完は新着メールにしません。数量は自動減算しません。在庫切れ通知・販売見直しの期限メールは今後対応します。</p>
+        <p class="meta">過去期間の補完は販売の新着メールにしません。数量は自動減算しません。FBA販売可能0は自社在庫ゼロとは別です。取得できないヤフオク出品は終了と判断しません。<a href="/?view=overview">全商品一覧で状況・補充条件を確認</a></p>
       </div>
       <form id="notificationSettingsForm"><fieldset id="notificationSettingsFields" disabled>
         <label class="monitor-check"><input id="mailEnabled" type="checkbox">新しい紐付けと確認結果をメールで通知する</label>

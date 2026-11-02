@@ -1,0 +1,105 @@
+import {createHash} from "node:crypto";
+import {stockTotals} from "./physical-stock.js";
+import {planningSchedule,planningToday} from "./sales-planning.js";
+import {stockImageUrl} from "./stock-images.js";
+export const WATCH_TAGS={watch:"監視対象",overstock:"在庫過多",large:"大型",heavy:"重量物"};
+const fail=(m,status=400)=>Object.assign(new Error(m),{status});
+const uuid=v=>/^[0-9a-f-]{36}$/i.test(v||"");
+const family=v=>/^new/i.test(v||"")?"new":/^used/i.test(v||"")?"used":"unknown";
+const text=(v,n=500)=>{if(typeof v!=="string"||v.length>n)throw fail("入力文字数を確認してください");return v.trim();};
+const number=(v,max)=>Number.isSafeInteger(v)&&v>=0&&v<=max;
+export const emptyProductWatch=()=>({version:1,rules:[],receipts:[],observations:{},signals:{}});
+export function validateProductWatch(state){
+  if(state?.version!==1||!Array.isArray(state.rules)||!Array.isArray(state.receipts)||!state.observations||!state.signals)throw fail("商品監視の保存形式を確認してください");
+  if(state.rules.length>2000||state.receipts.length>10000||new Set(state.rules.map(r=>r.key)).size!==state.rules.length||Buffer.byteLength(JSON.stringify(state))>8*1024*1024)throw fail("商品監視の保存上限を確認してください");
+  return state;
+}
+export function ruleFields(input,at){
+  const key=text(input.key,100);if(!/^(stock|link|plan|draft|watch):[A-Za-z0-9_-]{1,80}$/.test(key))throw fail("対象商品を確認してください");
+  const tags=input.tags;if(!Array.isArray(tags)||new Set(tags).size!==tags.length||tags.some(t=>!Object.hasOwn(WATCH_TAGS,t)))throw fail("監視タグを選んでください");
+  if(typeof input.replenishEnabled!=="boolean"||!number(input.threshold,1000000)||!number(input.minimumSales7,1000000)||!number(input.coverageDays,365)||!number(input.reviewDays,365)||input.reviewDays<1)throw fail("閾値・日数は指定範囲の整数で入力してください");
+  const startedOn=text(input.startedOn||"",10);if(startedOn&&(!/^\d{4}-\d{2}-\d{2}$/.test(startedOn)||!Number.isFinite(Date.parse(startedOn))||new Date(startedOn+"T00:00:00Z").toISOString().slice(0,10)!==startedOn||startedOn>planningToday(at)))throw fail("確認済みの販売開始日を入力してください。予定日では開始しません");
+  const result={key,tags:[...tags],replenishEnabled:input.replenishEnabled,threshold:input.threshold,minimumSales7:input.minimumSales7,coverageDays:input.coverageDays,reviewDays:input.reviewDays,startedOn,note:text(input.note||"",1000),updatedAt:at};
+  if(key.startsWith("watch:")){
+    const asin=text(input.asin||"",10).toUpperCase(),title=text(input.title||"",200)||asin;
+    if(!title||asin&&!/^[A-Z0-9]{10}$/.test(asin)||!["new","used","parts","unknown"].includes(input.condition))throw fail("監視商品の名前・ASIN・状態を確認してください");
+    const imageUrl=text(input.imageUrl||"",2048);if(imageUrl&&!stockImageUrl(imageUrl))throw fail("商品写真を確認してください");
+    Object.assign(result,{asin,title,condition:input.condition,sellerSku:text(input.sellerSku||"",200),imageUrl});
+  }
+  return result;
+}
+function inventoryFor(row,monitor,watch,at){
+  const snapshot=watch.observations.fba;
+  const unknown={quantity:null,reserved:null,status:"unknown",checkedAt:snapshot?.asins?.includes(row.asin)?snapshot.checkedAt||null:null,variants:[]};
+  if(!row.asin)return {...unknown,status:"no_asin"};
+  if(snapshot?.status!=="complete"||!snapshot.complete||snapshot.accountKey!==monitor.amazonAccountKey||snapshot.sellerId!==monitor.amazonSellerId||!snapshot.asins?.includes(row.asin))return unknown;
+  if(!Number.isFinite(Date.parse(snapshot.checkedAt))||Date.parse(at)-Date.parse(snapshot.checkedAt)>26*3600000||Date.parse(snapshot.checkedAt)>Date.parse(at)+60000)return {...unknown,status:"stale"};
+  const targets=(monitor.salesTargets?.targets||[]).filter(t=>row.sourceKeys.includes(t.sourceId));
+  const fbaSkus=[...new Set(targets.filter(t=>t.fulfillment?.includes("AMAZON")).map(t=>t.sellerSku))];
+  if(targets.length&&!fbaSkus.length)return {...unknown,status:"not_fba"};
+  const matches=snapshot.items.filter(r=>r.asin===row.asin&&(!row.sellerSku||r.sellerSku===row.sellerSku)&&(!fbaSkus.length||fbaSkus.includes(r.sellerSku))&&(!["new","used"].includes(row.condition)||family(r.condition)===row.condition));
+  if(matches.length!==1)return {...unknown,status:matches.length>1?"ambiguous":"not_found",variants:matches.map(r=>({sellerSku:r.sellerSku,quantity:r.fulfillableQuantity,condition:r.condition}))};
+  const item=matches[0];return {status:Number.isSafeInteger(item.fulfillableQuantity)?"complete":"unknown",quantity:Number.isSafeInteger(item.fulfillableQuantity)?item.fulfillableQuantity:null,reserved:item.reservedQuantity,inbound:item.inboundQuantity??null,checkedAt:snapshot.checkedAt,sellerSku:item.sellerSku,variants:[]};
+}
+function salesFor(row,monitor,at){
+  const t=monitor.salesTracking,start=Date.parse(at)-7*86400000;
+  const targets=(t?.trackers||[]).filter(target=>row.sourceKeys.includes(target.sourceId)||row.linkIds.includes(target.linkId));
+  const skus=new Set(row.sellerSku?[row.sellerSku]:targets.map(target=>target.sellerSku));
+  const complete=t?.sync?.status==="complete"&&Date.parse(t.checkedThrough)>=Date.parse(at)-26*3600000&&targets.length&&targets.every(target=>Date.parse(target.startedAt)<=start);
+  const rows=(t?.orders||[]).filter(r=>r.asin===row.asin&&skus.has(r.sellerSku)&&Date.parse(r.createdAt)>=start);
+  const uncertain=rows.some(r=>r.status==="UNKNOWN");
+  return {quantity7:complete&&!uncertain?rows.reduce((n,r)=>n+(r.confirmedQuantity||0),0):null,fbaQuantity7:complete&&!uncertain?rows.filter(r=>r.fulfillment==="AMAZON").reduce((n,r)=>n+(r.confirmedQuantity||0),0):null,observedQuantity7:rows.reduce((n,r)=>n+(r.confirmedQuantity||0),0),status:!complete?"incomplete":uncertain?"unknown":"complete",checkedThrough:t?.checkedThrough||null};
+}
+export function productOverview({monitor,physical,planning,drafts=[],watch},at=new Date().toISOString()){
+  const rows=[],byKey=new Map(),linkRows=new Map();
+  const add=(key,values)=>{const row={key,title:values.asin||"商品名未取得",asin:"",sellerSku:"",condition:"unknown",imageUrl:"",sourceKeys:[key],sources:[key.split(":")[0]],stockIds:[],linkIds:[],plans:[],locations:[],...values};rows.push(row);byKey.set(key,row);return row;};
+  for(const p of physical.products){const totals=stockTotals(physical,p.id);add(`stock:${p.id}`,{...p,key:`stock:${p.id}`,stockIds:[p.id],locations:totals.locations,transfers:physical.transfers.filter(t=>t.productId===p.id&&t.remaining>0).map(t=>({to:t.to,remaining:t.remaining}))});}
+  for(const link of monitor.links){
+    const p=monitor.catalog.find(p=>p.id===link.catalogId),listing=monitor.listings.find(l=>l.listingId===link.listingId),asin=link.asin||p?.asin||"";
+    const candidates=physical.products.filter(s=>s.linkedLinkIds.includes(link.id)&&s.asin===asin&&(!s.sellerSku||!p?.sellerSku||s.sellerSku===p.sellerSku)&&(!p?.condition||family(p.condition)==="unknown"||s.condition===family(p.condition)));
+    const row=candidates.length===1?byKey.get(`stock:${candidates[0].id}`):add(`link:${link.id}`,{asin,title:listing?.title||p?.title||asin,sellerSku:link.matchBy==="asin"?"":p?.sellerSku||"",condition:link.matchBy==="asin"?"unknown":family(p?.condition),imageUrl:listing?.imageUrl||p?.listingInfo?.catalogImageUrl||""});
+    if(!row.sourceKeys.includes(`link:${link.id}`))row.sourceKeys.push(`link:${link.id}`);if(!row.sources.includes("link"))row.sources.push("link");row.linkIds.push(link.id);linkRows.set(link.id,row);
+    if(!row.imageUrl)row.imageUrl=listing?.imageUrl||"";
+    (row.yahoo ||= []).push({listingId:link.listingId,title:listing?.title||"",...(watch.observations.yahoo||[]).find(y=>y.listingId===link.listingId)});
+  }
+  for(const p of planning.plans){
+    const source=p.source.kind==="stock"?byKey.get(`stock:${p.source.id}`):p.source.kind==="link"?linkRows.get(p.source.id):null;
+    const match=source&&source.asin===p.asin&&(!p.sellerSku||!source.sellerSku||source.sellerSku===p.sellerSku)&&(!["new","used"].includes(source.condition)||p.condition===source.condition);
+    const row=match?source:add(`plan:${p.id}`,{asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition,imageUrl:p.imageUrl,referenceIssue:Boolean(source&&!match)});
+    if(!row.sourceKeys.includes(`plan:${p.id}`))row.sourceKeys.push(`plan:${p.id}`);if(!row.sources.includes("plan"))row.sources.push("plan");row.plans.push({...p,schedule:planningSchedule(p,at)});if(!row.imageUrl)row.imageUrl=p.imageUrl||"";
+  }
+  for(const p of drafts)add(`draft:${p.asin}`,{asin:p.asin,title:p.title||p.asin,condition:"unknown",imageUrl:p.imageUrls?.[0]||""});
+  for(const rule of watch.rules.filter(r=>r.key.startsWith("watch:")))add(rule.key,{asin:rule.asin,title:rule.title,condition:rule.condition,sellerSku:rule.sellerSku,imageUrl:rule.imageUrl});
+  for(const row of rows){
+    row.imageUrl=stockImageUrl(row.imageUrl)||"";
+    row.rules=watch.rules.filter(r=>row.sourceKeys.includes(r.key));row.rule=row.rules.find(r=>r.key===row.key)||row.rules[0]||{key:row.key,tags:[],replenishEnabled:false,threshold:10,minimumSales7:0,coverageDays:0,reviewDays:10,startedOn:"",note:""};
+    row.tags=[...new Set(row.rules.flatMap(r=>r.tags))];
+    row.fba=inventoryFor(row,monitor,watch,at);row.sales=salesFor(row,monitor,at);
+    row.daysRemaining=row.fba.quantity!==null&&row.sales.fbaQuantity7>0?Math.round(row.fba.quantity/(row.sales.fbaQuantity7/7)*10)/10:null;
+    row.localKnown=row.locations.some(l=>l.usable!==null);row.localAvailable=row.localKnown?row.locations.reduce((sum,l)=>sum+(l.usable||0),0):null;
+    row.badges=[...(row.asin&&row.sources.some(s=>s!=="draft")?["amazon"]:[]),...(row.linkIds.length?["yahoo","parallel"]:[]),...(row.locations.some(l=>l.locationId==="container"&&l.usable>0)?["container"]:[]),...(row.locations.some(l=>l.locationId==="home"&&l.usable>0)?["home"]:[]),...row.tags,...(row.plans.length?["planning"]:[]),...(row.sources.includes("draft")?["draft"]:[])];
+    row.watchDue=row.rule.startedOn?new Date(Date.parse(row.rule.startedOn+"T00:00:00Z")+row.rule.reviewDays*86400000).toISOString().slice(0,10):"";
+    row.dueDates=[...row.plans.map(p=>p.schedule.dueOn).filter(Boolean),...(row.watchDue?[row.watchDue]:[])].sort();
+    row.attention=[];if(row.fba.quantity===0)row.attention.push("FBA販売可能0");if(row.yahoo?.some(y=>y.status==="ended"))row.attention.push("ヤフオク終了");if(row.dueDates[0]&&row.dueDates[0]<=planningToday(at))row.attention.push("見直し時期");
+    if(row.yahoo?.some(y=>!y.verified||!Number.isFinite(Date.parse(y.checkedAt))||Date.parse(at)-Date.parse(y.checkedAt)>26*3600000))row.attention.push("ヤフオク未確認");
+    row.replenishment=Boolean(row.rule.replenishEnabled&&row.fba.quantity!==null&&row.localAvailable>0&&(row.rule.minimumSales7===0||row.sales.fbaQuantity7!==null&&row.sales.fbaQuantity7>=row.rule.minimumSales7)&&(row.fba.quantity<=row.rule.threshold||row.rule.coverageDays>0&&row.daysRemaining!==null&&row.daysRemaining<=row.rule.coverageDays));
+    if(row.replenishment)row.attention.push("追加納品を検討");
+    if(row.referenceIssue)row.attention.push("参照先を要確認");
+  }
+  return rows;
+}
+export function createProductOverview({monitorStore,stockStore,planningStore,draftStore,watchStore,now=()=>new Date().toISOString()}){
+  async function inputs(){const [monitor,physical,planning,drafts,watch]=await Promise.all([monitorStore.read(),stockStore.read(),planningStore.read(),draftStore?draftStore.read():[],watchStore.readSnapshot()]);return {monitor,physical,planning,drafts,watch:watch.state,revision:watch.revision};}
+  async function view(){const data=await inputs(),at=now();return{revision:data.revision,checkedAt:at,rows:productOverview(data,at),monitoring:data.watch.observations.job||{status:"not_run"},automation:data.monitor.salesAutomation||null,mail:(data.monitor.mailOutbox||[]).slice(-10).map(({kind,status,createdAt,subject})=>({kind,status,createdAt,subject}))};}
+  async function commit(command,{expectedRevision,actor}){
+    if(!uuid(command?.operationId))throw fail("操作IDを確認してください");const digest=createHash("sha256").update(JSON.stringify(command)).digest("hex");
+    const data=await inputs(),saved=data.watch.receipts.find(r=>r.id===command.operationId);
+    if(saved){if(saved.actor!==actor||saved.digest!==digest)throw fail("同じ操作IDの内容が異なります",409);return view();}
+    const rule=ruleFields(command.rule,now());
+    if(!rule.key.startsWith("watch:")&&!productOverview(data,now()).some(row=>row.sourceKeys.includes(rule.key)))throw fail("対象商品が見つかりません。一覧を更新してください",409);
+    await watchStore.update(state=>{const old=state.receipts.find(r=>r.id===command.operationId);if(old){if(old.digest!==digest||old.actor!==actor)throw fail("同じ操作IDの内容が異なります",409);return;}
+      const previous=state.rules.find(r=>r.key===rule.key);if(previous&&rule.key.startsWith("watch:")&&previous.asin&&previous.asin!==rule.asin)throw fail("別のASINは新しい監視商品として追加してください",409);if(previous)Object.assign(previous,rule);else state.rules.push(rule);state.receipts.push({id:command.operationId,digest,actor,at:now()});validateProductWatch(state);
+    },{expectedRevision});return view();
+  }
+  return {view,commit,inputs};
+}
