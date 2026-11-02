@@ -36,6 +36,7 @@ function inventoryFor(row,monitor,watch,at){
   const snapshot=watch.observations.fba;
   const unknown={quantity:null,reserved:null,status:"unknown",checkedAt:snapshot?.asins?.includes(row.asin)?snapshot.checkedAt||null:null,variants:[]};
   if(!row.asin)return {...unknown,status:"no_asin"};
+  if(row.sources?.every(s=>s==='draft'))return {...unknown,status:'draft'};
   if(snapshot?.status!=="complete"||!snapshot.complete||snapshot.accountKey!==monitor.amazonAccountKey||snapshot.sellerId!==monitor.amazonSellerId||!snapshot.asins?.includes(row.asin))return unknown;
   if(!Number.isFinite(Date.parse(snapshot.checkedAt))||Date.parse(at)-Date.parse(snapshot.checkedAt)>26*3600000||Date.parse(snapshot.checkedAt)>Date.parse(at)+60000)return {...unknown,status:"stale"};
   const targets=(monitor.salesTargets?.targets||[]).filter(t=>row.sourceKeys.includes(t.sourceId));

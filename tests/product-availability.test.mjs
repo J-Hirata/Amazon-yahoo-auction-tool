@@ -76,3 +76,8 @@ test('a manual count saved without a SKU cannot carry over to a subsequently sel
  assert.equal(stockDisplay(row({sellerSku:'',fba:{quantity:null,status:'unknown'}}),monitor,at).fba.quantity,12);
  assert.equal(stockDisplay(row({sellerSku:'USED-GOOD',fba:{quantity:null,status:'unknown'}}),monitor,at).fba.quantity,null);
 });
+
+test('an intentionally unlisted product is informational, not an inventory alert',()=>{
+ const r=attachAvailability([row({yahoo:[]})],{},at)[0];
+ assert.equal(r.availability.level,'none');assert.deepEqual(r.attention,[]);
+});

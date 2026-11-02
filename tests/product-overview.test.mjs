@@ -56,6 +56,12 @@ test('known plan SKUs stay separate from an unresolved source SKU and preserve p
  assert.deepEqual(rows.filter(r=>r.plans.length).map(r=>r.sellerSku).sort(),['VERY-GOOD',sku].sort());
  assert.ok(rows.filter(r=>r.plans.length).every(r=>r.referenceIssue&&r.locations.length===0));assert.deepEqual(f,before);
 });
+
+test('a draft does not inherit another record\'s FBA SKU, stock warning or required action',()=>{
+ const f=fixture();f.drafts=[{asin,title:'未出品の下書き'}];f.watch.observations.fba.items[0].fulfillableQuantity=0;
+ const draft=productOverview(f,at).find(r=>r.sources.every(s=>s==='draft'));
+ assert.equal(draft.fba.quantity,null);assert.equal(draft.availability.sku,'');assert.equal(draft.availability.level,'none');assert.deepEqual(draft.attention,[]);
+});
 test("unknown, failed, stale and missing FBA are never presented as quantity zero",()=>{
   for(const patch of [{status:"failed"},{checkedAt:"2026-10-01T00:00:00Z"},{items:[]},{accountKey:"other"}]){const f=fixture();Object.assign(f.watch.observations.fba,patch);const r=productOverview(f,at)[0];assert.equal(r.fba.quantity,null);assert.equal(r.replenishment,false);collectProductAlerts(f.watch,[r],settings,at);assert.ok(!(f.watch.pendingAlerts||[]).some(a=>a.key.startsWith("fba-zero")));}
 });

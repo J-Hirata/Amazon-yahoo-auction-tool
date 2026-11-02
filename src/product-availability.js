@@ -39,10 +39,10 @@ export function attachAvailability(rows,monitor,at){
   else if(a.fba.quantity!==null&&required>a.fba.quantity){a.level='danger';a.message=`${items.length>1?'同じSKUのヤフオク合計':'ヤフオク'}がFBAより${required-a.fba.quantity}個多い`;}
   else if(ended){a.level='danger';a.message=a.fba.quantity>0?'出品終了・再出品を確認':'ヤフオク出品終了';}
   else if(a.linkConflicts.length){a.level='warning';a.message='紐付け先のSKU・商品情報を確認';}
-  else if(!a.yahoo.length){a.level='warning';a.message='ヤフオクURL未登録';}
+  else if(!a.yahoo.length){a.level='none';a.message='ヤフオクURL未登録';}
   else if(a.fba.quantity===null||!a.sku||!a.poolComplete||a.yahoo.some(y=>y.state==='unknown')){a.level='warning';a.message=!a.sku?'SKU・在庫の確認が必要':'在庫数・出品状態を確認';}
   else {a.level='ok';a.message=required===a.fba.quantity?'在庫数一致':'ヤフオク販売数はFBA在庫以内';}
-  if(a.level!=='ok'&&!row.attention.includes(a.message))row.attention.push(a.message);
+  if(['warning','danger'].includes(a.level)&&!row.attention.includes(a.message))row.attention.push(a.message);
  }
  return rows;
 }
