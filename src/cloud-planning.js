@@ -10,7 +10,7 @@ export function createCloudPlanning({store,stock,monitorStore,readCatalog,now=()
     const rows=physical.products.map(p=>({kind:"stock",id:p.id,title:p.title,asin:p.asin,sellerSku:p.sellerSku,condition:p.condition,setContents:p.setContents,imageUrl:p.photo?.url||"",href:"/?view=stock",locations:p.totals.locations,
       fba:p.fba,amazon:p.amazon,listingIds:p.linked.map(l=>l.listingId)}));
     for(const link of monitor.links){const a=assessLink(link,monitor,at),p=a.product,y=a.listing,age=Date.parse(at)-Date.parse(p?.checkedAt),fresh=Number.isFinite(age)&&age>=-60000&&age<=90*60000&&!p?.error&&a.inventory!=="unlinked";
-      rows.push({kind:"link",id:link.id,title:y?.title||p?.title||link.asin,asin:p?.asin||link.asin||"",sellerSku:p?.sellerSku||"",condition:/^new/i.test(p?.condition||"")?"new":/^used/i.test(p?.condition||"")?"used":"unknown",setContents:p?.setContents||"",imageUrl:stockImageUrl(y?.imageUrl)||"",href:"/",locations:[],
+      rows.push({kind:"link",id:link.id,title:y?.title||p?.title||link.asin,asin:p?.asin||link.asin||"",sellerSku:link.amazonSellerSku||p?.sellerSku||"",condition:/^new/i.test(p?.condition||"")?"new":/^used/i.test(p?.condition||"")?"used":"unknown",setContents:p?.setContents||"",imageUrl:stockImageUrl(y?.imageUrl)||"",href:"/",locations:[],
         fba:{quantity:fresh&&typeof p?.fulfillableQuantity==="number"?p.fulfillableQuantity:null,label:fresh?"FBA取得分":"未確認・古い情報",checkedAt:p?.checkedAt||null},listingIds:[link.listingId],yahooStatus:a.yahoo});
     }
     return rows;

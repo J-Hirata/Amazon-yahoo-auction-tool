@@ -6,7 +6,7 @@ export async function verifyPlanningUI({page,planningStore,stockStore,monitorSto
   const nav=()=>page.locator(".cloud-account nav"),form=page.locator("#planningForm"),rows=page.locator("#planningRows tr[data-plan-id]");
   const date=offset=>new Date(Date.now()+offset*86400000).toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"});
   const save=async()=>{await page.locator("#planningSave").click();await page.locator("#planningDialog").waitFor({state:"hidden"});};
-  await nav().getByText("販売の見直し",{exact:true}).click();await page.locator("#cloudApp:not([hidden]) #planningCount").waitFor();
+  await nav().getByText("販売の監視・見直し",{exact:true}).click();await page.locator("#cloudApp:not([hidden]) #planningCount").waitFor();
   assert.equal(await rows.count(),0);assert.equal(await page.locator("#loginPanel").isVisible(),false);
   await page.locator("#planningNew").click();
   await form.locator('#planningSources summary').click();const source=form.locator('[data-plan-source^="stock:"]').first();assert.ok(await source.count());

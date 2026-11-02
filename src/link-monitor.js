@@ -165,7 +165,7 @@ function asinInventory(link, state, at, listing) {
   if (snapshot.status !== "complete" || snapshot.complete !== true) return {product: fallback, reason: snapshot.error || "前回の取得が完了していません。再度確認してください", label: "取得できず"};
   if (!snapshot.asins?.includes(link.asin)) return {product: fallback, reason: "このASINはまだ在庫を確認していません", label: "未確認"};
   if (!fresh(snapshot.startedAt, at) || !fresh(snapshot.checkedAt, at)) return {product: fallback, reason: "在庫情報が古くなりました。再度確認してください", label: "古い情報"};
-  const rows = snapshot.items.filter((item) => item.asin === link.asin);
+  const rows = snapshot.items.filter((item) => item.asin === link.asin&&(!link.amazonSellerSku||item.sellerSku===link.amazonSellerSku));
   if (!rows.length) return {product: fallback, reason: "このASINに対応するFBA在庫が見つかりません。在庫ゼロとは判定しません", label: "該当なし・要確認"};
   if (rows.length > 1) return {product: fallback, ambiguous: true, rows, reason: "同じASINに複数の在庫があります。状態の違う商品を混ぜないため合算していません", label: "要確認"};
   return {product: {...rows[0], fulfillableQuantity: quantity(rows[0].fulfillableQuantity), checkedAt: rows[0].checkedAt || snapshot.checkedAt,
@@ -179,7 +179,8 @@ export function assessLink(link, state, at) {
   const product = asinOnly ? live.product : state.catalog.find((item) => item.id === link.catalogId);
   const fingerprint = product && JSON.stringify([product.asin, product.fnSku, product.condition, product.setContents]);
   if (link.observationConflict || !link.verified || !product || !listing || (!asinOnly && link.productFingerprint !== fingerprint) || link.referenceFingerprint !== JSON.stringify(listing.references || [])) return {inventory: "unlinked", yahoo: "unlinked", reason: "商品情報または管理番号が変わりました。紐付けを再確認してください", product, listing};
-  if (asinOnly && state.catalog.filter((item) => item.asin === link.asin).length > 1) return {inventory: "unlinked", yahoo: "unlinked", reason: "同じASINに複数の商品情報があります。状態・セット内容を確認してください。在庫は合算しません", product, listing};
+  if (!asinOnly && link.amazonSellerSku && link.amazonSellerSku !== product.sellerSku) return {inventory:"unlinked",yahoo:"unlinked",reason:"選択したSKUと元の商品情報のSKUが異なります。旧SKUの数量では判定しません",product,listing};
+  if (asinOnly && !link.amazonSellerSku && state.catalog.filter((item) => item.asin === link.asin).length > 1) return {inventory: "unlinked", yahoo: "unlinked", reason: "同じASINに複数の商品情報があります。状態・セット内容を確認してください。在庫は合算しません", product, listing};
   if (live?.ambiguous) return {inventory: "unlinked", yahoo: "unlinked", reason: live.reason, product, listing, fbaLabel: live.label, fbaRows: live.rows};
   let inventory = "unknown";
   let reason = "在庫数量・確認日時・マルチチャネル出荷可否の確認が必要です";

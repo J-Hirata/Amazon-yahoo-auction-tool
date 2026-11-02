@@ -25,7 +25,7 @@ import {createProductOverview,validateProductWatch} from "./product-overview.js"
 import {createProductMonitoring} from "./product-monitoring.js";
 
 const fileTypes = {
-  "product-access.js":"text/javascript; charset=utf-8","product-access.css":"text/css; charset=utf-8",
+  "product-access.js":"text/javascript; charset=utf-8","inventory-panel.js":"text/javascript; charset=utf-8","product-access.css":"text/css; charset=utf-8",
   "cloud-overview-view.html":"text/html; charset=utf-8","product-overview.js":"text/javascript; charset=utf-8","product-overview.css":"text/css; charset=utf-8",
   "sales-planning.js":"text/javascript; charset=utf-8", "sales-planning.css":"text/css; charset=utf-8", "cloud-planning-view.html":"text/html; charset=utf-8",
   "cloud-login.html": "text/html; charset=utf-8", "cloud-view.html": "text/html; charset=utf-8", "cloud-drafts-view.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "demo.html": "text/html; charset=utf-8", "cloud-demo.js": "text/javascript; charset=utf-8",
@@ -61,7 +61,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
   const readTargets=async()=>{
     const [monitor,physical,plans,watch]=await Promise.all([store.read(),stockStore?.read(),planningStore?.read(),watchStore?.read()]);
-    const sources=monitor.links.filter(l=>l.verified&&!l.observationConflict).map(l=>{const p=monitor.catalog.find(p=>p.id===l.catalogId),y=monitor.listings.find(y=>y.listingId===l.listingId);return{sourceId:`link:${l.id}`,linkId:l.id,asin:l.asin || p?.asin,sellerSku:l.matchBy==="asin"?"":p?.sellerSku,title:y?.title || p?.title,condition:l.matchBy==="asin"?"unknown":/^new/i.test(p?.condition || "")?"new":/^used/i.test(p?.condition || "")?"used":"unknown"};});
+    const sources=monitor.links.filter(l=>l.verified&&!l.observationConflict).map(l=>{const p=monitor.catalog.find(p=>p.id===l.catalogId),y=monitor.listings.find(y=>y.listingId===l.listingId);return{sourceId:`link:${l.id}`,linkId:l.id,asin:l.asin || p?.asin,sellerSku:l.amazonSellerSku||(l.matchBy==="asin"?"":p?.sellerSku),title:y?.title || p?.title,condition:l.matchBy==="asin"?"unknown":/^new/i.test(p?.condition || "")?"new":/^used/i.test(p?.condition || "")?"used":"unknown"};});
     for(const p of physical?.products || [])if(p.asin)sources.push({sourceId:`stock:${p.id}`,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
     for(const p of plans?.plans || [])if(p.asin)sources.push({sourceId:`plan:${p.id}`,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
     for(const p of watch?.rules || [])if(p.key.startsWith("watch:")&&p.asin)sources.push({sourceId:p.key,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});

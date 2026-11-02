@@ -4,7 +4,7 @@ export function productChannels(row,monitor,watch,at){
   const unknown={state:"unknown",label:"未確認",skus:[],checkedAt:null};
   let fba={...unknown},merchant={...unknown};
   const age=Date.parse(at)-Date.parse(snapshot?.checkedAt),knownCondition=["new","used"].includes(row.condition);
-  const targets=(monitor.salesTargets?.targets||[]).filter(t=>row.sourceKeys.includes(t.sourceId)),skus=new Set(targets.map(t=>t.sellerSku));if(row.sellerSku)skus.add(row.sellerSku);
+  const targets=(monitor.salesTargets?.targets||[]).filter(t=>row.sourceKeys.includes(t.sourceId)),skus=new Set(row.sellerSku?[row.sellerSku]:targets.map(t=>t.sellerSku));
   const fresh=snapshot?.status==="complete"&&snapshot.source==="own_seller_listings"&&snapshot.accountKey===monitor.amazonAccountKey&&snapshot.sellerId===monitor.amazonSellerId&&snapshot.marketplaceId==="A1VC38T7YXB528"&&snapshot.asins?.includes(row.asin)&&age>=-60000&&age<=26*3600000;
   if(fresh&&(knownCondition||row.sellerSku||targets.length)){
     const matches=snapshot.rows.filter(p=>p.asin===row.asin&&(!knownCondition||family(p.condition)===row.condition)&&(!skus.size||skus.has(p.sellerSku)));

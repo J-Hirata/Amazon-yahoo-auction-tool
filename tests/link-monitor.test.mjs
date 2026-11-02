@@ -68,6 +68,12 @@ test("missing management number can be manually linked, and changing identity re
   confirmLink(state, {listingId: link.listingId, catalogId: link.catalogId, reviewed: true}, at);
   assert.equal(assessLink(link, state, at).inventory, "available");
 });
+
+test('a selected SKU cannot reuse the inventory of a different legacy catalog SKU',()=>{
+ const state=fixture(),link=state.links[0];assert.notEqual(link.matchBy,'asin');
+ link.amazonSellerSku='DIFFERENT-GRADE';
+ const assessment=assessLink(link,state,at);assert.equal(assessment.inventory,'unlinked');assert.match(assessment.reason,/旧SKUの数量では判定しません/);
+});
 test("notification leads with the issue and action, then groups product, status and technical details", () => {
   const state = fixture();
   advanceDemo(state, "stopped", at);

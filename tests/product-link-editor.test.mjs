@@ -13,6 +13,12 @@ test('manual plan URL registration preserves observation dates, decisions and pl
 test('missing ASIN can be filled without manufacturing any physical quantity',()=>{const f=linkFixture(),s=f.docs['physical-stock'].state;s.products[0].asin='';s.products[0].linkedLinkIds=[];const before=structuredClone(s.balances),e=edit(f,'stock:'+f.stockId,{yahoo:''});applyProductLinkEdit(f.docs,e.command,e.options);assert.equal(s.products[0].asin,asin);assert.deepEqual(s.balances,before);});
 test('retries return the same receipt before revision checks and different payloads cannot reuse an ID',()=>{const f=linkFixture(),e=edit(f,'plan:'+f.planId),r=applyProductLinkEdit(f.docs,e.command,e.options);f.docs['link-monitor'].revision++;assert.equal(applyProductLinkEdit(f.docs,e.command,e.options).linkId,r.linkId);assert.throws(()=>applyProductLinkEdit(f.docs,{...e.command,yahoo:url+'bad'},e.options),{status:409});});
 test('rejects changed ASIN, foreign hosts, credentials, conflicting links and stale edits',()=>{for(const patch of [{amazon:'B000OTHER1'},{yahoo:'https://example.com/auction/d1000000002'},{yahoo:'https://user:password@auctions.yahoo.co.jp/jp/auction/d1000000002'},{replaceLinkId:randomUUID()}]){const f=linkFixture(),e=edit(f,'stock:'+f.stockId,patch);assert.throws(()=>applyProductLinkEdit(f.docs,e.command,e.options));}const f=linkFixture(),e=edit(f,'plan:'+f.planId);assert.throws(()=>applyProductLinkEdit(f.docs,e.command,{...e.options,expectedRevision:3}),{status:409});});
+
+test('URL association checks a selected link SKU even without a legacy catalog record',()=>{
+ const f=linkFixture(),s=f.docs['physical-stock'].state.products[0];s.linkedLinkIds=[];s.sellerSku='OWN-GOOD';f.link.amazonSellerSku='OWN-VERY-GOOD';
+ const e=edit(f,'stock:'+f.stockId,{yahoo:'https://auctions.yahoo.co.jp/jp/auction/'+f.link.listingId});
+ assert.throws(()=>applyProductLinkEdit(f.docs,e.command,e.options),{status:409});
+});
 function fakePool(f,{failSecond=false,commitUnknown=false}={}){let saved=structuredClone(f.docs),working,updates=0;return {state:()=>saved,async connect(){return{release(){},async query(sql,args){if(sql==='BEGIN'){working=structuredClone(saved);return{};}if(sql.startsWith('SET LOCAL'))return{};if(sql.startsWith('SELECT'))return{rows:Object.entries(working||saved).sort().map(([k,d])=>({document_key:k,payload:structuredClone(d.state),revision:d.revision}))};if(sql.startsWith('UPDATE')){if(failSecond&&++updates===2)throw Object.assign(new Error('injected write failure'),{code:'XX000'});working[args[0]]={state:JSON.parse(args[1]),revision:working[args[0]].revision+1};return{};}if(sql==='COMMIT'){saved=working;working=null;if(commitUnknown)throw Object.assign(new Error('lost response'),{code:'08006'});return{};}if(sql==='ROLLBACK'){working=null;return{};}throw new Error('unexpected SQL');}};}};}
 const validators={'link-monitor':validateMonitorState,'physical-stock':validatePhysicalStock,'sales-planning':validateSalesPlanning};
 test('multi-document URL save rolls back both the new link and source metadata if a write fails',async()=>{const f=linkFixture(),pool=fakePool(f,{failSecond:true}),tx=createDocumentTransaction({pool,validators}),e=edit(f,'stock:'+f.stockId),before=structuredClone(pool.state());await assert.rejects(tx.update(d=>applyProductLinkEdit(d,e.command,e.options)));assert.deepEqual(pool.state(),before);});
@@ -24,4 +30,37 @@ test('quiet refresh retrieves own listing status without producing mail; newer f
  const monitoring=createProductMonitoring({overview,watchStore,config,now:()=>at,readInventory:async({asins})=>({status:'complete',complete:true,...config,asins,items:[],checkedAt:at}),readYahoo:async()=>({listingId:f.link.listingId,references:[],observation:{verified:true,status:'active',checkedAt:at}}),readListings:async({asins})=>({status:'complete',source:'own_seller_listings',...config,asins,checkedAt:at,rows:[{asin,sellerSku:'MERCHANT',condition:'used_good',statuses:['BUYABLE'],fulfillment:[{channel:'DEFAULT',quantity:1}]}]})});
  await monitoring.run({refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}});assert.equal(w.observations.listings.rows.length,1);assert.equal(w.pendingAlerts.length,0);
  const row={asin,condition:'used',sourceKeys:['stock:'+f.stockId],rule:{}};assert.equal(productChannels(row,f.docs['link-monitor'].state,w,at).merchant.state,'active');w.observations.listings.status='failed';assert.equal(productChannels(row,f.docs['link-monitor'].state,w,at).merchant.state,'unknown');
+});
+
+test('manual FBA zero and SKU save without changing physical counts, links or memos; replay is idempotent',()=>{
+ const f=linkFixture(),s=f.docs['physical-stock'].state,before=structuredClone(s.balances);s.products[0].memo='本人が入力したメモ';
+ const e=edit(f,'stock:'+f.stockId,{kind:'inventory',sellerSku:'OWN-GOOD',manualFbaQuantity:0});
+ applyProductLinkEdit(f.docs,e.command,e.options);
+ assert.deepEqual(s.balances,before);assert.equal(s.products[0].memo,'本人が入力したメモ');assert.deepEqual(s.products[0].linkedLinkIds,[f.link.id]);assert.equal(s.products[0].sellerSku,'OWN-GOOD');
+ assert.equal(productLinkInfo(f.docs,e.command.key).manualReview.manualFbaQuantity,0);
+ assert.equal(applyProductLinkEdit(f.docs,e.command,e.options).replayed,true);assert.equal(f.docs['link-monitor'].state.inventoryReviews.length,1);
+ const clear=edit(f,e.command.key,{kind:'inventory',sellerSku:'OWN-GOOD',manualFbaQuantity:null});applyProductLinkEdit(f.docs,clear.command,clear.options);
+ assert.equal(productLinkInfo(f.docs,e.command.key).manualReview.manualFbaQuantity,null);assert.equal(f.docs['link-monitor'].state.inventoryReviewHistory[0].manualFbaQuantity,0);
+});
+
+test('manual and referenced plans retain dates, actions and notes when confirming an empty SKU',()=>{
+ for(const kind of ['manual','stock','link']){
+  const f=linkFixture(),p=f.docs['sales-planning'].state.plans[0];p.source={kind,id:kind==='stock'?f.stockId:kind==='link'?f.link.id:''};
+  const before=structuredClone(p),e=edit(f,'plan:'+f.planId,{kind:'inventory',sellerSku:'OWN-GOOD',manualFbaQuantity:3});
+  applyProductLinkEdit(f.docs,e.command,e.options);
+  assert.equal(p.sellerSku,'OWN-GOOD');for(const k of ['id','availableOn','durationDays','decisions','actions','note','source'])assert.deepEqual(p[k],before[k]);
+  assert.equal(productLinkInfo(f.docs,e.command.key).manualReview.manualFbaQuantity,3);
+  if(kind==='link')assert.equal(f.link.amazonSellerSku,'OWN-GOOD');
+  if(kind==='stock')assert.equal(f.docs['physical-stock'].state.products[0].sellerSku,'OWN-GOOD');
+ }
+});
+
+test('inventory corrections reject stale or invalid values and roll back if a referenced plan has another SKU',async()=>{
+ for(const patch of [{manualFbaQuantity:-1},{manualFbaQuantity:1.5},{manualFbaQuantity:undefined},{sellerSku:'bad\nSKU'}]){
+  const f=linkFixture(),e=edit(f,'link:'+f.link.id,{kind:'inventory',sellerSku:'OWN',manualFbaQuantity:0,...patch});assert.throws(()=>applyProductLinkEdit(f.docs,e.command,e.options));
+ }
+ const f=linkFixture(),p=f.docs['sales-planning'].state.plans[0];p.source={kind:'stock',id:f.stockId};p.sellerSku='EXISTING';
+ const pool=fakePool(f),tx=createDocumentTransaction({pool,validators}),before=structuredClone(pool.state()),e=edit(f,'plan:'+f.planId,{kind:'inventory',sellerSku:'OTHER',manualFbaQuantity:0});
+ await assert.rejects(tx.update(d=>applyProductLinkEdit(d,e.command,e.options)),{status:409});assert.deepEqual(pool.state(),before);
+ assert.throws(()=>applyProductLinkEdit(f.docs,e.command,{...e.options,expectedRevision:3}),{status:409});
 });

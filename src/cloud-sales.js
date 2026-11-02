@@ -7,15 +7,16 @@ function targetsFor(state, config) {
   if (state.salesTargets) {
     const s=state.salesTargets;
     if(s.accountKey!==config.accountKey || s.sellerId!==config.sellerId || s.marketplaceId!==config.marketplaceId || state.amazonAccountKey!==config.accountKey || state.amazonSellerId!==config.sellerId) throw failure("販売追跡のAmazonアカウントが異なります");
-    return s.targets;
+    return s.targets.filter(t=>{const link=state.links.find(l=>l.id===t.linkId||t.sourceId===`link:${l.id}`);return !link?.amazonSellerSku||link.amazonSellerSku===t.sellerSku;});
   }
   const inventory = state.amazonInventory;
   if (state.amazonAccountKey !== config.accountKey || state.amazonSellerId !== config.sellerId || inventory?.status !== "complete" || inventory.complete !== true) throw failure("先に自社FBA在庫を確認してください。対象SKUが確定するまで注文を取得しません");
   return state.links.flatMap((link) => {
     const product = link.matchBy === "asin" ? null : state.catalog.find((item) => item.id === link.catalogId);
     const asin = link.asin || product?.asin;
-    const rows = inventory.items.filter((item) => item.asin === asin && (!product || item.sellerSku === product.sellerSku));
-    if (!link.verified || link.observationConflict || rows.length !== 1 || state.catalog.filter((item) => item.asin === asin).length > 1 || !rows[0].sellerSku) return [];
+    const sku=link.amazonSellerSku||product?.sellerSku;
+    const rows = inventory.items.filter((item) => item.asin === asin && (!sku || item.sellerSku === sku));
+    if (!link.verified || link.observationConflict || rows.length !== 1 || !sku&&state.catalog.filter((item) => item.asin === asin).length > 1 || !rows[0].sellerSku) return [];
     return [{linkId: link.id, asin, sellerSku: rows[0].sellerSku, condition: rows[0].condition || "unknown"}];
   });
 }

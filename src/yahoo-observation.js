@@ -47,10 +47,12 @@ export function parseYahooPage(html, url, at = new Date().toISOString()) {
   const description = descriptionText(item.descriptionHtml || (item.description || []).join("\n"));
   const status = item.status === "open" ? "active" : item.status === "closed" ? "ended" : "unknown";
   const bidCount=Number.isSafeInteger(item.bids)&&item.bids>=0?item.bids:null;
+  const quantity=Number.isSafeInteger(item.quantity)&&item.quantity>=0?item.quantity:null;
+  const saleType=item.isFleaMarket===true?'fixed':item.isFleaMarket===false?'auction':'unknown';
   return {
     ...identity, title: String(item.title || ""), imageUrl: yahooImageUrl($('meta[property="og:image"]').attr("content")), seller: String(item.seller?.aucUserId || ""),
     condition: String(item.conditionName || ""), description, references: managementReferences(description),
-    bidCount,observation: {status, reason: status==="ended"&&bidCount===0?"unsold":"unknown", checkedAt: at, source: "public_page", verified: status !== "unknown", evidence: `商品ページの状態: ${String(item.status || "不明")}`},
+    bidCount,quantity,saleType,observation: {status,quantity,saleType, reason: status==="ended"&&bidCount===0?"unsold":"unknown", checkedAt: at, source: "public_page", verified: status !== "unknown", evidence: `商品ページの状態: ${String(item.status || "不明")}`},
     endTime: item.endTime || null
   };
 }

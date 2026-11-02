@@ -1,4 +1,5 @@
 import {monitorRequest} from "./monitor-http.js";
+import {createInventoryPanel} from './inventory-panel.js';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const amazon=asin=>/^[A-Z0-9]{10}$/.test(asin||"")?`https://www.amazon.co.jp/dp/${asin}`:"";
 const yahoo=id=>/^[a-z][0-9]{6,15}$/.test(id||"")?`https://auctions.yahoo.co.jp/jp/auction/${id}`:"";
@@ -11,7 +12,7 @@ export function createProductAccess({readOnly=()=>false,onChanged=async()=>{}}={
  const controls=()=>{form.querySelector('fieldset').disabled=busy||Boolean(pending)||readOnly();save.disabled=busy||readOnly();save.textContent=pending?'同じ内容で保存結果を確認':'URLを保存';for(const b of dialog.querySelectorAll('[data-url-close]'))b.disabled=busy;};
  async function request(path='',body,revision){const r=await monitorRequest('/api/product-links'+path,body===undefined?undefined:{method:'POST',headers:{'Content-Type':'application/json',...(revision===undefined?{}:{'If-Match':`"${revision}"`})},body:JSON.stringify(body)});const data=await r.json();if(!r.ok)throw Object.assign(new Error(data.error||'商品ページのURLを読み込めません'),{status:r.status});return data;}
  async function load(){try{entries=(await request()).entries;return true;}catch{return false;}}
- function info(key,fallback={}){return entries[key]||{key,asin:fallback.asin||'',title:fallback.title||'商品',yahoo:(fallback.listingIds||[]).filter(id=>yahoo(id)).map(id=>({listingId:id,url:yahoo(id)}))};}
+ function info(key,fallback={}){return entries[key]||{key,asin:fallback.asin||'',title:fallback.title||'商品',sellerSku:fallback.sellerSku||'',live:fallback.live||null,yahoo:(fallback.listingIds||[]).filter(id=>yahoo(id)).map(id=>({listingId:id,url:yahoo(id)}))};}
  function selectUrl(){form.elements.yahoo.value=selected.yahoo.find(y=>y.linkId===form.elements.replaceLinkId.value)?.url||'';}
  async function open(key,fallback){if(busy||readOnly())return;await load();selected=info(pending?.command.key||key,fallback);form.reset();dialog.querySelector('[data-url-title]').textContent=selected.title;
   form.elements.amazon.value=selected.asin||'';form.elements.amazon.readOnly=Boolean(selected.asin);
@@ -31,19 +32,10 @@ export function createProductAccess({readOnly=()=>false,onChanged=async()=>{}}={
  });
  for(const b of dialog.querySelectorAll('[data-url-close]'))b.addEventListener('click',()=>dialog.close());
  async function refresh(button){if(busy||readOnly())return;busy=true;button.disabled=true;const old=button.textContent;button.textContent='取得中…';try{await request('/refresh',{});await load();await onChanged();}catch(e){const note=el('small',e.message,'product-access-note');button.parentElement?.append(note);}finally{busy=false;button.disabled=false;button.textContent=old;}}
+ const inventory=createInventoryPanel({request,load,info,onChanged,readOnly});
  function mount(host,key,fallback={}){
   const p=info(key,fallback);host.classList.add('product-access');host.setAttribute('aria-label','商品ページとURLの登録');host.replaceChildren();
-  const links=el('div',undefined,'product-access-links');
-  const button=(label,fn)=>{const b=el('button',label);b.type='button';b.disabled=readOnly();b.addEventListener('click',fn);return b;};
-  const anchor=(label,url)=>{const a=el('a',label);a.href=url;a.target='_blank';a.rel='noopener noreferrer';a.title=url;return a;};
-  links.append(amazon(p.asin)?anchor('Amazonを開く ↗',amazon(p.asin)):button('Amazon URLを登録',()=>open(key,fallback)));
-  if(p.yahoo.length)for(const y of p.yahoo)links.append(anchor(p.yahoo.length===1?'ヤフオクを開く ↗':`ヤフオク ${y.listingId} ↗`,y.url));else links.append(button('ヤフオク URLを登録',()=>open(key,fallback)));
-  host.append(links);const tools=el('div',undefined,'product-access-tools');tools.append(button('URL登録・修正',()=>open(key,fallback)));const update=button('状態を再取得',()=>refresh(update));tools.append(update);host.append(tools);
-  const state=p.live?.channels;
-  if(state){const channels=[];if(state.fba.state==='active')channels.push('FBA出品中');else if(state.fba.state==='inactive')channels.push('FBA出品あり・現在は販売不可');else if(state.fba.state==='absent')channels.push('FBA出品の登録なし');if(state.merchant.state==='active')channels.push('Amazon自社発送で出品中');else if(state.merchant.state==='inactive')channels.push('Amazon自社発送は現在販売不可');else if(state.merchant.state==='absent')channels.push('Amazon自社発送の登録なし');host.append(el('small',channels.join(' ／ ')||'Amazonの出品状態は「状態を再取得」から取得してください','product-access-note'));}
-  if(!key.startsWith('link:')&&p.live?.fba?.quantity!==null&&p.live?.fba?.quantity!==undefined){host.append(el('small',`FBA販売可能 ${p.live.fba.quantity}個${p.live.fba.reserved>0?' ／ 予約・処理中 '+p.live.fba.reserved+'個':''}`,'product-access-note'));}
-  if(!p.asin)host.append(el('small','AmazonのASINまたは商品URLを登録してください','product-access-note'));
-  if(p.yahoo.length){for(const y of p.yahoo){const observed=p.live?.yahoo?.find(o=>o.listingId===y.listingId);const text=observed?.verified?observed.status==='ended'?'ヤフオクは終了。再出品済みならURLを修正してください':observed.status==='active'?'ヤフオク出品中':'登録URLを開いて出品状態を確認してください':observed?.checkedAt?'自動取得に失敗。登録URLを開くかURLを修正してください':'URL登録済み。状態を再取得してください';host.append(el('small',text,'product-access-note'));}}
+  inventory.mount(host,p,{key,fallback,editUrl:()=>open(key,fallback),refresh,amazonUrl:amazon(p.asin)});
  }
  return {load,info,mount,open};
 }

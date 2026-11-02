@@ -11,11 +11,12 @@ export async function verifyCatalogViews({page,stockStore,monitorStore,draftStor
   assert.equal(await grid.locator(".catalog-summary").count(),count);
   assert.equal(await grid.getAttribute("data-catalog-layout"),"tiles");
   await page.waitForFunction(()=>getComputedStyle(document.querySelector("#stockRows")).gridTemplateColumns.split(" ").length===5);
-  const square=await grid.locator(".catalog-item").first().boundingBox();assert.ok(Math.abs(square.width-square.height)<2);
+  const tile=await grid.locator(".catalog-item").first().boundingBox();assert.ok(tile.height>=390);
+  assert.equal(await grid.locator('.catalog-summary').first().evaluate(el=>el.querySelector('.product-access').getBoundingClientRect().bottom<=el.getBoundingClientRect().bottom),true);
   await controls("stock").locator("select").selectOption("measureDesc");
   assert.equal(await grid.locator(".catalog-title").first().textContent(),"場所別在庫の試験商品");
   await controls("stock").locator("select").selectOption("original");
-  assert.match(await grid.locator(".catalog-metrics").first().textContent(),/コンテナ/);assert.match(await grid.locator(".catalog-metrics").first().textContent(),/自宅・会社/);
+  assert.match(await grid.locator(".catalog-access .physical-stock-lines").first().textContent(),/コンテナ/);assert.match(await grid.locator(".catalog-access .physical-stock-lines").first().textContent(),/会社・自宅/);
   const originalIds=await grid.locator(".catalog-item").evaluateAll(els=>els.map(el=>el.dataset.catalogId));
   const visibleIds=()=>grid.locator(".catalog-item").evaluateAll(els=>els.map(el=>el.dataset.catalogId));
   const stockData=await stockStore.read();
@@ -40,8 +41,9 @@ export async function verifyCatalogViews({page,stockStore,monitorStore,draftStor
   await page.evaluate(()=>scrollTo(0,0));await page.screenshot({path:path.join(root,"output","catalog-stock-desktop.png")});
   for(const width of [390,320]){
     await page.setViewportSize({width,height:844});await fit();
-    const boxes=await grid.locator(".catalog-summary").first().evaluate(el=>{const rect=s=>{const r=el.querySelector(s).getBoundingClientRect();return{top:r.top,bottom:r.bottom,height:r.height};};return{image:rect(".catalog-image"),title:rect(".catalog-title"),metrics:rect(".catalog-metrics")};});
-    assert.ok(boxes.image.height>30);assert.ok(boxes.image.bottom<=boxes.title.top);assert.ok(boxes.title.bottom<=boxes.metrics.top);
+    const boxes=await grid.locator(".catalog-summary").first().evaluate(el=>{const rect=s=>{const r=el.querySelector(s).getBoundingClientRect();return{top:r.top,bottom:r.bottom,height:r.height};};return{image:rect(".catalog-image"),title:rect(".catalog-title"),inventory:rect(".catalog-access")};});
+    assert.ok(boxes.image.height>30);assert.ok(boxes.image.bottom<=boxes.title.top);assert.ok(boxes.title.bottom<=boxes.inventory.top);
+    assert.equal(await grid.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),1);
     assert.equal(await grid.locator(".catalog-badges span").first().evaluate(el=>el.scrollWidth<=el.clientWidth),true);
     if(width===390){await page.evaluate(()=>document.querySelector("#stockRows").scrollIntoView({block:"start"}));await page.screenshot({path:path.join(root,"output","catalog-stock-mobile.png")});}
   }
@@ -53,12 +55,12 @@ export async function verifyCatalogViews({page,stockStore,monitorStore,draftStor
   await page.locator("#stockPlacesDialog").getByRole("button",{name:"取消",exact:true}).click();
   await grid.locator(".catalog-expanded .catalog-open").click();
   await page.reload();await page.locator("#stockRows[data-catalog-layout=tiles]").waitFor();
-  pass("five-column square tiles, registration/quantity sorting, real drag, keyboard/arrows and reload persistence work; mobile and detail controls remain readable without business writes");
+  pass("five-column inventory tiles, registration/quantity sorting, real drag, keyboard/arrows and reload persistence work; one-column mobile and detail controls remain readable without business writes");
   await page.locator(".cloud-account nav").getByText("商品紐付けツール",{exact:true}).click();await page.locator("#cloudApp:not([hidden]) #linkRows .catalog-item").first().waitFor();
   assert.equal(await page.locator("#linkRows").getAttribute("data-catalog-layout"),"list");
   await setMode("links","tiles");const links=page.locator("#linkRows");
   await page.waitForFunction(()=>getComputedStyle(document.querySelector("#linkRows")).gridTemplateColumns.split(" ").length===5);
-  assert.equal(await links.locator(".catalog-state").first().evaluate(el=>el.clientHeight>=parseFloat(getComputedStyle(el).lineHeight)),true);
+  assert.equal(await links.locator('.catalog-summary .product-access-links').first().isVisible(),true);
   assert.equal(await links.locator(".catalog-item").count(),(await monitorStore.read()).links.length);
   await links.locator(".catalog-open").first().click();const expanded=links.locator(".catalog-expanded");
   await expanded.locator(".memo-edit").click();await expanded.locator("textarea[name=memo]").fill("切替中の未保存メモ");

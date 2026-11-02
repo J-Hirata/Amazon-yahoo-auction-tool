@@ -10,6 +10,11 @@
 .catalog-table-tiles {display:block!important;background:transparent!important;border:0!important;width:100%!important;}.catalog-table-tiles>thead {display:none!important;}
 .catalog-grid {display:grid!important;grid-template-columns:repeat(var(--catalog-columns,4),minmax(0,1fr));gap:12px;width:100%;}
 .catalog-grid>:not(.catalog-item) {grid-column:1/-1;}
+.catalog-grid>.catalog-with-access:not(.catalog-expanded) .catalog-summary{display:flex;flex-direction:column;gap:6px;height:100%}
+.catalog-grid>.catalog-with-access:not(.catalog-expanded) .catalog-image{flex:none;height:90px}
+.catalog-grid>.catalog-with-access:not(.catalog-expanded) .catalog-title{min-height:40px}
+.catalog-grid>.catalog-with-access .product-access{flex:1}
+.catalog-grid>.catalog-with-access .catalog-footer{margin-top:auto}
 .catalog-grid>.catalog-item {display:block!important;aspect-ratio:1;min-width:0;min-height:0;margin:0!important;padding:0!important;overflow:hidden;background:white;border:1px solid #dce4df!important;border-radius:6px;box-sizing:border-box;}
 .catalog-grid>tr.catalog-item:not(.catalog-expanded)>td {display:none!important;}.catalog-grid>tr.catalog-item>td:first-child {display:block!important;width:100%!important;height:100%;padding:0!important;border:0!important;box-sizing:border-box;}
 .catalog-grid>tr.catalog-item>td::before {display:none!important;}
@@ -48,3 +53,4 @@
 .catalog-grid>.catalog-with-access .catalog-summary{height:auto;min-height:390px}@media(max-width:600px){.catalog-grid>.catalog-with-access .catalog-summary{min-height:460px}}
 
 .catalog-grid>.catalog-with-access .catalog-summary{grid-template-rows:90px auto 20px 40px auto auto 28px}.catalog-grid>.catalog-with-access .catalog-image{height:90px}.catalog-grid>.catalog-with-access .product-access-links button{padding:5px 7px!important;border:1px solid #b9d3c3!important;background:#eff7f1!important;color:#185f3d!important;font:600 11px/1.4 system-ui!important}.catalog-grid>.catalog-with-access .product-access-tools button{padding:3px 5px!important;border:0!important;background:transparent!important;color:#286b91!important;font:11px/1.4 system-ui!important}
+@media(max-width:600px){.catalog-grid:has(>.catalog-with-access){grid-template-columns:1fr}.catalog-grid>.catalog-with-access{height:auto}}

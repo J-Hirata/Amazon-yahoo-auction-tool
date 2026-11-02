@@ -72,7 +72,7 @@ export async function openPlanning({userId,readOnly}){
   try{pending=JSON.parse(sessionStorage.getItem(pendingKey)||"null");if(pending&&!/^[0-9a-f-]{36}$/i.test(pending.command?.operationId||""))pending=null;}catch{pending=null;}
   for(const el of document.querySelectorAll("[data-plan-icon]"))el.innerHTML=icon(el.dataset.planIcon);
   function controls(){
-    for(const button of document.querySelectorAll(".planning-shell button"))button.disabled=busy;
+    for(const button of document.querySelectorAll(".planning-shell button"))if(!button.closest('.product-access'))button.disabled=busy;
     for(const button of document.querySelectorAll("#planningNew,#planningSave,[data-plan-edit],[data-plan-source-fix]"))button.disabled=busy||readOnly||Boolean(pending)||!view;
     $("#planningFields").disabled=busy||readOnly||Boolean(pending);$("#planningPending").hidden=!pending;
     $("#planningRetry").disabled=busy||readOnly;

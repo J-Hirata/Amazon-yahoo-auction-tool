@@ -74,7 +74,7 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
         const old=input.monitor.listings.find(l=>l.listingId===target.listingId),links=input.monitor.links.filter(l=>l.listingId===target.listingId);
         const identityOkay=snapshot.listingId===target.listingId&&(!old?.seller||snapshot.seller===old.seller)&&!(snapshot.references||[]).some(ref=>ref.kind==="asin"&&links.some(l=>l.asin&&l.asin!==ref.value));
         if(!identityOkay||!snapshot.observation?.verified)throw new Error("identity");
-        results.push({listingId:target.listingId,status:snapshot.observation.status,verified:true,reason:snapshot.observation.reason||"unknown",bidCount:snapshot.bidCount??null,checkedAt:snapshot.observation.checkedAt});
+        results.push({listingId:target.listingId,status:snapshot.observation.status,verified:true,reason:snapshot.observation.reason||"unknown",quantity:snapshot.quantity??snapshot.observation.quantity??null,saleType:snapshot.saleType||snapshot.observation.saleType||'unknown',bidCount:snapshot.bidCount??null,checkedAt:snapshot.observation.checkedAt});
       }catch{results.push({listingId:target.listingId,status:"unknown",verified:false,reason:"取得できず・終了とは判断しません",checkedAt:now()});}
     }));
     if(results.some(r=>!r.verified))errors.push(`ヤフオク${results.filter(r=>!r.verified).length}件を確認できません。ログインやページ変更の可能性があります`);

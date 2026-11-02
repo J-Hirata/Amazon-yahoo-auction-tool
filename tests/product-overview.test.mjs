@@ -26,6 +26,36 @@ test("overview merges only explicit references, preserves separate locations, an
 test("same ASIN is not enough to merge unlinked stock, manual plans, drafts or different conditions",()=>{
   const f=fixture();f.planning.plans.push({...f.planning.plans[0],id:randomUUID(),source:{kind:"manual",id:""},condition:"new"});f.drafts=[{asin,title:"下書き"}];f.physical.products.push({...f.physical.products[0],id:randomUUID(),condition:"new",linkedLinkIds:[]});assert.equal(productOverview(f,at).length,4);
 });
+
+test('selected seller SKU overrides old broad sales targets and exposes the precise condition',()=>{
+ const f=fixture();f.physical.products=[];f.planning.plans=[];f.monitor.links[0].amazonSellerSku='VERY-GOOD';
+ f.monitor.salesTargets.targets=[{sourceId:'link:'+linkId,sellerSku:sku,fulfillment:['AMAZON']}];
+ f.watch.observations.fba.items.push({asin,sellerSku:'VERY-GOOD',condition:'UsedVeryGood',fulfillableQuantity:2});
+ const r=productOverview(f,at)[0];assert.equal(r.fba.quantity,2);assert.equal(r.availability.sku,'VERY-GOOD');assert.equal(r.availability.condition,'中古・非常に良い');
+});
+
+test('one physical item without a SKU is not assigned arbitrarily to two different linked grades',()=>{
+ const f=fixture();f.planning.plans=[];f.physical.products[0].sellerSku='';f.monitor.links[0].amazonSellerSku=sku;
+ const second={...f.monitor.links[0],id:randomUUID(),listingId:'d1000000002',amazonSellerSku:'VERY-GOOD'};f.monitor.links.push(second);f.physical.products[0].linkedLinkIds.push(second.id);
+ f.monitor.listings.push({listingId:second.listingId,title:'別のグレード'});
+ const rows=productOverview(f,at);assert.equal(rows.length,3);const stock=rows.find(r=>r.key==='stock:'+stockId);assert.equal(stock.sellerSku,'');assert.equal(stock.linkConflicts.length,2);assert.match(stock.availability.message,/紐付け先/);
+ assert.deepEqual(rows.filter(r=>r.sources.includes('link')).map(r=>r.sellerSku).sort(),['VERY-GOOD',sku].sort());
+});
+
+test('newer failed Yahoo reads replace old successful observations and preserve quantity unknown',()=>{
+ const f=fixture();f.monitor.listings[0].observation={status:'active',verified:true,quantity:7,checkedAt:'2026-11-02T05:00:00Z'};
+ f.watch.observations.yahoo[0]={listingId:'d1000000001',status:'unknown',verified:false,checkedAt:at};
+ assert.equal(productOverview(f,at)[0].availability.yahoo[0].quantity,null);
+});
+
+test('known plan SKUs stay separate from an unresolved source SKU and preserve physical counts',()=>{
+ const f=fixture();f.physical.products[0].sellerSku='';f.physical.products[0].linkedLinkIds=[];f.monitor.links=[];
+ f.planning.plans.push({...f.planning.plans[0],id:randomUUID(),sellerSku:'VERY-GOOD'});
+ const before=structuredClone(f),rows=productOverview(f,at),stock=rows.find(r=>r.key==='stock:'+stockId);
+ assert.equal(rows.length,3);assert.equal(stock.sellerSku,'');assert.equal(stock.plans.length,0);assert.equal(stock.localAvailable,50);
+ assert.deepEqual(rows.filter(r=>r.plans.length).map(r=>r.sellerSku).sort(),['VERY-GOOD',sku].sort());
+ assert.ok(rows.filter(r=>r.plans.length).every(r=>r.referenceIssue&&r.locations.length===0));assert.deepEqual(f,before);
+});
 test("unknown, failed, stale and missing FBA are never presented as quantity zero",()=>{
   for(const patch of [{status:"failed"},{checkedAt:"2026-10-01T00:00:00Z"},{items:[]},{accountKey:"other"}]){const f=fixture();Object.assign(f.watch.observations.fba,patch);const r=productOverview(f,at)[0];assert.equal(r.fba.quantity,null);assert.equal(r.replenishment,false);collectProductAlerts(f.watch,[r],settings,at);assert.ok(!(f.watch.pendingAlerts||[]).some(a=>a.key.startsWith("fba-zero")));}
 });

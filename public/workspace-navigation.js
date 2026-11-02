@@ -21,9 +21,10 @@ export function workspaceNavigation({drafts, stock, planning, overview, physical
   if (physicalStock) {
     const inventory = document.createElement("div"), caption = document.createElement("span");
     inventory.className = "workspace-inventory"; caption.className = "workspace-group-title"; caption.textContent = "在庫管理";
-    inventory.append(caption);if(productOverview)inventory.append(item("全商品一覧","/?view=overview",overview,LayoutGrid));inventory.append(item("コンテナ・自社在庫","/?view=stock",stock,Warehouse)); nav.append(inventory);
+    inventory.append(caption,item("コンテナ・自社在庫","/?view=stock",stock,Warehouse)); nav.append(inventory);
   }
   if(salesPlanning){const group=document.createElement("div"),caption=document.createElement("span");group.className="workspace-inventory";caption.className="workspace-group-title";caption.textContent="販売方針";group.append(caption,item("販売の監視・見直し","/?view=planning",planning,CalendarClock));nav.append(group);}
+  if(productOverview){const group=document.createElement('div'),caption=document.createElement('span');group.className='workspace-inventory workspace-overview';caption.className='workspace-group-title';caption.textContent='全体を横断して確認';group.append(caption,item('全商品一覧','/?view=overview',overview,LayoutGrid));nav.append(group);}
   return nav;
 }
 

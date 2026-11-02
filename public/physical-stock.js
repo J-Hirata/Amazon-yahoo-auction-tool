@@ -28,7 +28,7 @@ export async function openStock({userId, readOnly}) {
   const status = (message, error = false) => {$("#stockStatus").textContent = message; $("#stockStatus").classList.toggle("error", error);};
   try {pending = JSON.parse(sessionStorage.getItem(pendingKey) || "null");} catch {pending = null;}
   function controls() {
-    for (const button of document.querySelectorAll(".stock-shell button")) button.disabled = busy;
+    for (const button of document.querySelectorAll(".stock-shell button")) if(!button.closest('.product-access'))button.disabled = busy;
     for (const button of document.querySelectorAll("[data-stock-action],[data-stock-edit],[data-stock-places],[data-stock-connect],[data-stock-transfer],#stockNew,[data-reference]")) button.disabled = busy || readOnly || Boolean(pending) || !view;
     $("#stockCommit").disabled = busy || readOnly || !preview;
     $("#stockCommit").innerHTML = icon("check") + (pending ? "同じ操作を再試行" : "この内容で保存");
@@ -90,9 +90,9 @@ export async function openStock({userId, readOnly}) {
     for (const button of document.querySelectorAll("[data-stock-transfer]")) {button.disabled = readOnly || Boolean(pending); button.addEventListener("click", () => {const t = view.transfers.find((t) => t.id === button.dataset.stockTransfer); openAction(t.productId, "receive_transfer", t.id);});}
     $("#stockHistory").innerHTML = view.events.length ? view.events.map((e) => `<li>${when(e.at)} ／ ${escape(view.products.find((p) => p.id === e.productId)?.title)} ／ ${labels[e.kind]} ／ ${escape(e.reason)}${e.changes.map((c) => `<br>${locationName(c.locationId)}：${["usable", "reserved", "unusable"].map((b) => `${({usable:"使用可能",reserved:"取り置き",unusable:"使用不可"})[b]} ${c.before[b] ?? "未確認"} → ${c.after[b] ?? "未確認"}`).join(" ／ ")}`).join("")}${e.transferAfter ? `<br>移動中 ${e.transferBefore?.remaining ?? 0} → ${e.transferAfter.remaining} ／ 到着 ${e.transferBefore?.received ?? 0} → ${e.transferAfter.received} ／ 戻し ${e.transferBefore?.returned ?? 0} → ${e.transferAfter.returned}` : ""}${e.evidence ? `<br>確認根拠：${escape(e.evidence)}` : ""}${e.metadataAfter ? `<br>ASIN：${escape(e.metadataBefore.asin || "なし")} → ${escape(e.metadataAfter.asin || "なし")} ／ ${escape(tasks[e.metadataAfter.catalogTask])}` : ""}</li>`).join("") : "<li>まだ変更履歴はありません。</li>";
     catalog.update($("#stockRows"),products.map((p,index)=>({node:$("#stockRows").children[index],id:p.id,title:p.title,imageUrl:p.photo?.url,imageLabel:p.photo?.label,
-      badges:[conditions[p.condition],purposes[p.fbaEligibility]],metrics:p.totals.locations.map(b=>({label:locationName(b.locationId),value:b.usable??"実数未入力",unit:p.unit})),
+      badges:[conditions[p.condition],purposes[p.fbaEligibility]],metrics:[],
       renderAccess:host=>{access.mount(host,'stock:'+p.id,{asin:p.asin,title:p.title,listingIds:p.linked.map(l=>l.listingId)});const b=document.createElement('button');b.type='button';b.textContent=p.totals.unknownLocations?'実数を入力':'数量を編集';b.disabled=readOnly||Boolean(pending);b.addEventListener('click',()=>openPlaces(p.id));host.querySelector('.product-access-tools').append(b);},
-      status:p.asin?'商品ページと自動確認の結果を下に表示':'Amazonの商品URLを登録してください',
+      status:'',
       measure:p.totals.unknownLocations===0?p.totals.usable:null,registeredAt:p.createdAt})));
     controls();
   }

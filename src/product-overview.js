@@ -4,6 +4,7 @@ import {planningSchedule,planningToday} from "./sales-planning.js";
 import {stockImageUrl} from "./stock-images.js";
 import {actionSchedules} from "./planning-actions.js";
 import {productChannels} from "./product-channels.js";
+import {attachAvailability,skuOptions} from './product-availability.js';
 export const WATCH_TAGS={watch:"監視対象",overstock:"在庫過多",large:"大型",heavy:"重量物"};
 const fail=(m,status=400)=>Object.assign(new Error(m),{status});
 const uuid=v=>/^[0-9a-f-]{36}$/i.test(v||"");
@@ -39,10 +40,10 @@ function inventoryFor(row,monitor,watch,at){
   if(!Number.isFinite(Date.parse(snapshot.checkedAt))||Date.parse(at)-Date.parse(snapshot.checkedAt)>26*3600000||Date.parse(snapshot.checkedAt)>Date.parse(at)+60000)return {...unknown,status:"stale"};
   const targets=(monitor.salesTargets?.targets||[]).filter(t=>row.sourceKeys.includes(t.sourceId));
   const fbaSkus=[...new Set(targets.filter(t=>t.fulfillment?.includes("AMAZON")).map(t=>t.sellerSku))];
-  if(targets.length&&!fbaSkus.length)return {...unknown,status:"not_fba"};
-  const matches=snapshot.items.filter(r=>r.asin===row.asin&&(!row.sellerSku||r.sellerSku===row.sellerSku)&&(!fbaSkus.length||fbaSkus.includes(r.sellerSku))&&(!["new","used"].includes(row.condition)||family(r.condition)===row.condition));
+  if(!row.sellerSku&&targets.length&&!fbaSkus.length)return {...unknown,status:"not_fba"};
+  const matches=snapshot.items.filter(r=>r.asin===row.asin&&(!row.sellerSku||r.sellerSku===row.sellerSku)&&(row.sellerSku||!fbaSkus.length||fbaSkus.includes(r.sellerSku))&&(!["new","used"].includes(row.condition)||family(r.condition)===row.condition));
   if(matches.length!==1)return {...unknown,status:matches.length>1?"ambiguous":"not_found",variants:matches.map(r=>({sellerSku:r.sellerSku,quantity:r.fulfillableQuantity,condition:r.condition}))};
-  const item=matches[0];return {status:Number.isSafeInteger(item.fulfillableQuantity)?"complete":"unknown",quantity:Number.isSafeInteger(item.fulfillableQuantity)?item.fulfillableQuantity:null,reserved:item.reservedQuantity,inbound:item.inboundQuantity??null,checkedAt:snapshot.checkedAt,sellerSku:item.sellerSku,variants:[]};
+  const item=matches[0];return {status:Number.isSafeInteger(item.fulfillableQuantity)?"complete":"unknown",quantity:Number.isSafeInteger(item.fulfillableQuantity)?item.fulfillableQuantity:null,reserved:item.reservedQuantity,inbound:item.inboundQuantity??null,checkedAt:snapshot.checkedAt,sellerSku:item.sellerSku,condition:item.condition,variants:[]};
 }
 function salesFor(row,monitor,at){
   const t=monitor.salesTracking,start=Date.parse(at)-7*86400000;
@@ -55,28 +56,35 @@ function salesFor(row,monitor,at){
 }
 export function productOverview({monitor,physical,planning,drafts=[],watch},at=new Date().toISOString()){
   const rows=[],byKey=new Map(),linkRows=new Map();
+  const linkSku=l=>l.amazonSellerSku||(l.matchBy==='asin'?'':monitor.catalog.find(p=>p.id===l.catalogId)?.sellerSku||'');
+  const observation=id=>[(watch.observations.yahoo||[]).find(y=>y.listingId===id),monitor.listings.find(l=>l.listingId===id)?.observation].filter(Boolean).sort((a,b)=>Date.parse(b.checkedAt)-Date.parse(a.checkedAt))[0];
   const add=(key,values)=>{const row={key,title:values.asin||"商品名未取得",asin:"",sellerSku:"",condition:"unknown",imageUrl:"",sourceKeys:[key],sources:[key.split(":")[0]],stockIds:[],linkIds:[],plans:[],locations:[],...values};rows.push(row);byKey.set(key,row);return row;};
   for(const p of physical.products){const totals=stockTotals(physical,p.id);add(`stock:${p.id}`,{...p,key:`stock:${p.id}`,stockIds:[p.id],locations:totals.locations,transfers:physical.transfers.filter(t=>t.productId===p.id&&t.remaining>0).map(t=>({to:t.to,remaining:t.remaining}))});}
   for(const link of monitor.links){
     const p=monitor.catalog.find(p=>p.id===link.catalogId),listing=monitor.listings.find(l=>l.listingId===link.listingId),asin=link.asin||p?.asin||"";
-    const candidates=physical.products.filter(s=>s.linkedLinkIds.includes(link.id)&&s.asin===asin&&(!s.sellerSku||!p?.sellerSku||s.sellerSku===p.sellerSku)&&(!p?.condition||family(p.condition)==="unknown"||s.condition===family(p.condition)));
-    const row=candidates.length===1?byKey.get(`stock:${candidates[0].id}`):add(`link:${link.id}`,{asin,title:listing?.title||link.previousListingTitle||p?.title||asin,sellerSku:link.matchBy==="asin"?"":p?.sellerSku||"",condition:link.matchBy==="asin"?"unknown":family(p?.condition),imageUrl:listing?.imageUrl||p?.listingInfo?.catalogImageUrl||""});
+    const sku=linkSku(link);
+    const candidates=physical.products.filter(s=>s.linkedLinkIds.includes(link.id)&&s.asin===asin&&(!s.sellerSku||!sku||s.sellerSku===sku)&&(s.sellerSku||new Set(monitor.links.filter(l=>s.linkedLinkIds.includes(l.id)).map(linkSku).filter(Boolean)).size<=1)&&(!p?.condition||family(p.condition)==="unknown"||s.condition===family(p.condition)));
+    const row=candidates.length===1?byKey.get(`stock:${candidates[0].id}`):add(`link:${link.id}`,{asin,title:listing?.title||link.previousListingTitle||p?.title||asin,sellerSku:sku,condition:link.matchBy==="asin"?"unknown":family(p?.condition),imageUrl:listing?.imageUrl||p?.listingInfo?.catalogImageUrl||""});
+    if(sku&&!row.sellerSku)row.sellerSku=sku;
     if(!row.sourceKeys.includes(`link:${link.id}`))row.sourceKeys.push(`link:${link.id}`);if(!row.sources.includes("link"))row.sources.push("link");row.linkIds.push(link.id);linkRows.set(link.id,row);
     if(!row.imageUrl)row.imageUrl=listing?.imageUrl||"";
-    (row.yahoo ||= []).push({listingId:link.listingId,title:listing?.title||"",...(watch.observations.yahoo||[]).find(y=>y.listingId===link.listingId)});
+    (row.yahoo ||= []).push({listingId:link.listingId,title:listing?.title||"",unitsPerListing:link.unitsPerListing||1,...observation(link.listingId)});
   }
   for(const p of planning.plans){
     const explicit=(p.linkedLinkIds||[]).map(id=>linkRows.get(id)).filter(Boolean);
     const source=p.source.kind==="stock"?byKey.get(`stock:${p.source.id}`):p.source.kind==="link"?linkRows.get(p.source.id):explicit.length===1?explicit[0]:null;
-    const match=source&&source.asin===p.asin&&(!p.sellerSku||!source.sellerSku||source.sellerSku===p.sellerSku)&&(!["new","used"].includes(source.condition)||p.condition===source.condition);
+    const match=source&&source.asin===p.asin&&(!p.sellerSku||source.sellerSku===p.sellerSku)&&(!["new","used"].includes(source.condition)||p.condition===source.condition);
     const row=match?source:add(`plan:${p.id}`,{asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition,imageUrl:p.imageUrl,referenceIssue:Boolean(source&&!match)});
     if(!row.sourceKeys.includes(`plan:${p.id}`))row.sourceKeys.push(`plan:${p.id}`);if(!row.sources.includes("plan"))row.sources.push("plan");row.plans.push({...p,schedule:planningSchedule(p,at),actionSchedules:actionSchedules(p,at)});if(!row.imageUrl)row.imageUrl=p.imageUrl||"";
-    for(const id of p.linkedLinkIds||[]){const link=monitor.links.find(l=>l.id===id),listing=monitor.listings.find(l=>l.listingId===link?.listingId);if(link&&link.asin===p.asin&&!row.linkIds.includes(id)){row.linkIds.push(id);(row.yahoo||=[]).push({listingId:link.listingId,title:listing?.title||"",...(watch.observations.yahoo||[]).find(y=>y.listingId===link.listingId)});}}
+    for(const id of p.linkedLinkIds||[]){const link=monitor.links.find(l=>l.id===id),listing=monitor.listings.find(l=>l.listingId===link?.listingId);if(link&&(link.asin||monitor.catalog.find(c=>c.id===link.catalogId)?.asin)===p.asin&&!row.linkIds.includes(id)){if(linkSku(link)&&row.sellerSku&&linkSku(link)!==row.sellerSku){row.referenceIssue=true;continue;}row.linkIds.push(id);(row.yahoo||=[]).push({listingId:link.listingId,title:listing?.title||"",unitsPerListing:link.unitsPerListing||1,...observation(link.listingId)});}}
   }
   for(const p of drafts)add(`draft:${p.asin}`,{asin:p.asin,title:p.title||p.asin,condition:"unknown",imageUrl:p.imageUrls?.[0]||""});
   for(const rule of watch.rules.filter(r=>r.key.startsWith("watch:")))add(rule.key,{asin:rule.asin,title:rule.title,condition:rule.condition,sellerSku:rule.sellerSku,imageUrl:rule.imageUrl});
   for(const row of rows){
     row.imageUrl=stockImageUrl(row.imageUrl)||"";
+    const related=[...(row.linkedLinkIds||[]),...row.plans.flatMap(p=>[...(p.linkedLinkIds||[]),...(p.source.kind==='link'?[p.source.id]:[])])];
+    row.linkConflicts=[...new Set(related.filter(id=>!row.linkIds.includes(id)).map(id=>monitor.links.find(l=>l.id===id)?.listingId).filter(Boolean))];
+    if(row.linkConflicts.length)row.referenceIssue=true;
     row.rules=watch.rules.filter(r=>row.sourceKeys.includes(r.key));row.rule=row.rules.find(r=>r.key===row.key)||row.rules[0]||{key:row.key,tags:[],replenishEnabled:false,threshold:10,minimumSales7:0,coverageDays:0,reviewDays:10,startedOn:"",note:""};
     row.tags=[...new Set(row.rules.flatMap(r=>r.tags))];
     row.fba=inventoryFor(row,monitor,watch,at);row.sales=salesFor(row,monitor,at);
@@ -85,6 +93,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     row.badges=[...(row.asin&&row.sources.some(s=>s!=="draft")?["amazon"]:[]),...(row.linkIds.length?["yahoo","parallel"]:[]),...(row.locations.some(l=>l.locationId==="container"&&l.usable>0)?["container"]:[]),...(row.locations.some(l=>l.locationId==="home"&&l.usable>0)?["home"]:[]),...row.tags,...(row.plans.length?["planning"]:[]),...(row.sources.includes("draft")?["draft"]:[])];
     row.watchDue=row.rule.startedOn?new Date(Date.parse(row.rule.startedOn+"T00:00:00Z")+row.rule.reviewDays*86400000).toISOString().slice(0,10):"";
     row.channels=productChannels(row,monitor,watch,at);
+    row.skuOptions=skuOptions(row,monitor,watch,at);
     row.provenance=row.sources.map(s=>({stock:"コンテナ・自社在庫",link:"商品紐付け",plan:"販売の監視・見直し",draft:"出品下書き",watch:"監視専用登録"})[s]);
     row.dueDates=[...row.plans.flatMap(p=>p.actionSchedules.some(a=>a.startsOn||a.endsOn)?p.actionSchedules.map(a=>a.nextOn).filter(Boolean):[p.schedule.dueOn].filter(Boolean)),...(row.watchDue?[row.watchDue]:[])].sort();
     row.attention=[];if(row.fba.quantity===0)row.attention.push("FBA販売可能0");if(row.yahoo?.some(y=>y.status==="ended"))row.attention.push("ヤフオク終了");if(row.dueDates[0]&&row.dueDates[0]<=planningToday(at))row.attention.push("見直し時期");
@@ -94,7 +103,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     if(row.referenceIssue)row.attention.push("参照先を要確認");
     if(row.channels.manualConflict)row.attention.push("手動の出品なし記録と出品中の取得情報が不一致");
   }
-  return rows;
+  return attachAvailability(rows,monitor,at);
 }
 export function createProductOverview({monitorStore,stockStore,planningStore,draftStore,watchStore,now=()=>new Date().toISOString()}){
   async function inputs(){const [monitor,physical,planning,drafts,watch]=await Promise.all([monitorStore.read(),stockStore.read(),planningStore.read(),draftStore?draftStore.read():[],watchStore.readSnapshot()]);return {monitor,physical,planning,drafts,watch:watch.state,revision:watch.revision};}

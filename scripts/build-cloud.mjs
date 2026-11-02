@@ -12,7 +12,7 @@ await build({entryPoints: [path.join(root, "public", "cloud-login.js")], outfile
 await build({entryPoints: [path.join(root, "public", "physical-stock.js")], outfile: path.join(output, "physical-stock.js"), bundle: true,
   format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./catalog-view.js"], logLevel: "warning"});
 const files = ["cloud-login.html", "cloud-login.css", "cloud-demo.js", "app.js", "monitor-http.js", "link-monitor.js", "link-monitor.css", "physical-stock.css", "cloud-stock-view.html", "styles.css", "extension-logo.png"];
-files.push("cloud-planning-view.html","sales-planning.css","product-access.js","product-access.css");
+files.push("cloud-planning-view.html","sales-planning.css","product-access.js","product-access.css","inventory-panel.js");
 files.push("cloud-overview-view.html","product-overview.js","product-overview.css");
 await build({entryPoints:[path.join(root,"public","sales-planning.js")],outfile:path.join(output,"sales-planning.js"),bundle:true,format:"esm",target:["es2022"],platform:"browser",minify:true,external:["./monitor-http.js","./catalog-view.js"],logLevel:"warning"});
 for (const name of files) await copyFile(path.join(root, "public", name), path.join(output, name));
