@@ -52,3 +52,9 @@ test("manual Mercari and unlisted confirmations are explicit, with active confli
  assert.equal(channels(snapshot(),{manualListingStatus:"mercari"}).mercari.state,"active");assert.equal(channels(snapshot(),{manualListingStatus:"none"}).manualConflict,true);
  assert.equal(channels({...snapshot(),rows:[]},{manualListingStatus:"none"}).unlisted,true);
 });
+test("ASIN-scope links use resolved own seller SKUs; unknown drafts never inherit that scope",()=>{
+ const s=snapshot(),r={asin:"B000TEST01",condition:"unknown",sellerSku:"",sourceKeys:["link:one"],rule:{}};
+ const monitor={amazonAccountKey:"fixture",amazonSellerId:"OWN",salesTargets:{listingSnapshot:s,targets:s.rows.map(p=>({sourceId:"link:one",sellerSku:p.sellerSku}))}};
+ assert.equal(productChannels(r,monitor,{observations:{}},at).fba.state,"active");
+ assert.equal(productChannels({...r,sourceKeys:["draft:B000TEST01"]},monitor,{observations:{}},at).fba.state,"unknown");
+});
