@@ -4,10 +4,10 @@ const family = (v) => /^new/i.test(v || "") ? "new" : /^used/i.test(v || "") ? "
 export const amazonConditionLabel = (v) => ({new:"新品",used:"中古",unknown:"状態不明"})[family(v)];
 
 // Authenticated seller's Listings Items only. Never inspect the retail Buy Box.
-export async function readOwnAmazonListings({asins, config, fetchImpl = fetch, now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), maxPages = 5}) {
+export async function readOwnAmazonListings({asins, config, fetchImpl = fetch, now = Date.now, wait = (ms) => new Promise((r) => setTimeout(r, ms)), maxPages = 5,maxDurationMs=35000}) {
   const targets = [...new Set(asins)];
   if (!targets.length || targets.length > 20 || targets.some((a) => !/^[A-Z0-9]{10}$/.test(a)) || !/^[A-Z0-9]+$/.test(config.sellerId || "") || config.marketplaceId !== "A1VC38T7YXB528") throw fail("登録ASINと接続済みの自社出品者を確認してください");
-  const startedAt = new Date(now()).toISOString(), deadline = now() + 35000;
+  const startedAt = new Date(now()).toISOString(), deadline = now() + Math.max(1,Math.min(35000,maxDurationMs));
   async function request(url, options) {
     if (now() >= deadline) throw fail("自社出品の取得時間を超えました");
     let response;

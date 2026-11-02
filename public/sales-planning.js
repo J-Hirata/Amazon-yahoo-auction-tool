@@ -2,6 +2,7 @@ import {monitorRequest} from "./monitor-http.js";
 import {catalogImage} from "./catalog-view.js";
 import {createElement,CalendarClock,RefreshCw,Plus,Search,X,Save,Pencil,History,ClipboardCopy} from "lucide";
 import {ACTION_LABELS,ACTION_STAGES} from "../src/planning-actions.js";
+import {createProductAccess} from "./product-access.js";
 
 const $=s=>document.querySelector(s),escape=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
 const shapes={calendar:CalendarClock,refresh:RefreshCw,plus:Plus,search:Search,x:X,save:Save,pencil:Pencil,history:History,copy:ClipboardCopy};
@@ -16,6 +17,7 @@ const when=value=>new Date(value).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"}
 export async function openPlanning({userId,readOnly}){
   let view,busy=false,filter="all",editing=null,planId,pending,actionDrafts={};
   const form=$("#planningForm"),dialog=$("#planningDialog"),pendingKey="sales-planning-pending:"+userId;
+  const access=createProductAccess({readOnly:()=>readOnly,onChanged:async()=>load()});
   const status=(message,error=false)=>{$("#planningStatus").textContent=message;$("#planningStatus").classList.toggle("error",error);};
   let mode="list";try{mode=localStorage.getItem("planning-mode:"+userId)==="tiles"?"tiles":"list";}catch{}
   function showMode(){document.querySelector(".planning-table").classList.toggle("planning-tiles",mode==="tiles");for(const b of document.querySelectorAll("[data-plan-mode]"))b.setAttribute("aria-pressed",String(b.dataset.planMode===mode));}
@@ -91,15 +93,16 @@ export async function openPlanning({userId,readOnly}){
     const plans=view.plans.filter(p=>matches(p,filter)&&[p.title,p.asin,p.sellerSku,p.note,p.salesMemo].join(" ").toLowerCase().includes(query)).sort((a,b)=>sort==="new"?b.createdAt.localeCompare(a.createdAt):sort==="old"?a.createdAt.localeCompare(b.createdAt):(nextCheck(a)||"9999").localeCompare(nextCheck(b)||"9999")||a.createdAt.localeCompare(b.createdAt));
     $("#planningRows").innerHTML=plans.length?plans.map(p=>{
       const schedule=p.schedule,source=p.reference,photo=catalogImage(source?.imageUrl||p.imageUrl)||"/catalog-image.svg",date=nextCheck(p)||"未設定",remaining=date==="未設定"?null:Math.round((Date.parse(date)-Date.parse(new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})))/86400000);
+      const live=access.info("plan:"+p.id).live;
       const location=source?.locations?.map(l=>`${l.locationId==="container"?"コンテナ":"自宅・会社"} <b>${l.usable===null?"未確認":escape(l.usable)+"個"}</b>`).join("<br>")||"";
-      const references=p.referenceIssue?`<span class="error">${escape(p.referenceIssue)}</span>`:source?`${location?`<span>${location}</span>`:""}<span>FBA取得分：<b>${source.fba?.quantity===null||source.fba?.quantity===undefined?"未確認":escape(source.fba.quantity)+"個"}</b></span><span>ヤフオク：${source.listingIds?.length?source.listingIds.map(id=>`<a href="https://auctions.yahoo.co.jp/jp/auction/${encodeURIComponent(id)}" target="_blank" rel="noopener noreferrer">${escape(id)}</a>`).join(" ／ "):"関連付けなし"}</span><a href="${escape(source.href)}">元の商品を確認</a>`:"在庫参照なし";
+      const references=p.referenceIssue?`<span class="error">${escape(p.referenceIssue)}</span>`:source?`${location?`<span>${location}</span>`:""}<span>FBA取得分：<b>${live?.fba?.quantity!==null&&live?.fba?.quantity!==undefined?escape(live.fba.quantity)+"個":source.fba?.quantity===null||source.fba?.quantity===undefined?"「状態を再取得」から取得":escape(source.fba.quantity)+"個"}</b></span><span>ヤフオク：${source.listingIds?.length?source.listingIds.map(id=>`<a href="https://auctions.yahoo.co.jp/jp/auction/${encodeURIComponent(id)}" target="_blank" rel="noopener noreferrer">${escape(id)}</a>`).join(" ／ "):"関連付けなし"}</span><a href="${escape(source.href)}">元の商品を確認</a>`:"在庫台帳への登録なし";
       const asinLink=p.asin?` ／ <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(p.asin)}" target="_blank" rel="noopener noreferrer">${escape(p.asin)}</a>`:" ／ ASIN未登録";
       const sales=p.salesMemo?`<p class="planning-note">${escape(p.salesMemo)}</p>`:'<span class="planning-meta">販売実績：未記録</span>';
       const copy=p.asin?`<button type="button" data-plan-copy="${escape(p.asin)}" class="planning-secondary" aria-label="ASINをコピー" title="ASINをコピー">${icon("copy")}</button>`:"";
       return `<tr data-plan-id="${escape(p.id)}">
         <td><div class="planning-product"><img class="planning-photo" src="${escape(photo)}" alt="商品参考画像" loading="lazy" referrerpolicy="no-referrer"><div>
           <strong>${escape(p.title)}</strong><span class="planning-meta">${escape(conditions[p.condition])}${asinLink}</span>
-          ${p.sellerSku?`<span class="planning-meta">SKU：${escape(p.sellerSku)}</span>`:""}${p.setContents?`<span class="planning-meta">${escape(p.setContents)}</span>`:""}</div></div></td>
+          ${p.sellerSku?`<span class="planning-meta">SKU：${escape(p.sellerSku)}</span>`:""}${p.setContents?`<span class="planning-meta">${escape(p.setContents)}</span>`:""}</div></div><div data-plan-access="${p.id}"></div></td>
         <td data-label="現在の取り組み"><span class="planning-badge ${escape(schedule.stage)}">${escape(stages[schedule.stage])}</span>
           <div>${escape(kinds[p.kind])}${p.kind!=="review"?` ／ ${p.durationDays}日`:""}</div><span class="planning-meta">販売可能日：${escape(p.availableOn||"未確認")}</span>
           ${p.kind==="advertising"?`<span class="planning-meta">広告開始日：${escape(p.adStartedOn||"未確認")}</span>`:""}<span class="planning-meta">広告配信状況：未確認（広告API未接続）</span>${sales}</td>
@@ -110,6 +113,7 @@ export async function openPlanning({userId,readOnly}){
           <button type="button" data-plan-history="${p.id}" class="planning-secondary" aria-label="${escape(p.title)}の履歴" title="判断の履歴">${icon("history")}</button>${copy}${p.referenceIssue&&p.source.kind==="stock"?`<button type="button" data-plan-source-fix="${p.id}">元在庫のASIN・SKUに合わせる</button>`:""}</div></td></tr>`;
     }).join(""):`<tr><td class="planning-empty" colspan="5">${icon("calendar")}${view.plans.length?"条件に一致する商品がありません":"まだ販売計画は登録されていません"}</td></tr>`;
     for(const img of document.querySelectorAll(".planning-photo"))img.addEventListener("error",()=>{if(img.getAttribute("src")!=="/catalog-image.svg")img.src="/catalog-image.svg";});
+    for(const host of document.querySelectorAll('[data-plan-access]')){const p=view.plans.find(p=>p.id===host.dataset.planAccess);access.mount(host,'plan:'+p.id,{asin:p.asin,title:p.title,listingIds:p.reference?.listingIds||[]});}
     for(const button of document.querySelectorAll("[data-plan-edit]"))button.addEventListener("click",()=>open(view.plans.find(p=>p.id===button.dataset.planEdit)));
     for(const button of document.querySelectorAll("[data-plan-history]"))button.addEventListener("click",()=>historyFor(button.dataset.planHistory));
     for(const button of document.querySelectorAll("[data-plan-source-fix]"))button.addEventListener("click",()=>work(async()=>{
@@ -128,7 +132,7 @@ export async function openPlanning({userId,readOnly}){
     for(const button of document.querySelectorAll("[data-plan-copy]"))button.addEventListener("click",()=>work(async()=>{await navigator.clipboard.writeText(button.dataset.planCopy);status("ASINをコピーしました。出品状態は変更していません。");}));
     controls();
   }
-  async function load(){view=await request();render();}
+  async function load(){view=await request();await access.load();render();}
   function updateFields(){
     const isReview=form.elements.kind.value==="review",hold=form.elements.status.value==="hold",closed=form.elements.status.value==="closed";
     for(const el of document.querySelectorAll("[data-plan-period]"))el.hidden=isReview||hold||closed;

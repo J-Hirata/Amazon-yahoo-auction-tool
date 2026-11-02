@@ -32,7 +32,7 @@ export async function jsonBody(request) {
   catch {throw fail("入力データを読み取れません", 400);}
 }
 
-export function createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, overview, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
+export function createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, overview, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
@@ -72,6 +72,14 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
       const owner = await verifyOwner(request);
       if (owner.status !== 200) return reply({error: owner.status === 403 ? "このアカウントには利用権限がありません" : "ログインが必要です"}, owner.status);
       if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly, physicalStock: Boolean(stock),salesPlanning:Boolean(planning),productOverview:Boolean(overview)});
+      if(productLinks&&request.method==="GET"&&url.pathname==="/api/product-links")return reply(await productLinks.list());
+      if(productLinks&&request.method==="POST"&&["/api/product-links/operations","/api/product-links/refresh"].includes(url.pathname)){
+        if(config.readOnly)return reply({error:"現在は閲覧のみです"},403);
+        const data=await jsonBody(request);
+        if(url.pathname.endsWith("/refresh")){if(!productLinks.refresh)return reply({error:"自動取得にはAmazon接続が必要です。商品ページのリンクから確認してください"},503);return reply(await productLinks.refresh());}
+        const match=request.headers.get("if-match");if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||""))return reply({error:"最新のURL登録画面を開いてください"},428);
+        return reply(await productLinks.save(data.command,{expectedRevision:Number(match.slice(1,-1)),sourceRevisions:data.sourceRevisions,actor:owner.userId}));
+      }
       if(overview&&request.method==="GET"&&url.pathname==="/api/product-overview")return reply(await overview.view());
       if(overview&&request.method==="POST"&&url.pathname==="/api/product-overview/operations"){
         if(config.readOnly)return reply({error:"現在は閲覧のみです"},403);

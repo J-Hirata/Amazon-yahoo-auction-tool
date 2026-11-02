@@ -1,0 +1,62 @@
+import {createHash} from "node:crypto";
+import {asinFromInput,registerPageLink,observeListing} from "./link-monitor.js";
+import {yahooListingUrl} from "./yahoo-observation.js";
+import {applyStockCommand} from "./physical-stock.js";
+import {applyPlanningCommand} from "./sales-planning.js";
+const fail=(message,status=400)=>Object.assign(new Error(message),{status});
+const uuid=v=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v||"");
+function source(docs,key){
+ const match=typeof key==="string"&&key.match(/^(link|stock|plan):([0-9a-f-]{36})$/i);if(!match)throw fail("対象商品を選び直してください");
+ const [,kind,id]=match,m=docs['link-monitor'].state,s=docs['physical-stock'].state,p=docs['sales-planning'].state;
+ const item=kind==="link"?m.links.find(p=>p.id===id):kind==="stock"?s.products.find(p=>p.id===id):p.plans.find(p=>p.id===id);if(!item)throw fail("対象商品が見つかりません。一覧を更新してください",409);
+ const catalog=kind==="link"?m.catalog.find(p=>p.id===item.catalogId):null;
+ const stock=kind==="stock"?item:kind==="plan"&&item.source.kind==="stock"?s.products.find(p=>p.id===item.source.id):null;
+ const linkIds=[...new Set(kind==="link"?[id]:[...(stock?.linkedLinkIds||[]),...(item.linkedLinkIds||[]),...(kind==="plan"&&item.source.kind==="link"?[item.source.id]:[])])];
+ return {kind,id,item,stock,asin:item.asin||catalog?.asin||"",linkIds,title:item.title||catalog?.title||m.listings.find(y=>y.listingId===item.listingId)?.title||item.asin||"商品"};
+}
+export function productLinkInfo(docs,key){const s=source(docs,key),m=docs['link-monitor'].state;return {key,title:s.title,asin:s.asin,revision:docs['link-monitor'].revision,sourceRevisions:Object.fromEntries(Object.entries(docs).map(([k,d])=>[k,d.revision])),yahoo:s.linkIds.map(id=>m.links.find(l=>l.id===id)).filter(Boolean).map(l=>({linkId:l.id,listingId:l.listingId,url:`https://auctions.yahoo.co.jp/jp/auction/${l.listingId}`}))};}
+export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOString(),expectedRevision,sourceRevisions}={}){
+ if(!uuid(command?.operationId)||!actor)throw fail("保存する操作と本人を確認してください");
+ const m=docs['link-monitor'].state,digest=createHash('sha256').update(JSON.stringify(command)).digest('hex'),receipts=m.productLinkReceipts||[],old=receipts.find(r=>r.id===command.operationId);
+ if(old){if(old.digest!==digest||old.actor!==actor)throw fail("同じ操作IDの内容が異なります",409);return {...old,replayed:true};}
+ if(receipts.length>=10000)throw fail("URL変更履歴の保存上限です",409);
+ const s=source(docs,command.key),primary=s.kind==="plan"?'sales-planning':s.kind==="stock"?'physical-stock':'link-monitor';
+ if(expectedRevision!==docs['link-monitor'].revision||![primary,...(s.stock?['physical-stock']:[])].every(k=>sourceRevisions?.[k]===docs[k].revision))throw fail("ほかの編集・自動確認が保存されました。URL入力を残したまま最新の内容を読み直してください",409);
+ let asin;try{asin=asinFromInput(command.amazon);}catch(e){throw fail(e.message);}if(s.asin&&s.asin!==asin)throw fail("登録済みの商品とASINが異なります。商品情報の訂正から確認してください",409);
+ if(s.stock?.asin&&s.stock.asin!==asin)throw fail("元の在庫と計画の商品が異なります。商品情報を揃えてからURLを登録してください",409);
+ if(!s.asin&&s.kind==="plan"&&s.item.source.kind!=="manual")throw fail("先に元の在庫商品のASINを登録してください",409);
+ if(typeof command.yahoo!=="string"||command.yahoo.length>2048)throw fail("ヤフオクの商品URLを入力してください");
+ let identity;try{identity=command.yahoo.trim()?yahooListingUrl(command.yahoo):null;}catch{throw fail("ヤフオクの出品IDがあるHTTPS商品URLを入力してください");}
+ if(!identity&&s.asin===asin)throw fail("追加・変更するヤフオクURLを入力してください");
+ let linkId=command.replaceLinkId||"";
+ if(linkId&&!s.linkIds.includes(linkId))throw fail("この商品に登録された出品を選んでください",409);
+ if(identity){
+  if(s.kind==="link")linkId=s.id;
+  if(linkId){
+   const link=m.links.find(l=>l.id===linkId),other=m.links.find(l=>l.listingId===identity.listingId&&l.id!==linkId);
+   if(other)throw fail("このURLは別の紐付けとして登録済みです。既存の出品から関連付けてください",409);
+   let listing=m.listings.find(l=>l.listingId===identity.listingId);
+   if(!listing)listing=observeListing(m,{...identity,title:"",seller:"",references:[],observation:{status:"unknown",verified:false,checkedAt:at,source:"page_link",evidence:"本人がURLを登録。自動確認の結果はまだ取得していません"}});
+   if((listing.references||[]).some(r=>r.kind==="asin"&&r.value!==asin))throw fail("URL先の管理番号とASINが一致しません",409);
+   if(link.listingId!==identity.listingId){const previousListing=m.listings.find(l=>l.listingId===link.listingId);link.previousListingTitle=previousListing?.title||link.previousListingTitle||"";link.previousListingImageUrl=previousListing?.imageUrl||link.previousListingImageUrl||"";(link.history||=[]).push({at,kind:"url_changed",fromListingId:link.listingId,toListingId:identity.listingId,actor});link.listingId=identity.listingId;link.verified=true;link.observationConflict=false;link.reviewedAt=at;link.referenceFingerprint=JSON.stringify(listing.references||[]);}
+  }else{
+   const existing=m.links.find(l=>l.listingId===identity.listingId),existingAsin=existing?.asin||m.catalog.find(p=>p.id===existing?.catalogId)?.asin;
+   if(existing){if(existingAsin!==asin)throw fail("別のASINに登録されているURLです",409);linkId=existing.id;}
+   else linkId=registerPageLink(m,{amazon:asin,yahoo:identity.url,submitted:true},at).id;
+  }
+ }
+ if(s.kind!=="link"){
+  const linked=linkId?[...new Set([...s.linkIds,linkId])]:s.linkIds;
+  const catalog=m.catalog.find(p=>p.id===m.links.find(l=>l.id===linkId)?.catalogId),family=/^new/i.test(catalog?.condition||"")?"new":/^used/i.test(catalog?.condition||"")?"used":"unknown";
+  if(linkId&&!s.linkIds.includes(linkId)&&(family!=="unknown"&&["new","used"].includes(s.item.condition)&&s.item.condition!==family||s.item.sellerSku&&catalog?.sellerSku&&s.item.sellerSku!==catalog.sellerSku))throw fail("出品と在庫・計画の状態やSKUが異なります",409);
+  if(s.stock)applyStockCommand(docs['physical-stock'].state,{operationId:command.operationId,kind:"edit",productId:s.stock.id,product:{...s.stock,asin,linkedLinkIds:linked},reason:"タイルから出品URLを登録・変更"},{actor,at});
+  if(s.kind==="plan"&&!s.stock){
+   const sources=s.item.source.kind==="link"?[{kind:"link",id:s.item.source.id,asin,sellerSku:s.item.sellerSku,condition:s.item.condition,setContents:s.item.setContents}]:[];
+   applyPlanningCommand(docs['sales-planning'].state,{operationId:command.operationId,kind:"edit",planId:s.id,plan:{...s.item,asin,linkedLinkIds:linked}},{actor,at,sources});
+  }
+ }
+ const receipt={id:command.operationId,digest,actor,at,key:command.key,linkId};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({at,kind:"product_url_saved",actor,key:command.key});return receipt;
+}
+export function createProductLinkEditor({transaction,overview,refresh}){
+ return {async list(){const [docs,view]=await Promise.all([transaction.read(),overview.view()]);const entries={};for(const row of view.rows)for(const key of row.sourceKeys)if(/^(link|stock|plan):/.test(key)){try{entries[key]={...productLinkInfo(docs,key),live:{fba:row.fba,channels:row.channels,yahoo:row.yahoo||[]}};}catch{}}return {entries};},async save(command,options){return transaction.update(docs=>applyProductLinkEdit(docs,command,options));},refresh};
+}

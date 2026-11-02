@@ -112,7 +112,8 @@ export function createCatalogView({key,host,roots,measureLabels=["数量 多い�
       footer.append(reorder,open);
       function expandedState(){const yes=expanded.has(data.id);row.classList.toggle("catalog-expanded",yes);open.setAttribute("aria-expanded",String(yes));open.querySelector("span").textContent=yes?"閉じる":"詳細";}
       open.addEventListener("click",()=>{if(expanded.has(data.id))expanded.delete(data.id);else expanded.add(data.id);expandedState();});
-      summary.append(imageBox,title,badges,metrics,state,footer);(row.tagName==="TR"?row.firstElementChild:row).prepend(summary);expandedState();
+      summary.append(imageBox,title,badges,metrics,state);row.classList.toggle('catalog-with-access',Boolean(data.renderAccess));
+      if(data.renderAccess){const access=node('div','catalog-access');data.renderAccess(access);summary.append(access);}summary.append(footer);(row.tagName==="TR"?row.firstElementChild:row).prepend(summary);expandedState();
     }
     apply();
   }

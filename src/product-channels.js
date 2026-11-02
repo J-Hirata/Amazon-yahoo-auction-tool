@@ -1,6 +1,6 @@
 const family=v=>/^new/i.test(v||"")?"new":/^used/i.test(v||"")?"used":"unknown";
 export function productChannels(row,monitor,watch,at){
-  const snapshot=monitor.salesTargets?.listingSnapshot||watch.observations.listings;
+  const snapshot=[monitor.salesTargets?.listingSnapshot,watch.observations.listings].filter(Boolean).sort((a,b)=>Date.parse(b.attemptedAt||b.checkedAt)-Date.parse(a.attemptedAt||a.checkedAt))[0];
   const unknown={state:"unknown",label:"未確認",skus:[],checkedAt:null};
   let fba={...unknown},merchant={...unknown};
   const age=Date.parse(at)-Date.parse(snapshot?.checkedAt),knownCondition=["new","used"].includes(row.condition);

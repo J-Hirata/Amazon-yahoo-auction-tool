@@ -1,14 +1,16 @@
 import {monitorRequest} from "./monitor-http.js";
 import {createCatalogView} from "./catalog-view.js";
+import {createProductAccess} from "./product-access.js";
 const $ = (selector) => document.querySelector(selector);
 const displayHost=document.createElement("div");$("#linkRows").closest("table").before(displayHost);
 const catalog=createCatalogView({key:"links",host:displayHost,roots:[$("#linkRows")],measureLabels:["FBA取得数 多い順","FBA取得数 少ない順"]});
 const escape = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"})[char]);
 const inventoryLabels = {available: "在庫あり", zero: "充当可能在庫なし", unknown: "確認できず", unlinked: "紐付け要確認"};
-const yahooLabels = {active: "出品中", ended: "終了確認済み", ending: "終了検知・再確認待ち", unknown: "確認できず", unlinked: "紐付け要確認"};
+const yahooLabels = {active: "出品中", ended: "出品終了", ending: "終了・登録URLで確認", unknown: "登録URLから確認", unlinked: "出品URLを登録"};
 let saved;
 let demo;
 let currentMode = "saved";
+const access=createProductAccess({readOnly:()=>Boolean(saved?.config.capabilities?.readOnly)||currentMode==='demo',onChanged:async()=>{saved=await api();await access.load();render();}});
 let running = 0;
 const memoDrafts = new Map();
 let notificationSettingsDirty = false;
@@ -22,16 +24,16 @@ function amazonImage(value) {
   } catch { /* An image is optional. */ }
   return "";
 }
-function productPreview(listing, product) {
+function productPreview(listing, product, link) {
   let image = "";
-  let source = "ヤフオク写真";
+  let source = !listing?.imageUrl&&link?.previousListingImageUrl?"以前の出品写真（参考）":"ヤフオク写真";
   try {
-    const url = new URL(listing?.imageUrl);
+    const url = new URL(listing?.imageUrl||link?.previousListingImageUrl);
     if (url.protocol === "https:" && url.hostname.endsWith(".yimg.jp") && !url.username && !url.password && !url.port) image = url.href;
   } catch { /* A missing image does not prevent linking. */ }
   if (!image) {image = amazonImage(product?.listingInfo?.offerImageUrls?.[0]); source = "自社Amazon写真";}
   if (!image) {image = amazonImage(product?.listingInfo?.catalogImageUrl); source = "Amazon共通画像";}
-  const title = listing?.title || (product?.title !== product?.asin ? product?.title : "") || "商品名：未取得";
+  const title = listing?.title || (product?.title !== product?.asin ? product?.title : "") || link?.previousListingTitle || "商品名：未取得";
   return `<div class="linked-product">${image ? `<div class="product-photo"><img src="${escape(image)}" alt="" width="64" height="64" loading="lazy" referrerpolicy="no-referrer"><small>${source}</small></div>` : ""}<span>${escape(title)}</span></div>`;
 }
 const date = (value) => value ? new Date(value).toLocaleString("ja-JP", {timeZone: "Asia/Tokyo"}) : "不明";
@@ -300,16 +302,17 @@ function render() {
   renderSales();
   $("#catalogSummary").textContent = `登録済みのAmazon商品：${saved?.catalog.length || 0}件`;
   $("#linkRows").innerHTML = data.links.length ? data.links.map((link) => {
-    const a = link.assessment, p = a.product, y = a.listing;
+    const a = link.assessment, p = a.product, y = a.listing, live=currentMode==="saved"?access.info("link:"+link.id).live:null;
     const own = p?.listingInfo;
     const comment = own?.ownCommentStatus === "retrieved" ? own.ownComment : own?.ownCommentStatus === "empty" ? "記載なし" : "未取得";
-    return `<tr><td data-label="商品">${productPreview(y, p)}</td><td data-label="御社のAmazon"><a href="https://www.amazon.co.jp/dp/${escape(p?.asin || "")}" target="_blank" rel="noreferrer">ASIN：${escape(p?.asin || "不明")}</a>${currentMode === "saved" ? `<small class="fba-quantity">FBA在庫：${escape(a.fbaLabel || "未確認")}</small><small>確認：${date(p?.checkedAt)}</small><small>${a.inventory === "unlinked" ? "在庫の特定：要確認" : "MCF出荷可否：未確認"}</small><p class="own-comment">自社コメント：${escape(comment)}</p>` : ""}</td>
+    return `<tr><td data-label="商品">${productPreview(y, p,link)}</td><td data-label="御社のAmazon"><a href="https://www.amazon.co.jp/dp/${escape(p?.asin || "")}" target="_blank" rel="noreferrer">ASIN：${escape(p?.asin || "不明")}</a>${currentMode === "saved" ? `<small class="fba-quantity">FBA在庫：${escape(live?.fba?.quantity!==null&&live?.fba?.quantity!==undefined?live.fba.quantity+"個":"「状態を再取得」から取得してください")}</small><small>確認：${date(p?.checkedAt)}</small><p class="own-comment">自社コメント：${escape(comment)}</p>` : ""}</td>
       <td data-label="ヤフオク"><a href="${escape(y?.url || "#")}" target="_blank" rel="noreferrer">${escape(y?.listingId || "不明")}</a><small>${a.inventory === "unlinked" ? "紐付け要確認" : "紐付け登録済み"}</small><small>出品状態：${yahooLabels[a.yahoo]}</small></td>
       <td data-label="自分用メモ">${currentMode === "demo" ? "" : `<div class="memo-display" ${memoDrafts.has(link.id) ? "hidden" : ""}><p class="memo-text">${escape(link.userMemo || "メモなし")}</p><button type="button" class="memo-edit">メモを編集</button></div><form class="link-memo" data-memo="${escape(link.id)}" ${memoDrafts.has(link.id) ? "" : "hidden"}><label>ひとことメモ<textarea name="memo" rows="2" maxlength="500" placeholder="例：スタンドなし">${escape(memoDrafts.has(link.id) ? memoDrafts.get(link.id) : link.userMemo || "")}</textarea></label><div class="memo-actions"><button type="submit">メモを保存</button><button type="button" class="memo-cancel">取消</button><span class="memo-status" role="status">${memoDrafts.has(link.id) ? "未保存" : link.memoUpdatedAt ? "保存済み" : ""}</span></div></form>`}<details><summary>補足・操作</summary><p>${escape(p?.title || y?.title || "商品名：未取得")}</p><p>SKU：${escape(p?.sellerSku || "未取得")}</p><p>${escape(p?.condition || "状態不明")} ／ ${escape(p?.setContents || "付属品不明")}</p>
       <p>FBA在庫：${number(p?.fulfillableQuantity)} ／ ${inventoryLabels[a.inventory]}</p><p>ヤフオク：${yahooLabels[a.yahoo]}</p><p>${escape(a.reason)}</p><p class="full-comment">自社コメント：${escape(comment)}</p>${amazonImage(own?.offerImageUrls?.[0]) ? `<div class="linked-product"><img src="${escape(amazonImage(own.offerImageUrls[0]))}" alt="自社Amazon出品写真" width="64" height="64" loading="lazy" referrerpolicy="no-referrer"></div>` : ""}<small>確認：${date(p?.checkedAt)}</small><small>引継ぎ履歴：${link.history.length}件</small>
       ${currentMode === "demo" ? "" : `<button type="button" class="product-preview-button" data-product-preview="${escape(link.id)}">画像・商品名を再取得</button><button type="button" class="unlink-button" data-unlink="${escape(link.id)}">解除</button>`}</details></td></tr>`;
   }).join("") : '<tr><td colspan="4">まだ紐付けはありません。</td></tr>';
   if (currentMode === "saved") data.links.forEach((link, index) => {
+    const direct=document.createElement("div");access.mount(direct,"link:"+link.id,{asin:link.asin||link.assessment.product?.asin,listingIds:[link.listingId]});$("#linkRows").children[index].firstElementChild.append(direct);
     const review=document.createElement("a");review.href=`/?view=planning#plan=link:${encodeURIComponent(link.id)}`;review.textContent="販売の見直しへ追加";review.className="planning-entry-link";review.style.display="block";
     $("#linkRows").children[index].lastElementChild.append(review);
     const asin = link.assessment.product?.asin || link.asin;
@@ -360,10 +363,11 @@ function render() {
   catalog.update($("#linkRows"),data.links.map((link,index)=>{
     const a=link.assessment,p=a.product,y=a.listing,age=Date.now()-Date.parse(p?.checkedAt);
     const known=Number.isFinite(age)&&age>=-60000&&age<=90*60000&&!p?.error&&a.inventory!=="unlinked"&&typeof p?.fulfillableQuantity==="number";
+    const live=currentMode==="saved"?access.info("link:"+link.id).live:null;const qty=live?.fba?.quantity??(known?p.fulfillableQuantity:null);
     const sales=saved.salesHistory?.products.find(s=>s.linkId===link.id),photo=$("#linkRows").children[index].querySelector(".linked-product img");
-    return {node:$("#linkRows").children[index],id:link.id,title:y?.title||(p?.title!==p?.asin?p?.title:"")||p?.asin||"商品名未取得",imageUrl:photo?.src,imageLabel:photo?.alt||"出品画像",
-      badges:[p?.asin||"ASIN不明",`ヤフオク：${yahooLabels[a.yahoo]}`],metrics:[{label:"FBA取得数",value:known?p.fulfillableQuantity:"未確認",unit:"個"},{label:"追跡後注文",value:currentMode==="saved"&&sales?.status==="complete"?sales.confirmedQuantity:"未確認",unit:"個"}],
-      status:known?(a.inventory==="available"?"MCF条件確認済み":a.inventory==="zero"?"数量・出荷条件を要確認":"MCF出荷可否未確認"):"在庫情報は要確認",measure:known?p.fulfillableQuantity:null,registeredAt:link.createdAt};
+    return {node:$("#linkRows").children[index],id:link.id,title:y?.title||(p?.title!==p?.asin?p?.title:"")||link.previousListingTitle||p?.asin||"商品名未取得",imageUrl:photo?.src,imageLabel:photo?.alt||"出品画像",
+      badges:[link.asin||p?.asin||"ASINを登録",live?.channels?.yahoo?.state==="active"?"ヤフオク出品中":live?.channels?.yahoo?.state==="ended"?"ヤフオク出品終了":"登録URLで確認"],renderAccess:currentMode==="saved"?host=>access.mount(host,"link:"+link.id,{asin:link.asin||p?.asin,listingIds:[link.listingId]}):undefined,metrics:[{label:"FBA販売可能",value:qty??(live?.fba?.status==="not_fba"?"FBA対象なし":"再取得が必要"),unit:"個"},{label:"追跡後注文",value:currentMode==="saved"&&sales?.status==="complete"?sales.confirmedQuantity:"未確認",unit:"個"}],
+      status:live?.fba?.checkedAt?"FBA確認："+date(live.fba.checkedAt):"数量は「状態を再取得」から取得できます",measure:qty,registeredAt:link.createdAt};
   }));
   const events = [...data.events].reverse();
   const selected = $("#eventSelect").value;
@@ -471,6 +475,7 @@ function renderReviews() {
 }
 await action(async () => {
   saved = await api();
+  await access.load();
   const result = await api("/demo", {scenario: "baseline"});
   demo = result.result;
   switchMode("saved");

@@ -1,6 +1,7 @@
 ﻿# ASIN Yahoo Auction Draft Tool
 
 業務版の入口は https://amazon-yahoo-inventory.vercel.app/ 。本人ログイン後、A/Yロゴの「Amazon・ヤフオク併売」に「商品紐付けツール」「出品下書きツール」、別の「在庫管理」に「コンテナ・自社在庫」を表示します。15組の紐付け、16出品情報、32通知履歴、58下書きを専用Neonへ移行・照合済みです。再登録は不要です。
+商品紐付け・在庫・販売監視のタイルからAmazon/ヤフオクへ直接移動し、URLの登録・訂正も行えます。[商品ページへのアクセス](docs/product-page-access.md)。
 現在の状態は [docs/status.md](docs/status.md)、追加機能の手順は [docs/phase1-link-monitor.md](docs/phase1-link-monitor.md) を参照。
 全商品一覧は https://amazon-yahoo-inventory.vercel.app/?view=overview 。写真・販路・場所・監視タグ・期限を横断表示し、FBA0/補充候補/ヤフオク終了/期限を日次確認する初版を追加した。[操作と限界](docs/product-overview.md)、配備・有効化・実送信結果はstatus冒頭を優先する。本人の追加登録と開発は並行し、既存数量は元の台帳で保持する。下の旧「未実装・通知オフ」はその当時の経緯である。
 「販売方針 → 販売の監視・見直し」では、既存商品またはASINから様子見/広告テスト/次回確認の計画を保存します。入口は `/?view=planning`、操作と未実装の境界は [docs/sales-planning.md](docs/sales-planning.md)。登録日ではなく実際の販売可能日を起点とし、数量や広告・出品は変更しません。

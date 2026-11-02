@@ -5,7 +5,8 @@ import {cloudConfiguration, createOwnerVerifier, createIdentityVerifier} from ".
 import {storageConfiguration, databasePool} from "./storage-runtime.js";
 import {validateSalesPlanning} from "./sales-planning.js";
 import {createCloudPlanning} from "./cloud-planning.js";
-import {createPostgresDocumentStore} from "./postgres-document-store.js";
+import {createPostgresDocumentStore,createDocumentTransaction} from "./postgres-document-store.js";
+import {createProductLinkEditor} from "./product-link-editor.js";
 import {validateMonitorState, validateDraftItems} from "./storage-validation.js";
 import {createCloudHandler} from "./cloud-handler.js";
 import {createOwnerAccess} from "./owner-access.js";
@@ -24,6 +25,7 @@ import {createProductOverview,validateProductWatch} from "./product-overview.js"
 import {createProductMonitoring} from "./product-monitoring.js";
 
 const fileTypes = {
+  "product-access.js":"text/javascript; charset=utf-8","product-access.css":"text/css; charset=utf-8",
   "cloud-overview-view.html":"text/html; charset=utf-8","product-overview.js":"text/javascript; charset=utf-8","product-overview.css":"text/css; charset=utf-8",
   "sales-planning.js":"text/javascript; charset=utf-8", "sales-planning.css":"text/css; charset=utf-8", "cloud-planning-view.html":"text/html; charset=utf-8",
   "cloud-login.html": "text/html; charset=utf-8", "cloud-view.html": "text/html; charset=utf-8", "cloud-drafts-view.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "demo.html": "text/html; charset=utf-8", "cloud-demo.js": "text/javascript; charset=utf-8",
@@ -73,9 +75,10 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const sales = env.ASIN_AMAZON_CLIENT_ID ? createCloudSales({store, config: cloudAmazonConfig(env),readTargets}) : undefined;
   const transport=env.ASIN_GMAIL_USER ? createCloudMailTransport(cloudMailConfig(env)) : undefined;
   const mail = transport ? createCloudMail({store,transport}) : undefined;
-  const monitoring=overview&&env.ASIN_AMAZON_CLIENT_ID?createProductMonitoring({overview,watchStore,config:cloudAmazonConfig(env)}):undefined;
+  const monitoring=overview&&env.ASIN_AMAZON_CLIENT_ID?createProductMonitoring({overview,watchStore,config:cloudAmazonConfig(env),readListings:readOwnAmazonListings}):undefined;
+  const productLinks=overview?createProductLinkEditor({transaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning}}),overview,refresh:monitoring?()=>monitoring.run({refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}}):undefined}):undefined;
   const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring}) : undefined;
   const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, overview, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
-    verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
-  return {config, handler, pool,sales,automation,overview,runSalesAutomation:automation ? ()=>automation.run() : undefined};
+    productLinks,verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
+  return {config, handler, pool,sales,automation,overview,productLinks,runSalesAutomation:automation ? ()=>automation.run() : undefined};
 }

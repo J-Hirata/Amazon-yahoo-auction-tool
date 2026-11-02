@@ -22,7 +22,7 @@ function linksFor(monitor, at) {
     const age = Date.parse(at) - Date.parse(product?.checkedAt);
     const current = Number.isFinite(age) && age >= -60000 && age <= PREVIEW_CONFIG.freshnessMinutes * 60000 && !product?.error;
     return {id: link.id, asin: product?.asin || link.asin, sellerSku: product?.sellerSku || "", condition: product?.condition || "",
-      title: listing?.title || product?.title || link.asin, imageUrl: listing?.imageUrl || "", listingId: link.listingId,
+      title: listing?.title || link.previousListingTitle || product?.title || link.asin, imageUrl: listing?.imageUrl || "", listingId: link.listingId,
       yahooStatus: assessment.yahoo, fbaLabel: assessment.fbaLabel || "未確認", quantity: current && assessment.inventory !== "unlinked" && product?.source === "amazon_sp_api" ? product.fulfillableQuantity : null, checkedAt: product?.checkedAt || null};
   });
 }

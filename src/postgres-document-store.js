@@ -57,3 +57,23 @@ export function createPostgresDocumentStore({pool, key, validate}) {
   }
   return {backend: "postgres", readSnapshot, read: async () => (await readSnapshot()).state, update};
 }
+
+// URL edits can touch a link and its stock/plan reference. Commit them together.
+export function createDocumentTransaction({pool,validators}){
+  const keys=Object.keys(validators).sort();
+  async function run(callback){
+    let client,committing=false;
+    try{
+      try{client=await pool.connect();}catch(e){throw storageFailure(e.code);}
+      if(callback){await queryDatabase(client,"BEGIN");await queryDatabase(client,"SET LOCAL lock_timeout = '5s'");}
+      const result=await queryDatabase(client,`SELECT document_key,payload,revision FROM app_storage.documents WHERE document_key=ANY($1::text[]) ORDER BY document_key${callback?" FOR UPDATE":""}`,[keys]);
+      const docs=Object.fromEntries(result.rows.map(r=>[r.document_key,{state:validators[r.document_key](r.payload),revision:Number(r.revision)}]));
+      if(keys.some(k=>!docs[k]))throw new Error("保存済みの商品データを読み込めません");
+      if(!callback)return docs;
+      const before=Object.fromEntries(keys.map(k=>[k,JSON.stringify(docs[k].state)])),returned=await callback(docs);
+      for(const k of keys){validators[k](docs[k].state);const payload=JSON.stringify(docs[k].state);if(payload!==before[k])await queryDatabase(client,"UPDATE app_storage.documents SET payload=$2::jsonb,revision=revision+1,updated_at=now() WHERE document_key=$1",[k,payload]);}
+      committing=true;await client.query("COMMIT");return returned;
+    }catch(e){if(callback&&client)await client.query("ROLLBACK").catch(()=>{});if(committing)throw storageFailure(e.code,true);throw e;}finally{client?.release();}
+  }
+  return {read:()=>run(),update:callback=>run(callback)};
+}

@@ -60,16 +60,18 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
   for(const link of monitor.links){
     const p=monitor.catalog.find(p=>p.id===link.catalogId),listing=monitor.listings.find(l=>l.listingId===link.listingId),asin=link.asin||p?.asin||"";
     const candidates=physical.products.filter(s=>s.linkedLinkIds.includes(link.id)&&s.asin===asin&&(!s.sellerSku||!p?.sellerSku||s.sellerSku===p.sellerSku)&&(!p?.condition||family(p.condition)==="unknown"||s.condition===family(p.condition)));
-    const row=candidates.length===1?byKey.get(`stock:${candidates[0].id}`):add(`link:${link.id}`,{asin,title:listing?.title||p?.title||asin,sellerSku:link.matchBy==="asin"?"":p?.sellerSku||"",condition:link.matchBy==="asin"?"unknown":family(p?.condition),imageUrl:listing?.imageUrl||p?.listingInfo?.catalogImageUrl||""});
+    const row=candidates.length===1?byKey.get(`stock:${candidates[0].id}`):add(`link:${link.id}`,{asin,title:listing?.title||link.previousListingTitle||p?.title||asin,sellerSku:link.matchBy==="asin"?"":p?.sellerSku||"",condition:link.matchBy==="asin"?"unknown":family(p?.condition),imageUrl:listing?.imageUrl||p?.listingInfo?.catalogImageUrl||""});
     if(!row.sourceKeys.includes(`link:${link.id}`))row.sourceKeys.push(`link:${link.id}`);if(!row.sources.includes("link"))row.sources.push("link");row.linkIds.push(link.id);linkRows.set(link.id,row);
     if(!row.imageUrl)row.imageUrl=listing?.imageUrl||"";
     (row.yahoo ||= []).push({listingId:link.listingId,title:listing?.title||"",...(watch.observations.yahoo||[]).find(y=>y.listingId===link.listingId)});
   }
   for(const p of planning.plans){
-    const source=p.source.kind==="stock"?byKey.get(`stock:${p.source.id}`):p.source.kind==="link"?linkRows.get(p.source.id):null;
+    const explicit=(p.linkedLinkIds||[]).map(id=>linkRows.get(id)).filter(Boolean);
+    const source=p.source.kind==="stock"?byKey.get(`stock:${p.source.id}`):p.source.kind==="link"?linkRows.get(p.source.id):explicit.length===1?explicit[0]:null;
     const match=source&&source.asin===p.asin&&(!p.sellerSku||!source.sellerSku||source.sellerSku===p.sellerSku)&&(!["new","used"].includes(source.condition)||p.condition===source.condition);
     const row=match?source:add(`plan:${p.id}`,{asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition,imageUrl:p.imageUrl,referenceIssue:Boolean(source&&!match)});
     if(!row.sourceKeys.includes(`plan:${p.id}`))row.sourceKeys.push(`plan:${p.id}`);if(!row.sources.includes("plan"))row.sources.push("plan");row.plans.push({...p,schedule:planningSchedule(p,at),actionSchedules:actionSchedules(p,at)});if(!row.imageUrl)row.imageUrl=p.imageUrl||"";
+    for(const id of p.linkedLinkIds||[]){const link=monitor.links.find(l=>l.id===id),listing=monitor.listings.find(l=>l.listingId===link?.listingId);if(link&&link.asin===p.asin&&!row.linkIds.includes(id)){row.linkIds.push(id);(row.yahoo||=[]).push({listingId:link.listingId,title:listing?.title||"",...(watch.observations.yahoo||[]).find(y=>y.listingId===link.listingId)});}}
   }
   for(const p of drafts)add(`draft:${p.asin}`,{asin:p.asin,title:p.title||p.asin,condition:"unknown",imageUrl:p.imageUrls?.[0]||""});
   for(const rule of watch.rules.filter(r=>r.key.startsWith("watch:")))add(rule.key,{asin:rule.asin,title:rule.title,condition:rule.condition,sellerSku:rule.sellerSku,imageUrl:rule.imageUrl});
