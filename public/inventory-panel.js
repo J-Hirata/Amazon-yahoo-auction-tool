@@ -27,7 +27,7 @@ export function createInventoryPanel({request,load,info,onChanged,readOnly}){
   const button=(text,fn)=>{const b=el('button',text);b.type='button';b.disabled=readOnly();b.addEventListener('click',fn);return b;};
   const sku=el('div',`SKU：${a?.sku||p.sellerSku||'未指定'}`,'product-sku');sku.title=sku.textContent;
   if(a?.condition&&a.condition!=='unknown'&&a.condition!=='状態未確認')sku.append(el('span',a.condition));host.append(sku);
-  if(a?.level==='danger'&&a.message.includes('多い'))host.append(el('strong',a.message,'inventory-risk danger'));
+  if(a?.level==='danger'&&a.message.includes('多い'))host.append(el('strong',a.message+(p.live?.workspace?.stocks.length?'・補充元の在庫を確認':''),'inventory-risk danger'));
   const markets=el('div',undefined,'product-access-links');
   function market(label,url,q,status,tone){
    const node=url?el('a'):button('',editUrl);node.className='market-stock '+tone;
@@ -42,7 +42,7 @@ export function createInventoryPanel({request,load,info,onChanged,readOnly}){
    market(p.yahoo.length>1?`ヤフオク ${listing.listingId} ↗`:'ヤフオクを開く ↗',listing.url,y?.quantity??null,label,ended?'yahoo-stock ended':y?.state==='active'?'yahoo-stock active':'yahoo-stock unknown');
   }else market('ヤフオク URLを登録','',null,'出品URL未登録','unknown');
   host.append(markets);
-  if(key.startsWith('stock:')||fallback.withLocations){const locations=el('div',undefined,'physical-stock-lines');for(const [id,label] of [['container','コンテナ'],['home','会社・自宅']]){const l=a?.locations?.find(l=>l.locationId===id),line=el('div');line.append(el('span',label),el('b',l?amount(l.usable,a?.unit):'未登録'));locations.append(line);}host.append(locations);}
+  const locations=el('div',undefined,'physical-stock-lines');for(const [id,label] of [['container','コンテナ'],['home','会社・自宅']]){const l=a?.locations?.find(l=>l.locationId===id),line=el('div');line.append(el('span',label),el('b',l?amount(l.usable,a?.unit):p.live?.workspace?.stockCandidates.length?'未関連':'未登録'));locations.append(line);}host.append(locations);
   const tools=el('div',undefined,'product-access-tools'),edit=button('SKU・在庫数を確認',()=>open(key,fallback));edit.disabled=readOnly()||p.revision===undefined||!p.asin;tools.append(edit,button('URL登録・修正',editUrl));const update=button('状態を再取得',()=>refresh(update));tools.append(update);host.append(tools);
   const details=el('details',undefined,'product-stock-details');details.append(el('summary','確認時刻・補足'));
   details.append(el('p',`FBA確認：${time(a?.fba?.checkedAt)}${a?.fba?.source==='manual'?'（手入力）':''}`));

@@ -37,16 +37,20 @@ export async function openPlanning({userId,readOnly}){
     const query=$("#planningSourceSearch").value.trim().toLowerCase();
     const sources=view.sources.filter(s=>[s.title,s.asin,s.sellerSku].join(" ").toLowerCase().includes(query));
     $("#planningSourceCards").innerHTML=sources.length?sources.map(s=>{
-      const existing=view.plans.find(p=>p.source.kind===s.kind&&p.source.id===s.id&&p.status!=="closed");
+      const existing=existingForSource(s.kind,s.id);
       return `<button type="button" class="planning-source-card" data-plan-source="${escape(s.kind+":"+s.id)}"><img src="${escape(catalogImage(s.imageUrl)||"/catalog-image.svg")}" alt="商品参考画像" loading="lazy" referrerpolicy="no-referrer"><span><strong>${escape(s.title)}</strong><small>${s.kind==="stock"?"コンテナ・自社在庫":"Amazon・ヤフオクの紐付け"} ／ ${escape(conditions[s.condition])}</small><small>${escape(s.asin||"ASINなし")}</small>${s.setContents?`<small>${escape(s.setContents)}</small>`:""}<small>${existing?"登録済みの計画を開く":"この商品を選ぶ"}</small></span></button>`;
     }).join(""):"<p>該当する商品はありません。新規ASINからも登録できます。</p>";
     for(const button of document.querySelectorAll("[data-plan-source]"))button.addEventListener("click",()=>{
       if(busy||readOnly||pending)return;
-      const [kind,id]=button.dataset.planSource.split(":"),existing=view.plans.find(p=>p.source.kind===kind&&p.source.id===id&&p.status!=="closed");
+      const [kind,id]=button.dataset.planSource.split(":"),existing=existingForSource(kind,id);
       if(existing){open(existing);return;}
       form.elements.source.value=button.dataset.planSource;sourceChanged();$("#planningSources").open=false;
     });
     for(const img of document.querySelectorAll(".planning-source-card img"))img.addEventListener("error",()=>{if(img.getAttribute("src")!=="/catalog-image.svg")img.src="/catalog-image.svg";});
+  }
+  function existingForSource(kind,id){
+    const related=access.info(kind+':'+id).live?.workspace?.plans||[];
+    return view.plans.find(p=>p.status!=='closed'&&(p.source.kind===kind&&p.source.id===id||related.some(r=>r.id===p.id)));
   }
   function lookupProduct(){
     const asin=form.elements.asin.value.trim().toUpperCase();
@@ -187,7 +191,7 @@ export async function openPlanning({userId,readOnly}){
   }
   function clearPending(){pending=null;sessionStorage.removeItem(pendingKey);}
   async function sendPending(){
-    try{const result=await request("/operations",pending.command,pending.revision);clearPending();view=result.result;render();dialog.close();status("販売計画を保存しました。在庫・出品・広告は変更していません。");}
+    try{const result=await request("/operations",pending.command,pending.revision);clearPending();view=result.result;await access.load();render();dialog.close();status("販売計画を保存しました。在庫・出品・広告は変更していません。");}
     catch(error){if(error.status>=400&&error.status<500){clearPending();await load();}throw error;}
   }
   form.addEventListener("submit",event=>{event.preventDefault();void work(async()=>{
@@ -226,7 +230,7 @@ export async function openPlanning({userId,readOnly}){
     const match=requested.match(/^(stock|link):([0-9a-f-]{36})$/i),source=match&&view.sources.find(s=>s.kind===match[1]&&s.id===match[2]);
     history.replaceState(null,"",location.pathname+location.search);
     if(source&&!readOnly&&!pending){
-      const existing=view.plans.find(p=>p.source.kind===source.kind&&p.source.id===source.id&&p.status!=="closed");
+      const existing=existingForSource(source.kind,source.id);
       if(existing){open(existing);status("登録済みの販売計画を開きました。");}
       else{open();form.elements.source.value=source.kind+":"+source.id;sourceChanged();status("選んだ商品を引き継ぎました。保存すると販売見直しへ追加されます。");}
     }else status("引き継ぐ商品を確認できません。写真付きの商品選択から選び直してください。",true);

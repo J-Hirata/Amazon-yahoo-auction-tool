@@ -5,6 +5,8 @@ import {stockImageUrl} from "./stock-images.js";
 import {actionSchedules} from "./planning-actions.js";
 import {productChannels} from "./product-channels.js";
 import {attachAvailability,skuOptions} from './product-availability.js';
+import {resolvedLinkSku,resolvedLinkCondition,productWorkspace,conditionFamily} from './product-workspace.js';
+import {replenishmentView} from './replenishment.js';
 export const WATCH_TAGS={watch:"監視対象",overstock:"在庫過多",large:"大型",heavy:"重量物"};
 const fail=(m,status=400)=>Object.assign(new Error(m),{status});
 const uuid=v=>/^[0-9a-f-]{36}$/i.test(v||"");
@@ -23,6 +25,10 @@ export function ruleFields(input,at){
   if(typeof input.replenishEnabled!=="boolean"||!number(input.threshold,1000000)||!number(input.minimumSales7,1000000)||!number(input.coverageDays,365)||!number(input.reviewDays,365)||input.reviewDays<1)throw fail("閾値・日数は指定範囲の整数で入力してください");
   const startedOn=text(input.startedOn||"",10);if(startedOn&&(!/^\d{4}-\d{2}-\d{2}$/.test(startedOn)||!Number.isFinite(Date.parse(startedOn))||new Date(startedOn+"T00:00:00Z").toISOString().slice(0,10)!==startedOn||startedOn>planningToday(at)))throw fail("確認済みの販売開始日を入力してください。予定日では開始しません");
   const result={key,tags:[...tags],replenishEnabled:input.replenishEnabled,threshold:input.threshold,minimumSales7:input.minimumSales7,coverageDays:input.coverageDays,reviewDays:input.reviewDays,startedOn,note:text(input.note||"",1000),updatedAt:at};
+  if(input.baselineQuantity!==undefined||input.replenishPercent!==undefined){
+    if(input.baselineQuantity!==null&&!number(input.baselineQuantity,1000000)||!number(input.replenishPercent,100)||input.replenishPercent>0&&!(input.baselineQuantity>0))throw fail('補充の基準数と割合を確認してください');
+    result.baselineQuantity=input.baselineQuantity;result.replenishPercent=input.replenishPercent;
+  }
   if(input.manualListingStatus!==undefined){if(!["unknown","mercari","none"].includes(input.manualListingStatus))throw fail("手動の出品状況を選んでください");result.manualListingStatus=input.manualListingStatus;}
   if(key.startsWith("watch:")){
     const asin=text(input.asin||"",10).toUpperCase(),title=text(input.title||"",200)||asin;
@@ -57,14 +63,15 @@ function salesFor(row,monitor,at){
 }
 export function productOverview({monitor,physical,planning,drafts=[],watch},at=new Date().toISOString()){
   const rows=[],byKey=new Map(),linkRows=new Map();
-  const linkSku=l=>l.amazonSellerSku||(l.matchBy==='asin'?'':monitor.catalog.find(p=>p.id===l.catalogId)?.sellerSku||'');
+  const linkSku=l=>resolvedLinkSku(l,monitor,watch,at);
   const observation=id=>[(watch.observations.yahoo||[]).find(y=>y.listingId===id),monitor.listings.find(l=>l.listingId===id)?.observation].filter(Boolean).sort((a,b)=>Date.parse(b.checkedAt)-Date.parse(a.checkedAt))[0];
   const add=(key,values)=>{const row={key,title:values.asin||"商品名未取得",asin:"",sellerSku:"",condition:"unknown",imageUrl:"",sourceKeys:[key],sources:[key.split(":")[0]],stockIds:[],linkIds:[],plans:[],locations:[],...values};rows.push(row);byKey.set(key,row);return row;};
   for(const p of physical.products){const totals=stockTotals(physical,p.id);add(`stock:${p.id}`,{...p,key:`stock:${p.id}`,stockIds:[p.id],locations:totals.locations,transfers:physical.transfers.filter(t=>t.productId===p.id&&t.remaining>0).map(t=>({to:t.to,remaining:t.remaining}))});}
   for(const link of monitor.links){
     const p=monitor.catalog.find(p=>p.id===link.catalogId),listing=monitor.listings.find(l=>l.listingId===link.listingId),asin=link.asin||p?.asin||"";
     const sku=linkSku(link);
-    const candidates=physical.products.filter(s=>s.linkedLinkIds.includes(link.id)&&s.asin===asin&&(!s.sellerSku||!sku||s.sellerSku===sku)&&(s.sellerSku||new Set(monitor.links.filter(l=>s.linkedLinkIds.includes(l.id)).map(linkSku).filter(Boolean)).size<=1)&&(!p?.condition||family(p.condition)==="unknown"||s.condition===family(p.condition)));
+    const linkCondition=conditionFamily(resolvedLinkCondition(link,monitor,watch,at));
+    const candidates=physical.products.filter(s=>(s.linkedLinkIds.includes(link.id)||sku&&s.sellerSku===sku&&monitor.links.some(l=>s.linkedLinkIds.includes(l.id)&&l.verified&&!l.observationConflict&&(l.asin||monitor.catalog.find(p=>p.id===l.catalogId)?.asin)===asin&&linkSku(l)===sku))&&s.asin===asin&&(!s.sellerSku||!sku||s.sellerSku===sku)&&(s.sellerSku||new Set(monitor.links.filter(l=>s.linkedLinkIds.includes(l.id)).map(linkSku).filter(Boolean)).size<=1)&&(linkCondition==='unknown'||s.condition==='unknown'||s.condition===linkCondition));
     const row=candidates.length===1?byKey.get(`stock:${candidates[0].id}`):add(`link:${link.id}`,{asin,title:listing?.title||link.previousListingTitle||p?.title||asin,sellerSku:sku,condition:link.matchBy==="asin"?"unknown":family(p?.condition),imageUrl:listing?.imageUrl||p?.listingInfo?.catalogImageUrl||""});
     if(sku&&!row.sellerSku)row.sellerSku=sku;
     if(!row.sourceKeys.includes(`link:${link.id}`))row.sourceKeys.push(`link:${link.id}`);if(!row.sources.includes("link"))row.sources.push("link");row.linkIds.push(link.id);linkRows.set(link.id,row);
@@ -74,7 +81,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
   for(const p of planning.plans){
     const explicit=(p.linkedLinkIds||[]).map(id=>linkRows.get(id)).filter(Boolean);
     const source=p.source.kind==="stock"?byKey.get(`stock:${p.source.id}`):p.source.kind==="link"?linkRows.get(p.source.id):explicit.length===1?explicit[0]:null;
-    const match=source&&source.asin===p.asin&&(!p.sellerSku||source.sellerSku===p.sellerSku)&&(!["new","used"].includes(source.condition)||p.condition===source.condition);
+    const match=source&&source.asin===p.asin&&(!p.sellerSku||source.sellerSku===p.sellerSku)&&(!["new","used"].includes(source.condition)||p.condition==='unknown'||p.condition===source.condition);
     const row=match?source:add(`plan:${p.id}`,{asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition,imageUrl:p.imageUrl,referenceIssue:Boolean(source&&!match)});
     if(!row.sourceKeys.includes(`plan:${p.id}`))row.sourceKeys.push(`plan:${p.id}`);if(!row.sources.includes("plan"))row.sources.push("plan");row.plans.push({...p,schedule:planningSchedule(p,at),actionSchedules:actionSchedules(p,at)});if(!row.imageUrl)row.imageUrl=p.imageUrl||"";
     for(const id of p.linkedLinkIds||[]){const link=monitor.links.find(l=>l.id===id),listing=monitor.listings.find(l=>l.listingId===link?.listingId);if(link&&(link.asin||monitor.catalog.find(c=>c.id===link.catalogId)?.asin)===p.asin&&!row.linkIds.includes(id)){if(linkSku(link)&&row.sellerSku&&linkSku(link)!==row.sellerSku){row.referenceIssue=true;continue;}row.linkIds.push(id);(row.yahoo||=[]).push({listingId:link.listingId,title:listing?.title||"",unitsPerListing:link.unitsPerListing||1,...observation(link.listingId)});}}
@@ -99,10 +106,11 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     row.dueDates=[...row.plans.flatMap(p=>p.actionSchedules.some(a=>a.startsOn||a.endsOn)?p.actionSchedules.map(a=>a.nextOn).filter(Boolean):[p.schedule.dueOn].filter(Boolean)),...(row.watchDue?[row.watchDue]:[])].sort();
     row.attention=[];if(row.fba.quantity===0)row.attention.push("FBA販売可能0");if(row.yahoo?.some(y=>y.status==="ended"))row.attention.push("ヤフオク終了");if(row.dueDates[0]&&row.dueDates[0]<=planningToday(at))row.attention.push("見直し時期");
     if(row.yahoo?.some(y=>!y.verified||!Number.isFinite(Date.parse(y.checkedAt))||Date.parse(at)-Date.parse(y.checkedAt)>26*3600000))row.attention.push("ヤフオク未確認");
-    row.replenishment=Boolean(row.rule.replenishEnabled&&row.fba.quantity!==null&&row.localAvailable>0&&(row.rule.minimumSales7===0||row.sales.fbaQuantity7!==null&&row.sales.fbaQuantity7>=row.rule.minimumSales7)&&(row.fba.quantity<=row.rule.threshold||row.rule.coverageDays>0&&row.daysRemaining!==null&&row.daysRemaining<=row.rule.coverageDays));
+    row.replenishmentInfo=replenishmentView(row,watch);row.replenishment=row.replenishmentInfo.due;
     if(row.replenishment)row.attention.push("追加納品を検討");
     if(row.referenceIssue)row.attention.push("参照先を要確認");
     if(row.channels.manualConflict)row.attention.push("手動の出品なし記録と出品中の取得情報が不一致");
+    row.workspace=productWorkspace(row,{physical,monitor,watch,at});
   }
   return attachAvailability(rows,monitor,at);
 }

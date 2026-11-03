@@ -1,5 +1,6 @@
 import {monitorRequest} from "./monitor-http.js";
 import {createInventoryPanel} from './inventory-panel.js';
+import {mountProductWorkspace} from './product-workspace.js';
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 const amazon=asin=>/^[A-Z0-9]{10}$/.test(asin||"")?`https://www.amazon.co.jp/dp/${asin}`:"";
 const yahoo=id=>/^[a-z][0-9]{6,15}$/.test(id||"")?`https://auctions.yahoo.co.jp/jp/auction/${id}`:"";
@@ -36,6 +37,7 @@ export function createProductAccess({readOnly=()=>false,onChanged=async()=>{}}={
  function mount(host,key,fallback={}){
   const p=info(key,fallback);host.classList.add('product-access');host.setAttribute('aria-label','商品ページとURLの登録');host.replaceChildren();
   inventory.mount(host,p,{key,fallback,editUrl:()=>open(key,fallback),refresh,amazonUrl:amazon(p.asin)});
+  mountProductWorkspace(host,p);
  }
  return {load,info,mount,open};
 }

@@ -102,10 +102,11 @@ export async function openStock({userId, readOnly}) {
     linkProduct=product;dirty=false;preview=null;
     $("#stockLinkTitle").textContent=product.title+" ／ "+(product.asin||"ASIN未登録");$("#stockLinkError").textContent="";
     const options=view.linkOptions.filter(l=>l.asin===product.asin&&product.asin);
+    const suggestedSku=options.find(l=>l.id===suggestedLink)?.sellerSku;
     $("#stockLinkOptions").innerHTML=options.length?options.map(l=>{
       const already=product.linkedLinkIds.includes(l.id), family=/^new/i.test(l.condition)?"new":/^used/i.test(l.condition)?"used":"unknown";
-      const mismatch=family!=="unknown"&&["new","used"].includes(product.condition)&&family!==product.condition || product.sellerSku&&l.sellerSku&&product.sellerSku!==l.sellerSku;
-      return `<label class="stock-link-option"><input type="checkbox" value="${escape(l.id)}" ${already||l.id===suggestedLink&&!mismatch?"checked":""} ${already||mismatch?"disabled":""}><span><strong>${escape(l.title)}</strong><small>${escape(l.listingId)} ／ ${family==="unknown"?"状態未確認":conditions[family]}${l.sellerSku?" ／ "+escape(l.sellerSku):""}</small><small>${already?"紐付け済み":mismatch?"在庫登録と状態・SKUが異なります":"同じ商品・状態・セットか確認"}</small></span></label>`;
+      const mismatch=family!=="unknown"&&product.condition!=="unknown"&&family!==product.condition || product.sellerSku&&l.sellerSku&&product.sellerSku!==l.sellerSku;
+      return `<label class="stock-link-option"><input type="checkbox" value="${escape(l.id)}" ${already||(l.id===suggestedLink||suggestedSku&&l.sellerSku===suggestedSku)&&!mismatch?"checked":""} ${already||mismatch?"disabled":""}><span><strong>${escape(l.title)}</strong><small>${escape(l.listingId)} ／ ${family==="unknown"?"状態未確認":conditions[family]}${l.sellerSku?" ／ "+escape(l.sellerSku):""}</small><small>${already?"紐付け済み":mismatch?"在庫登録と状態・SKUが異なります":"同じ商品・状態・セットか確認"}</small></span></label>`;
     }).join(""):"<p class='stock-muted'>このASINの登録済み出品はありません。</p>";
     $("#stockLinkNew").href="/#stock="+product.id;$("#stockLinkDraft").href="/?view=drafts#stock="+product.id;
     if(!product.asin)$("#stockLinkError").textContent="ASINを商品情報に登録してください。";
@@ -115,7 +116,9 @@ export async function openStock({userId, readOnly}) {
   $("#stockLinkForm").addEventListener("submit",event=>{event.preventDefault();work(async()=>{
     const added=[...document.querySelectorAll("#stockLinkOptions input:checked:not(:disabled)")].map(i=>i.value);
     if(!added.length)throw new Error("追加する出品を選んでください。");
-    await showPreview({operationId:crypto.randomUUID(),kind:"edit",productId:linkProduct.id,product:{...linkProduct,linkedLinkIds:[...new Set([...linkProduct.linkedLinkIds,...added])]},reason:"ヤフオク出品との関連付け"});
+    const skus=[...new Set([...linkProduct.linkedLinkIds,...added].map(id=>view.linkOptions.find(l=>l.id===id)?.sellerSku).filter(Boolean))];
+    if(!linkProduct.sellerSku&&skus.length>1)throw new Error('異なるSKUの出品は同じ現物在庫へまとめられません。対象の状態・SKUを選んでください。');
+    await showPreview({operationId:crypto.randomUUID(),kind:"edit",productId:linkProduct.id,product:{...linkProduct,sellerSku:linkProduct.sellerSku||skus[0]||'',linkedLinkIds:[...new Set([...linkProduct.linkedLinkIds,...added])]},reason:"ヤフオク出品との関連付け"});
   },"#stockLinkError");});
   function openProduct(product, reference) {
     editingProduct = product || null; productForm.reset(); dirty = false; preview = null;
@@ -177,6 +180,7 @@ export async function openStock({userId, readOnly}) {
     if (e?.metadataBefore?.fbaEligibility !== undefined && e.metadataBefore.fbaEligibility !== result.product.fbaEligibility) {const line = document.createElement("p"); line.textContent = `用途：${purposes[e.metadataBefore.fbaEligibility]} → ${purposes[result.product.fbaEligibility]}`; $("#stockConfirmContent").prepend(line);}
     if (result.duplicates.length) {const warning = document.createElement("p"); warning.className = "stock-error"; warning.textContent = "同じASIN・商品名の登録あり：" + result.duplicates.map((p) => p.managementId + " " + p.title).join(" ／ ") + "。別の現物・状態か確認してください。"; $("#stockConfirmContent").prepend(warning);}
     const previous=view.products.find(p=>p.id===command.productId);
+    if(command.kind==='edit'&&previous?.sellerSku!==result.product.sellerSku){const line=document.createElement('p');line.textContent=`SKU：${previous?.sellerSku||'未登録'} → ${result.product.sellerSku||'未登録'}`;$('#stockConfirmContent').append(line);}
     if(command.kind==="edit"&&JSON.stringify(previous?.linkedLinkIds)!==JSON.stringify(result.product.linkedLinkIds)){
       const line=document.createElement("p");line.textContent="ヤフオクとの関連付け："+result.product.linkedLinkIds.map(id=>view.linkOptions.find(l=>l.id===id)?.listingId||id).join(" ／ ")+"。場所別数量は変更しません。";$("#stockConfirmContent").append(line);
     }
@@ -211,7 +215,7 @@ export async function openStock({userId, readOnly}) {
     sessionStorage.setItem(pendingKey, JSON.stringify(payload)); pending = payload; controls();
     try {
       const result = await request("/operations", {command: payload.command, confirmed: true}, payload.revision);
-      view = {...result.result, photoRead: view.photoRead,amazonRead:view.amazonRead}; clearPending(); dirty = false;
+      view = {...result.result, photoRead: view.photoRead,amazonRead:view.amazonRead}; clearPending(); dirty = false;await access.load();
       for (const dialog of document.querySelectorAll(".stock-dialog[open]")) dialog.close(); render(); status(result.receipt.replayed ? "保存済みの操作を確認しました。数量を重複変更していません。" : payload.command.reason==="ヤフオク出品との関連付け" ? "ヤフオクとの関連付けを保存しました。場所別数量は変更していません。" : "在庫の変更と履歴を保存しました。");
     } catch (error) {$("#stockPendingStatus").textContent = error.message; throw error;}
   }
@@ -245,4 +249,17 @@ export async function openStock({userId, readOnly}) {
   await work(async () => {await load(); if (pending) status("前の操作の保存結果が未確認です。同じ操作IDで確認・再試行できます。", true);});
   const context=new URLSearchParams(location.hash.slice(1)),target=view?.products.find(p=>p.id===context.get("connect"));
   if(target&&!pending&&!readOnly){openLinks(target,context.get("link"));history.replaceState(null,"",location.pathname+location.search);}
+  window.addEventListener('hashchange',()=>{const h=new URLSearchParams(location.hash.slice(1)),p=view?.products.find(p=>p.id===h.get('connect'));if(p&&!pending&&!readOnly&&!busy&&!document.querySelector('dialog[open]')){openLinks(p,h.get('link'));history.replaceState(null,'',location.pathname+location.search);}});
+  if(context.get('asin')){$('#stockSearch').value=context.get('asin');render();}
+  const from=context.get('new');
+  if(from&&/^(link|stock):[0-9a-f-]{36}$/i.test(from)&&!pending&&!readOnly){
+    const source=access.info(from),candidates=(source.live?.workspace?.stockCandidates||[]).filter(p=>!p.mismatch),candidate=candidates.length===1?view.products.find(p=>p.id===candidates[0].id):null;
+    if(candidate){$('#stockSearch').value=candidate.asin;render();openLinks(candidate,source.yahoo[0]?.linkId);}
+    else if(candidates.length>1){$('#stockSearch').value=source.asin;render();status('実在庫の候補が複数あります。対象商品から「出品をつなぐ」を選んでください。');}
+    else if(source.asin){
+      openProduct();productForm.elements.title.value=source.title;productForm.elements.asin.value=source.asin;productForm.elements.sellerSku.value=source.live?.availability?.sku||source.sellerSku||'';
+      const condition=source.live?.availability?.condition||'';if(/^新品/.test(condition))productForm.elements.condition.value='new';else if(/^中古/.test(condition))productForm.elements.condition.value='used';
+      $('#stockLinked').value=source.yahoo[0]?.linkId||'';
+    }
+  }
 }

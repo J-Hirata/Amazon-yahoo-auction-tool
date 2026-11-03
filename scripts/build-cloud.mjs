@@ -15,6 +15,7 @@ const files = ["cloud-login.html", "cloud-login.css", "cloud-demo.js", "app.js",
 files.push("cloud-planning-view.html","sales-planning.css","product-access.js","product-access.css","inventory-panel.js");
 files.push("cloud-overview-view.html","product-overview.js","product-overview.css");
 await build({entryPoints:[path.join(root,"public","sales-planning.js")],outfile:path.join(output,"sales-planning.js"),bundle:true,format:"esm",target:["es2022"],platform:"browser",minify:true,external:["./monitor-http.js","./catalog-view.js"],logLevel:"warning"});
+await build({entryPoints:[path.join(root,"public","product-workspace.js")],outfile:path.join(output,"product-workspace.js"),bundle:true,format:"esm",target:["es2022"],platform:"browser",minify:true,logLevel:"warning"});
 for (const name of files) await copyFile(path.join(root, "public", name), path.join(output, name));
 for(const name of ["catalog-view.js","catalog-view.css","catalog-list.svg","catalog-tiles.svg","catalog-image.svg","catalog-grip.svg","catalog-prev.svg","catalog-next.svg"])await copyFile(path.join(root,"public",name),path.join(output,name));
 await build({stdin:{contents:'export {default} from "sortablejs";',resolveDir:root},outfile:path.join(output,"catalog-sortable.js"),bundle:true,format:"esm",platform:"browser",target:["es2022"],minify:true,legalComments:"inline",banner:{js:"/*\n"+await readFile(path.join(root,"node_modules","sortablejs","LICENSE"),"utf8")+"\n*/"}});

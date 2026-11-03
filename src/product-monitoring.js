@@ -3,6 +3,7 @@ import {readFbaInventory} from "./amazon-fba-reader.js";
 import {fetchYahooListing} from "./yahoo-observation.js";
 import {productOverview} from "./product-overview.js";
 import {planningToday} from "./sales-planning.js";
+import {recordReplenishmentBaselines} from './replenishment.js';
 
 export function collectProductAlerts(state,rows,settings,at){
   const signals=state.signals ||= {},pending=state.pendingAlerts ||= [],observed=new Set();
@@ -24,7 +25,7 @@ export function collectProductAlerts(state,rows,settings,at){
         observe(`fba-zero:${fbaKey}`,row.fba.status==="complete"?row.fba.quantity===0:null,"stockAlerts",row,`FBAの販売可能数が0個です。${local}。自己発送の在庫とは別です。併売の継続・補充を確認してください。`);
       }
       observe(`replenish:${row.key}`,row.rule.replenishEnabled&&row.fba.status==="complete"&&row.localAvailable!==null&&(row.rule.minimumSales7===0||row.sales.fbaQuantity7!==null)?row.replenishment:row.rule.replenishEnabled?null:false,"stockAlerts",row,
-        `追加納品を検討してください。FBA販売可能${row.fba.quantity}個、手元使用可能${row.localAvailable}個。FBAの直近7日販売${row.sales.fbaQuantity7??"未確認"}個、残り${row.daysRemaining??"未確認"}日分。納品中：${(row.transfers||[]).filter(t=>t.to==="fba").reduce((n,t)=>n+t.remaining,0)}個（台帳記録）。納品手配前に実数と受領状況を確認してください。`);
+        `追加納品を検討してください。FBA販売可能${row.fba.quantity}個、手元使用可能${row.localAvailable}個。${row.replenishmentInfo?.byRatio?`基準${row.replenishmentInfo.baseline}個の${row.replenishmentInfo.percent}%以下です。`:''}${(row.locations||[]).map(l=>`${l.locationId==='container'?'コンテナ':'会社・自宅'}：${l.usable===null?'未確認':l.usable+'個'}`).join(' ／ ')}。FBAの直近7日販売${row.sales.fbaQuantity7??"未確認"}個、残り${row.daysRemaining??"未確認"}日分。納品中：${(row.transfers||[]).filter(t=>t.to==="fba").reduce((n,t)=>n+t.remaining,0)}個（台帳記録）。納品手配前に実数と受領状況を確認してください。`);
     }
     for(const y of row.yahoo||[])if(!yahooKeys.has(y.listingId)){
       yahooKeys.add(y.listingId);const fresh=Number.isFinite(Date.parse(y.checkedAt))&&Date.parse(at)-Date.parse(y.checkedAt)<=26*3600000;
@@ -88,6 +89,7 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
     });
     const current=await overview.inputs();
     const pending=await watchStore.update(state=>{
+      recordReplenishmentBaselines(state,productOverview({...current,watch:state},now()),now());
       const rows=productOverview({...current,watch:state},now()),pending=collectProductAlerts(state,rows,settings,now());
       if(errors.length&&settings.errorAlerts){
         if(!state.signals.fetchError?.active){const eventId=randomUUID();state.pendingAlerts.push({id:eventId,eventKey:`product:fetch-error:${eventId}`,category:"errorAlerts",title:"在庫・出品の取得状況",message:errors.join("\n"),at:now()});state.signals.fetchError={active:true};}

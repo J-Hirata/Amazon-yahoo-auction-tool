@@ -25,6 +25,7 @@ import {createProductOverview,validateProductWatch} from "./product-overview.js"
 import {createProductMonitoring} from "./product-monitoring.js";
 
 const fileTypes = {
+  "product-workspace.js":"text/javascript; charset=utf-8",
   "product-access.js":"text/javascript; charset=utf-8","inventory-panel.js":"text/javascript; charset=utf-8","product-access.css":"text/css; charset=utf-8",
   "cloud-overview-view.html":"text/html; charset=utf-8","product-overview.js":"text/javascript; charset=utf-8","product-overview.css":"text/css; charset=utf-8",
   "sales-planning.js":"text/javascript; charset=utf-8", "sales-planning.css":"text/css; charset=utf-8", "cloud-planning-view.html":"text/html; charset=utf-8",
@@ -49,11 +50,11 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const store = createPostgresDocumentStore({pool, key: "link-monitor", validate: validateMonitorState});
   const draftStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "draft-items", validate: validateDraftItems}) : undefined;
   const stockStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "physical-stock", validate: validatePhysicalStock}) : undefined;
-  const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
   const planningStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"sales-planning",validate:validateSalesPlanning}):undefined;
   const watchStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"product-watch",validate:validateProductWatch}):undefined;
+  const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore,watchStore}) : undefined;
   const overview=watchStore?createProductOverview({monitorStore:store,stockStore,planningStore,draftStore,watchStore}):undefined;
-  const planning=planningStore?createCloudPlanning({store:planningStore,stock,monitorStore:store,
+  const planning=planningStore?createCloudPlanning({store:planningStore,stock,monitorStore:store,overview,
     readCatalog:env.ASIN_AMAZON_CLIENT_ID?asin=>readPlanningCatalog({asin,config:cloudAmazonConfig(env)}):undefined}):undefined;
   const stockPhotos = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockPhotoRefresh({store: stockStore, config: cloudAmazonConfig(env)}) : undefined;
   const stockAmazon = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:cloudAmazonConfig(env)}) : undefined;

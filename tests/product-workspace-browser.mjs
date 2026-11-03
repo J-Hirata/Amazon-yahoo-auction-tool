@@ -1,0 +1,94 @@
+import assert from 'node:assert/strict';
+import {spawn} from 'node:child_process';
+import {once} from 'node:events';
+import {createRequire} from 'node:module';
+import {mkdir} from 'node:fs/promises';
+import {fileURLToPath} from 'node:url';
+import {productOverview} from '../src/product-overview.js';
+import {collectProductAlerts} from '../src/product-monitoring.js';
+
+const root=fileURLToPath(new URL('../',import.meta.url)),directory=new URL('../output/product-workspace/',import.meta.url);
+const {chromium}=createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE||'playwright');
+const fixture=spawn(process.execPath,['tests/product-access-ui-fixture.mjs'],{cwd:root,env:{...process.env,WORKSPACE_FIXTURE:'1'},stdio:['ignore','pipe','pipe'],windowsHide:true});
+let browser,errors='',checks=0;fixture.stderr.on('data',d=>errors+=d);
+const pass=name=>{checks++;console.log('PASS '+name);};
+try{
+  const base=await new Promise((resolve,reject)=>{let out='';const timer=setTimeout(()=>reject(new Error('Fixture startup: '+errors)),15000);fixture.once('exit',code=>{clearTimeout(timer);reject(new Error('Fixture exited '+code+': '+errors));});fixture.stdout.on('data',d=>{out+=d;const first=out.split('\n').find(v=>v.startsWith('{'));if(first){try{const value=JSON.parse(first);clearTimeout(timer);resolve(value.url);}catch{}}});});
+  browser=await chromium.launch({headless:true});const context=await browser.newContext({viewport:{width:1440,height:1000}});
+  await context.route('**/*',r=>new URL(r.request().url()).origin===base?r.continue():r.abort());
+  const page=await context.newPage(),pageErrors=[];page.on('pageerror',e=>pageErrors.push(e.message));
+  const read=async path=>{const r=await context.request.get(base+path);assert.ok(r.ok());return r.json();};
+  const before=await read('/__fixture/state'),reserve=before['physical-stock'].state.products.find(p=>p.asin==='B000TEST05');
+  const links=before['link-monitor'].state.links.filter(l=>l.asin==='B000TEST05');
+  const row=(selector,title)=>page.locator(selector).filter({hasText:title}),panel=r=>r.locator('.product-access:visible');
+  await mkdir(directory,{recursive:true});
+  await page.goto(base);await page.locator('#linkRows .product-access:visible').first().waitFor();
+  await page.getByRole('button',{name:'タイル表示',exact:true}).click();
+  let first=panel(row('#linkRows > tr','隔離テスト・共有するモニター 5'));
+  assert.match(await first.locator('.physical-stock-lines').innerText(),/未関連/);
+  await first.getByRole('link',{name:'実在庫をつなぐ',exact:true}).click();
+  const connect=page.locator('#stockLinkDialog');await connect.waitFor();
+  assert.equal(await connect.getByRole('checkbox').count(),2);
+  for(const c of await connect.getByRole('checkbox').all())await c.check();
+  await connect.getByRole('button',{name:'選んだ出品との紐付けを確認',exact:true}).click();
+  const confirm=page.locator('#stockConfirmDialog');await confirm.waitFor();
+  await confirm.getByRole('button',{name:'この内容で保存',exact:true}).click();await confirm.waitFor({state:'hidden'});
+  const linked=await read('/__fixture/state'),stock=linked['physical-stock'].state.products.find(p=>p.id===reserve.id);
+  assert.equal(stock.sellerSku,'RESERVE-SKU');assert.equal(stock.linkedLinkIds.length,2);
+  assert.deepEqual(linked['physical-stock'].state.balances,before['physical-stock'].state.balances);
+  assert.deepEqual(linked['link-monitor'].state,before['link-monitor'].state);pass('existing listings associate to existing stock without changing URLs or physical quantities');
+  const stockPanel=panel(row('#stockRows > tr','隔離テスト・補充用在庫'));
+  assert.match(await stockPanel.locator('.physical-stock-lines').innerText(),/コンテナ\s*15個\s*会社・自宅\s*1個/);
+  await stockPanel.getByRole('link',{name:'紐付け 2件',exact:true}).click();
+  await page.locator('#linkRows .product-access:visible').first().waitFor();
+  for(const title of ['隔離テスト・共有するモニター 5','隔離テスト・共有するモニター 9']){
+    const p=panel(row('#linkRows > tr',title));assert.match(await p.locator('.physical-stock-lines').innerText(),/15個\s*会社・自宅\s*1個/);
+    assert.equal(await p.locator('.amazon-stock b').innerText(),'8個');assert.match(await p.locator('.inventory-risk').innerText(),/FBAより6個多い/);
+  }
+  pass('both same-SKU listing cards share reserve counts while FBA capacity stays separate');
+  first=panel(row('#linkRows > tr','隔離テスト・共有するモニター 5'));
+  await first.getByRole('link',{name:'販売見直しへ',exact:true}).click();
+  const planning=page.locator('#planningDialog');await planning.waitFor();
+  assert.equal(await planning.locator('[name=sellerSku]').inputValue(),'RESERVE-SKU');
+  const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'});
+  await planning.locator('[name=availableOn]').fill(today);await planning.locator('[name=durationDays]').fill('14');
+  await planning.locator('[name=note]').fill('Keep this review across pages');
+  await planning.locator('#planningSave').click();await planning.waitFor({state:'hidden'});
+  const planned=await read('/__fixture/state'),saved=planned['sales-planning'].state.plans.find(p=>p.asin==='B000TEST05');
+  assert.ok(saved);assert.equal(saved.source.kind,'link');
+  await page.goto(base+'/#item='+encodeURIComponent('link:'+links[1].id));
+  const second=panel(row('#linkRows > tr','隔離テスト・共有するモニター 9'));await second.waitFor();
+  await second.getByRole('link',{name:'販売見直し',exact:true}).click();await planning.waitFor();
+  assert.equal(await planning.locator('[name=note]').inputValue(),saved.note);
+  assert.equal(await planning.locator('[name=availableOn]').inputValue(),today);
+  await planning.getByRole('button',{name:'取消',exact:true}).click();
+  assert.equal((await read('/__fixture/state'))['sales-planning'].state.plans.length,planned['sales-planning'].state.plans.length);pass('review opens from another listing without duplicating its plan or resetting dates');
+  const planPanel=panel(row('#planningRows > tr','隔離テスト・共有するモニター 5'));
+  assert.equal(await planPanel.locator('.physical-stock-lines > div').count(),2);
+  await planPanel.getByRole('link',{name:'全商品',exact:true}).click();
+  await page.locator('.overview-card.workspace-selected').waitFor();
+  const overview=page.locator('.overview-card.workspace-selected');assert.match(await overview.innerText(),/15個/);assert.match(await overview.innerText(),/販売見直し登録済み/);
+  await overview.getByRole('link',{name:'補充条件',exact:true}).click();
+  const config=page.locator('#overviewDialog');await config.waitFor();
+  await config.getByLabel('補充の目安',{exact:true}).selectOption('50');
+  await config.getByLabel('基準にするFBA数量',{exact:true}).fill('20');
+  await config.locator('[name=replenishEnabled]').check();
+  await config.getByRole('button',{name:'設定を保存',exact:true}).click();await config.waitFor({state:'hidden'});
+  const watch=await read('/__fixture/watch');assert.equal(watch.rules.find(r=>r.key==='stock:'+reserve.id).baselineQuantity,20);
+  await page.reload();await page.locator('.overview-card').first().waitFor();
+  const current=await read('/__fixture/state'),projection=productOverview({monitor:current['link-monitor'].state,physical:current['physical-stock'].state,planning:current['sales-planning'].state,watch},new Date().toISOString());
+  const shared=projection.find(r=>r.asin==='B000TEST05');assert.equal(projection.filter(r=>r.asin==='B000TEST05').length,1);
+  assert.equal(shared.replenishment,true);assert.equal(shared.replenishmentInfo.baseline,20);
+  const pending=collectProductAlerts(structuredClone(watch),[shared],{stockAlerts:true},new Date().toISOString());assert.ok(pending.some(a=>/基準20個の50%以下/.test(a.message)));pass('overview has one shared product and half-stock replenishment survives save/reload');
+  await page.goto(base);await page.getByRole('button',{name:'タイル表示',exact:true}).waitFor();await page.getByRole('button',{name:'タイル表示',exact:true}).click();
+  await page.screenshot({path:fileURLToPath(new URL('links-desktop.png',directory)),fullPage:true});
+  for(const width of [1440,800,390,320]){
+    await page.setViewportSize({width,height:900});assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    const p=panel(row('#linkRows > tr','隔離テスト・共有するモニター 5'));assert.equal(await p.locator('.product-workspace-nav a').count(),4);
+    if(width<=390){assert.equal(await page.locator('#linkRows').evaluate(n=>getComputedStyle(n).gridTemplateColumns.split(' ').length),1);}
+  }
+  await page.screenshot({path:fileURLToPath(new URL('links-mobile.png',directory)),fullPage:true});
+  assert.deepEqual(pageErrors,[]);pass('desktop/mobile navigation and four stock measures have no overflow or JS errors');
+  const after=await read('/__fixture/state');assert.deepEqual(after['physical-stock'].state.balances,before['physical-stock'].state.balances);assert.deepEqual(after['link-monitor'].state,before['link-monitor'].state);
+  console.log(JSON.stringify({checks,productionWrites:0,externalWrites:0}));
+}finally{await browser?.close();const closed=once(fixture,'exit');fixture.kill();await closed;}
