@@ -10,7 +10,7 @@ export async function verifyStockWorkflow({page,stockStore,monitorStore,root,pas
   await page.locator('#stockProductForm [name=title]').fill("併売導線の試験商品");
   await page.locator('#stockProductForm [name=condition]').selectOption(/^new/i.test(catalog?.condition||"")?"new":"used");
   await page.locator('#stockProductForm [name=containerQuantity]').fill("2");
-  await page.locator("#stockExtraFields summary").click();await page.locator('#stockProductForm [name=asin]').fill(asin);
+  await page.locator('#stockProductForm [name=asin]').fill(asin);
   const preview=async()=>{await page.locator("#stockLinkSubmit").click();await page.locator("#stockConfirmDialog[open]").waitFor();};
   await page.locator("#stockProductForm").getByRole("button",{name:"変更内容を確認",exact:true}).click();await page.locator("#stockCommit").click();await page.locator("#stockConfirmDialog[open]").waitFor({state:"hidden"});
   const product=(await stockStore.read()).products.find(p=>p.title==="併売導線の試験商品"), before=await stockStore.read();

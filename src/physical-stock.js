@@ -63,8 +63,8 @@ export function applyStockCommand(state, command, {actor, at = new Date().toISOS
   if (!command || !uuid(command.operationId)) throw fail("保存用の操作IDを確認してください");
   const digest = stockCommandDigest(command), previous = state.receipts.find((r) => r.id === command.operationId);
   if (previous) {if (previous.digest !== digest || previous.actor !== actor) throw fail("同じ操作IDで内容が異なります", 409); return {...previous, replayed: true};}
-  const kind = choice(command.kind, ["create", "edit", "add", "remove", "count", "count_locations", "reserve", "release", "unusable", "recover", "dispatch", "receive_transfer", "return_transfer"]);
-  const reason = text(command.reason, 300, !["create", "edit"].includes(kind));
+  const kind = choice(command.kind, ["create", "edit", "memo", "add", "remove", "count", "count_locations", "reserve", "release", "unusable", "recover", "dispatch", "receive_transfer", "return_transfer"]);
+  const reason = text(command.reason, 300, !["create", "edit", "memo"].includes(kind));
   const before = [], changes = [];
   const balance = (productId, locationId, requireKnown = true) => {
     if (!local.has(locationId)) throw fail("FBA数量はこの台帳で変更できません。コンテナか自宅・自社を選んでください");
@@ -98,6 +98,11 @@ export function applyStockCommand(state, command, {actor, at = new Date().toISOS
       if (fields.unit !== product.unit || fields.condition !== product.condition || fields.setContents !== product.setContents) throw fail("単位・状態・セットの変更は別の管理商品として登録してください。数量を自動変換しません", 409);
       if (fields.asin !== product.asin && product.imageSource === "amazon_catalog" && (!Object.hasOwn(fields, "imageUrl") || fields.imageUrl === product.imageUrl)) Object.assign(fields, {imageUrl:"",imageSource:"manual"});
       Object.assign(product, fields, {updatedAt: at});
+    } else if (kind === "memo") {
+      if(typeof command.previousMemo!=='string'||typeof command.memo!=='string')throw fail('変更前後のメモを確認してください');
+      if(command.previousMemo!==(product.memo||''))throw fail('別のメモが保存されています。最新のメモを確認してください',409);
+      const memo=text(command.memo,500);metadataBefore=structuredClone(product);
+      Object.assign(product,{memo,updatedAt:at});
     } else if (kind === "count_locations") {
       const entries = command.locations;
       if (!entries || typeof entries !== "object" || Array.isArray(entries) || !Object.keys(entries).length || Object.keys(entries).some((id) => !local.has(id))) throw fail("修正する保管場所を確認してください");

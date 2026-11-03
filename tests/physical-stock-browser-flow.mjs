@@ -11,8 +11,8 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   pass("switching authenticated views restores the session without displaying the login form");
   await page.locator("#stockNew").click();
   assert.equal(await page.locator('#stockProductForm select[name=unit]').count(), 0);
-  await page.locator("#stockExtraFields summary").click();
-  if (await page.locator("#stockLinked option").count() > 1) await page.locator("#stockLinked").selectOption({index: 1});
+  const firstLink=(await monitorStore.read()).links[0];await page.locator('#stockProductForm [name=asin]').fill(firstLink.asin||(await monitorStore.read()).catalog.find(p=>p.id===firstLink.catalogId).asin);
+  await page.locator('#stockRegistrationLinks input:not(:disabled)').first().check();
   await page.locator('#stockProductForm [name=title]').fill("手元在庫の試験用モニター");
   await page.locator('#stockProductForm [name=setContents]').fill("スタンドなし");
   await page.locator('#stockProductForm [name=containerQuantity]').fill("6");
@@ -95,7 +95,7 @@ export async function verifyPhysicalStockUI({page, stockStore, monitorStore, roo
   pass("authenticated physical-stock CSV works through the actual generated Vercel rewrite");
   await page.locator("#stockNew").click(); await page.locator('#stockProductForm [name=title]').fill("場所別在庫の試験商品");
   await page.locator('#stockProductForm [name=containerQuantity]').fill("4"); await page.locator('#stockProductForm [name=homeQuantity]').fill("2");
-  await page.locator("#stockExtraFields summary").click();await page.locator('#stockProductForm [name=asin]').fill("B000TEST99");
+  await page.locator('#stockProductForm [name=asin]').fill("B000TEST99");
   await preview("#stockProductForm"); await commit();
   const newProduct = (await stockStore.read()).products.find((p) => p.title === "場所別在庫の試験商品");
   assert.equal(newProduct.unit, "個"); assert.equal(newProduct.setContents, "");
