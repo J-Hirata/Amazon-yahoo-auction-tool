@@ -314,7 +314,7 @@ function render() {
   }).join("") : '<tr><td colspan="4">まだ紐付けはありません。</td></tr>';
   if (currentMode === "saved") data.links.forEach((link, index) => {
     const direct=document.createElement("div");access.mount(direct,"link:"+link.id,{asin:link.asin||link.assessment.product?.asin,listingIds:[link.listingId]});$("#linkRows").children[index].firstElementChild.append(direct);
-    const review=document.createElement("a");review.href=`/?view=planning#plan=link:${encodeURIComponent(link.id)}`;review.textContent="販売の見直しへ追加";review.className="planning-entry-link";review.style.display="block";
+    const review=document.createElement("a");review.href=`/?view=planning#plan=link:${encodeURIComponent(link.id)}`;review.textContent="販売の見直しへ追加";review.className="planning-entry-link";review.style.display="block";review.target='_blank';review.rel='noopener noreferrer';review.title='別タブで開く';
     $("#linkRows").children[index].lastElementChild.append(review);
     const asin = link.assessment.product?.asin || link.asin;
     const ownStock = (saved.physicalInventory || []).filter((p) => p.linkedLinkIds.includes(link.id) || asin && p.asin === asin);

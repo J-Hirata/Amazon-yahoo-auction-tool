@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {attachAvailability,stockDisplay,yahooAvailability,conditionName} from '../src/product-availability.js';
+import {attachAvailability,stockDisplay,yahooAvailability,conditionName,skuOptions} from '../src/product-availability.js';
+import {productChannels} from '../src/product-channels.js';
 import {parseYahooPage} from '../src/yahoo-observation.js';
 
 const at='2026-11-03T04:00:00Z',asin='B000TEST01';
@@ -80,4 +81,56 @@ test('a manual count saved without a SKU cannot carry over to a subsequently sel
 test('an intentionally unlisted product is informational, not an inventory alert',()=>{
  const r=attachAvailability([row({yahoo:[]})],{},at)[0];
  assert.equal(r.availability.level,'none');assert.deepEqual(r.attention,[]);
+});
+
+const ownSnapshot=()=>({status:'complete',source:'own_seller_listings',accountKey:'fixture',sellerId:'OWN',marketplaceId:'A1VC38T7YXB528',asins:[asin],checkedAt:at,rows:[
+ {asin,sellerSku:'NEW-ACTIVE',condition:'new_new',statuses:['BUYABLE','DISCOVERABLE'],fulfillment:[{channel:'AMAZON_JP',quantity:0}]},
+ {asin,sellerSku:'NEW-OLD',condition:'new_new',statuses:['DISCOVERABLE'],fulfillment:[{channel:'AMAZON_JP',quantity:0}]},
+ {asin,sellerSku:'USED-OTHER',condition:'used_like_new',statuses:['BUYABLE'],fulfillment:[{channel:'AMAZON_JP',quantity:0}]}
+]});
+const ownMonitor=()=>({amazonAccountKey:'fixture',amazonSellerId:'OWN',salesTargets:{listingSnapshot:ownSnapshot(),targets:[]}});
+const ownWatch=()=>({observations:{fba:{status:'complete',complete:true,accountKey:'fixture',sellerId:'OWN',asins:[asin],checkedAt:at,items:[
+ {asin,sellerSku:'NEW-ACTIVE',fulfillableQuantity:97},{asin,sellerSku:'NEW-OLD',fulfillableQuantity:0},{asin,sellerSku:'USED-OTHER',fulfillableQuantity:6}
+]}}});
+
+test('SKU candidates retain separate ranks, BUYABLE state and exact FBA counts, not listing quantity',()=>{
+ const options=skuOptions(row({condition:'new',sellerSku:''}),ownMonitor(),ownWatch(),at);
+ assert.deepEqual(options.map(o=>[o.sellerSku,o.condition,o.sellable,o.fbaQuantity]),[
+  ['NEW-ACTIVE','新品',true,97],['NEW-OLD','新品',false,0],['USED-OTHER','中古・ほぼ新品',true,6]
+ ]);assert.ok(options.every(o=>o.merchantQuantity===null));
+});
+
+test('FBA candidate quantity stays unknown for failed, stale, foreign and duplicate inventory observations',()=>{
+ const invalid=[{status:'failed'},{complete:false},{accountKey:'foreign'},{sellerId:'OTHER'},{checkedAt:'2026-10-01T00:00:00Z'},{asins:['B000OTHER1']}];
+ for(const patch of invalid){const watch=ownWatch();Object.assign(watch.observations.fba,patch);assert.ok(skuOptions(row(),ownMonitor(),watch,at).every(o=>o.fbaQuantity===null));}
+ const watch=ownWatch();watch.observations.fba.items.push({...watch.observations.fba.items[0]});assert.equal(skuOptions(row(),ownMonitor(),watch,at)[0].fbaQuantity,null);
+});
+
+test('listing candidates reject stale or foreign scope and failed newest reads instead of using old success',()=>{
+ for(const patch of [{status:'failed'},{accountKey:'other'},{sellerId:'OTHER'},{marketplaceId:'OTHER'},{checkedAt:'2026-10-01T00:00:00Z'}]){
+  const monitor=ownMonitor();Object.assign(monitor.salesTargets.listingSnapshot,patch);assert.deepEqual(skuOptions(row(),monitor,ownWatch(),at),[]);
+ }
+ const monitor=ownMonitor(),watch=ownWatch();watch.observations.listings={...ownSnapshot(),status:'failed',attemptedAt:'2026-11-03T04:00:30Z'};
+ assert.deepEqual(skuOptions(row(),monitor,watch,at),[]);assert.equal(productChannels({...row(),rule:{}},monitor,watch,at).fba.state,'unknown');
+});
+
+test('the newest listing read is selected per ASIN, including the existing physical-stock refresh',()=>{
+ const monitor=ownMonitor(),watch=ownWatch(),r={...row({sellerSku:'',condition:'new'}),rule:{}};
+ watch.observations.listings={...ownSnapshot(),checkedAt:'2026-11-03T04:00:30Z',asins:['B000OTHER1'],rows:[]};
+ assert.equal(productChannels(r,monitor,watch,at).fba.state,'active');assert.equal(skuOptions(r,monitor,watch,at).length,3);
+ const physical={...ownSnapshot(),checkedAt:'2026-11-03T04:00:40Z',rows:[]};
+ assert.equal(productChannels(r,monitor,watch,at,physical).fba.state,'absent');assert.deepEqual(skuOptions(r,monitor,watch,at,physical),[]);
+});
+
+test('merchant quantity is a single-SKU live listing count, separate from FBA and physical inventory',()=>{
+ const monitor=ownMonitor();monitor.salesTargets.listingSnapshot.rows=[{asin,sellerSku:'FBM',condition:'used_good',statuses:['BUYABLE'],fulfillment:[{channel:'DEFAULT',quantity:2}]}];
+ const r={...row({sellerSku:'',fba:{quantity:null,status:'not_fba'}}),rule:{}},channels=productChannels(r,monitor,ownWatch(),at);
+ assert.equal(channels.merchant.state,'active');assert.equal(channels.merchant.quantity,2);assert.equal(channels.fba.state,'absent');assert.equal(channels.fba.quantity,null);
+ const option=skuOptions(r,monitor,ownWatch(),at)[0];assert.equal(option.merchant,true);assert.equal(option.fba,false);assert.equal(option.merchantQuantity,2);
+ monitor.inventoryReviews=[{key:'link:fixture',asin,sellerSku:'',manualFbaQuantity:11,checkedAt:at}];
+ assert.equal(stockDisplay({...r,channels},monitor,at).fba.quantity,null);
+ monitor.salesTargets.listingSnapshot.rows.push({...monitor.salesTargets.listingSnapshot.rows[0],sellerSku:'FBM-OTHER'});
+ assert.equal(productChannels(r,monitor,ownWatch(),at).merchant.quantity,null);
+ assert.equal(productChannels({...r,sellerSku:'FBM'},monitor,ownWatch(),at).merchant.quantity,2);
+ monitor.salesTargets.listingSnapshot.rows[0].fulfillment.push({channel:'DEFAULT',quantity:5});assert.equal(productChannels({...r,sellerSku:'FBM'},monitor,ownWatch(),at).merchant.quantity,null);
 });

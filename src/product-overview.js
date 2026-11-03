@@ -100,8 +100,8 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     row.localKnown=row.locations.some(l=>l.usable!==null);row.localAvailable=row.localKnown?row.locations.reduce((sum,l)=>sum+(l.usable||0),0):null;
     row.badges=[...(row.asin&&row.sources.some(s=>s!=="draft")?["amazon"]:[]),...(row.linkIds.length?["yahoo","parallel"]:[]),...(row.locations.some(l=>l.locationId==="container"&&l.usable>0)?["container"]:[]),...(row.locations.some(l=>l.locationId==="home"&&l.usable>0)?["home"]:[]),...row.tags,...(row.plans.length?["planning"]:[]),...(row.sources.includes("draft")?["draft"]:[])];
     row.watchDue=row.rule.startedOn?new Date(Date.parse(row.rule.startedOn+"T00:00:00Z")+row.rule.reviewDays*86400000).toISOString().slice(0,10):"";
-    row.channels=productChannels(row,monitor,watch,at);
-    row.skuOptions=skuOptions(row,monitor,watch,at);
+    row.channels=productChannels(row,monitor,watch,at,physical.amazonListings);
+    row.skuOptions=skuOptions(row,monitor,watch,at,physical.amazonListings);
     row.provenance=row.sources.map(s=>({stock:"コンテナ・自社在庫",link:"商品紐付け",plan:"販売の監視・見直し",draft:"出品下書き",watch:"監視専用登録"})[s]);
     row.dueDates=[...row.plans.flatMap(p=>p.actionSchedules.some(a=>a.startsOn||a.endsOn)?p.actionSchedules.map(a=>a.nextOn).filter(Boolean):[p.schedule.dueOn].filter(Boolean)),...(row.watchDue?[row.watchDue]:[])].sort();
     row.attention=[];if(row.fba.quantity===0)row.attention.push("FBA販売可能0");if(row.yahoo?.some(y=>y.status==="ended"))row.attention.push("ヤフオク終了");if(row.dueDates[0]&&row.dueDates[0]<=planningToday(at))row.attention.push("見直し時期");

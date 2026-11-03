@@ -72,7 +72,7 @@ export function createStockAmazonRefresh({store, monitorStore, config, readListi
     try {
       result = await readListings({asins:targets,config:{...config,sellerId:account.amazonSellerId}});
       if (result.status !== "complete" || result.source !== "own_seller_listings" || result.marketplaceId !== "A1VC38T7YXB528" || result.sellerId !== account.amazonSellerId || result.accountKey !== config.accountKey || JSON.stringify(result.asins) !== JSON.stringify(targets)) throw fail("自社出品の確認範囲が一致しません");
-    } catch {result = {...snapshot.state.amazonListings,version:1,status:"failed",error:"自社出品を取得できませんでした。在庫ゼロ・未出品とは判断しません。",attemptedAt:now()};}
+    } catch {result = {...snapshot.state.amazonListings,version:1,status:"failed",asins:targets,error:"自社出品を取得できませんでした。在庫ゼロ・未出品とは判断しません。",attemptedAt:now()};}
     await store.update((state) => {
       state.amazonListings = {...result,actor,attemptedAt:now()};
     },{expectedRevision});

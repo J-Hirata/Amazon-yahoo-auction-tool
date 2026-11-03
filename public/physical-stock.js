@@ -83,7 +83,7 @@ export async function openStock({userId, readOnly}) {
     for (const [index,row] of [...document.querySelectorAll("#stockRows tr")].entries()) {
       const product=products[index]; if(!product)continue;
       const direct=document.createElement('div');access.mount(direct,'stock:'+product.id,{asin:product.asin,title:product.title,listingIds:product.linked.map(l=>l.listingId)});row.firstElementChild.append(direct);
-      const review=document.createElement("a");review.href=`/?view=planning#plan=stock:${encodeURIComponent(product.id)}`;review.textContent="販売の監視・見直しへ追加";review.className="planning-entry-link";
+      const review=document.createElement("a");review.href=`/?view=planning#plan=stock:${encodeURIComponent(product.id)}`;review.textContent="販売の監視・見直しへ追加";review.className="planning-entry-link";review.target='_blank';review.rel='noopener noreferrer';review.title='別タブで開く';
       row.querySelector(".stock-row-actions").append(review);
       let button=row.querySelector("[data-stock-connect]");
       if(!button){button=document.createElement("button");button.type="button";button.className="stock-text-button";button.dataset.stockConnect=product.id;row.querySelector(".stock-channel:last-child").append(button);}
@@ -274,7 +274,7 @@ export async function openStock({userId, readOnly}) {
   $("#stockPhotos").addEventListener("click", () => work(async () => {status("Amazonの商品画像を取得しています。数量は変更しません。"); const result = await request("/photos", {}); await load(); status(`商品画像 ${result.updated}件を保存しました。${result.errors.length ? `取得できず ${result.errors.length}件：${result.errors.map((e) => e.asin + " " + e.error).join(" ／ ")}` : ""}${result.remaining ? " 未取得分はもう一度取得できます。" : ""} ASIN未登録の商品は画像URLまたはASINを登録してください。`);}));
   $("#stockAmazonCheck").addEventListener("click",()=>work(async()=>{status("登録ASINに対応する御社のAmazon出品を確認しています。数量・出品は変更しません。");const result=await request("/amazon-listings",{});await load();status(result.status === "complete" ? `御社のAmazon出品を確認しました（${result.checkedAsins} ASIN・${result.offers} SKU）。倉庫の実数やヤフオクの関連付けは変更していません。` : result.error,result.status !== "complete");}));
   for (const selector of ["#stockSearch", "#stockLocationFilter", "#stockStateFilter", "#stockPurposeFilter"]) $(selector).addEventListener("input", render);
-  for (const button of document.querySelectorAll("[data-close]")) button.addEventListener("click", () => {$("#" + button.dataset.close).close(); if (button.dataset.close !== "stockConfirmDialog") dirty = false;});
+  for (const button of document.querySelectorAll(".stock-dialog [data-close]")) button.addEventListener("click", () => {$("#" + button.dataset.close).close(); if (button.dataset.close !== "stockConfirmDialog") dirty = false;});
   for (const element of [actionForm.elements.kind, actionForm.elements.locationId, actionForm.elements.to, actionForm.elements.transferId]) element.addEventListener("change", syncAction);
   for (const button of document.querySelectorAll("[data-stock-mode]")) button.addEventListener("click", () => {actionForm.elements.kind.value = button.dataset.stockMode; syncAction(); dirty = true;});
   for(const field of ['asin','sellerSku','condition'])productForm.elements[field].addEventListener('input',syncRegistrationLinks);

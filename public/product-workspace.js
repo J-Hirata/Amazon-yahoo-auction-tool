@@ -16,7 +16,7 @@ export function mountProductWorkspace(host,p){
   host.dataset.workspaceKeys=JSON.stringify([...new Set([key,...w.sourceKeys])]);
   const nav=element('nav',undefined,'product-workspace-nav');nav.setAttribute('aria-label','この商品の関連ページ');
   const current=new URLSearchParams(location.search).get('view')||'links';
-  const add=(view,label,shape,href)=>{const a=element('a');a.href=href;a.title=label;a.append(icon(shape),element('span',label));if(current===view)a.setAttribute('aria-current','page');nav.append(a);};
+  const add=(view,label,shape,href)=>{const a=element('a');a.href=href;a.title=label;if(view==='planning'){a.target='_blank';a.rel='noopener noreferrer';a.title+='（別タブで開く）';}a.append(icon(shape),element('span',label));if(current===view)a.setAttribute('aria-current','page');nav.append(a);};
   const firstLink=w.links[0],firstStock=w.stocks[0],plans=w.plans.filter(p=>p.status!=='closed'),source=/^(link|stock):/.test(key)?key:w.sourceKeys.find(k=>/^(stock|link):/.test(k));
   if(firstLink)add('links',w.links.length>1?`紐付け ${w.links.length}件`:'紐付け',Link2,itemHref('',`link:${firstLink.id}`));
   else if(firstStock)add('links',w.linkCandidates?.length?'出品をつなぐ':'紐付けを登録',Link2,w.linkCandidates?.length?`/?view=stock#connect=${firstStock.id}&link=${w.linkCandidates[0].id}`:`/#stock=${firstStock.id}`);

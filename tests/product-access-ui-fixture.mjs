@@ -35,6 +35,19 @@ if(process.env.WORKSPACE_FIXTURE==='1'){
   watch.observations.fba.asins.push(asin);watch.observations.fba.items.push({asin,sellerSku,condition:'UsedGood',fulfillableQuantity:8});
   monitor.salesTargets.listingSnapshot.asins.push(asin);monitor.salesTargets.listingSnapshot.rows.push({asin,sellerSku,condition:'used_good',statuses:['BUYABLE'],fulfillment:[{channel:'AMAZON_JP',quantity:8}]});
 }
+if(process.env.AMAZON_STATUS_FIXTURE==='1'){
+ const bookAsin='B000BOOK01',merchantAsin='B000FBMS01';
+ for(const [asin,title,condition,counts] of [[bookAsin,'隔離テスト・新品の販売中書籍','new',{container:150,home:null}],[merchantAsin,'隔離テスト・自己発送モニター','used',{container:3,home:1}]]){
+  applyStockCommand(physical,{operationId:randomUUID(),kind:'create',productId:randomUUID(),product:{title,asin,condition,unit:'個',memo:'元のメモを保全',fbaEligibility:condition==='new'?'possible':'not_possible'},initialCounts:counts},{actor,at});
+  watch.observations.fba.asins.push(asin);monitor.salesTargets.listingSnapshot.asins.push(asin);
+ }
+ for(const [sellerSku,condition,quantity,sellable] of [['NEW-ACTIVE','new_new',97,true],['NEW-OLD','new_new',0,false],['USED-OTHER','used_like_new',6,true]]){
+  watch.observations.fba.items.push({asin:bookAsin,sellerSku,condition,fulfillableQuantity:quantity});
+  monitor.salesTargets.listingSnapshot.rows.push({asin:bookAsin,sellerSku,condition,statuses:[sellable?'BUYABLE':'DISCOVERABLE'],fulfillment:[{channel:'AMAZON_JP',quantity:0}]});
+ }
+ monitor.salesTargets.listingSnapshot.rows.push({asin:merchantAsin,sellerSku:'FBM-SKU',condition:'used_good',statuses:['BUYABLE'],fulfillment:[{channel:'DEFAULT',quantity:2}]});
+ watch.observations.fba.items.push({asin:merchantAsin,sellerSku:'FBM-SKU',condition:'UsedGood',fulfillableQuantity:0});
+}
 function store(key){return {read:async()=>structuredClone(docs[key].state),readSnapshot:async()=>structuredClone(docs[key]),update:async(fn,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==docs[key].revision)throw Object.assign(new Error('別の編集が保存されました'),{code:'STORAGE_CONFLICT'});const copy=structuredClone(docs[key].state),r=await fn(copy);docs[key]={state:copy,revision:docs[key].revision+1};return r;}};}
 const transaction={read:async()=>structuredClone(docs),update:async fn=>{const copy=structuredClone(docs),r=await fn(copy);for(const key of Object.keys(copy))if(JSON.stringify(copy[key].state)!==JSON.stringify(docs[key].state))copy[key].revision++;docs=copy;return r;}},watchStore={read:async()=>structuredClone(watch),readSnapshot:async()=>({state:structuredClone(watch),revision:watchRevision})},monitorStore=store('link-monitor'),stockStore=store('physical-stock'),planningStore=store('sales-planning'),draftStore={read:async()=>[]};
 watchStore.update=async(fn,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==watchRevision)throw Object.assign(new Error('Watch conflict'),{code:'STORAGE_CONFLICT'});const copy=structuredClone(watch),result=await fn(copy);Object.assign(watch,copy);watchRevision++;return result;};

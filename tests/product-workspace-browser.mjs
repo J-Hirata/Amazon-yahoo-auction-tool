@@ -21,6 +21,7 @@ try{
   const before=await read('/__fixture/state'),reserve=before['physical-stock'].state.products.find(p=>p.asin==='B000TEST05');
   const links=before['link-monitor'].state.links.filter(l=>l.asin==='B000TEST05');
   const row=(selector,title)=>page.locator(selector).filter({hasText:title}),panel=r=>r.locator('.product-access:visible');
+  const followReview=async a=>{assert.equal(await a.getAttribute('target'),'_blank');assert.match(await a.getAttribute('rel'),/noopener/);await page.goto(new URL(await a.getAttribute('href'),base).href);};
   await mkdir(directory,{recursive:true});
   await page.goto(base);await page.locator('#linkRows .product-access:visible').first().waitFor();
   await page.getByRole('button',{name:'タイル表示',exact:true}).click();
@@ -50,7 +51,7 @@ try{
   }
   pass('both same-SKU listing cards share reserve counts while FBA capacity stays separate');
   first=panel(row('#linkRows > tr','隔離テスト・共有するモニター 5'));
-  await first.getByRole('link',{name:'販売見直しへ',exact:true}).click();
+  await followReview(first.getByRole('link',{name:'販売見直しへ',exact:true}));
   const planning=page.locator('#planningDialog');await planning.waitFor();
   assert.equal(await planning.locator('[name=sellerSku]').inputValue(),'RESERVE-SKU');
   const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'});
@@ -61,7 +62,7 @@ try{
   assert.ok(saved);assert.equal(saved.source.kind,'link');
   await page.goto(base+'/#item='+encodeURIComponent('link:'+links[1].id));
   const second=panel(row('#linkRows > tr','隔離テスト・共有するモニター 9'));await second.waitFor();
-  await second.getByRole('link',{name:'販売見直し',exact:true}).click();await planning.waitFor();
+  await followReview(second.getByRole('link',{name:'販売見直し',exact:true}));await planning.waitFor();
   assert.equal(await planning.locator('[name=note]').inputValue(),saved.note);
   assert.equal(await planning.locator('[name=availableOn]').inputValue(),today);
   await planning.getByRole('button',{name:'取消',exact:true}).click();

@@ -63,7 +63,7 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
     }else if(asins.length>100){errors.push("FBA対象が100 ASINを超えています。分割確認が必要です");fba={...input.watch.observations.fba,status:'failed',complete:false,attemptedAt:now()};}
     if(refreshListings&&readListings&&asins.length&&asins.length<=100){
       try{const deadline=Date.now()+35000,rows=[];let result;for(let i=0;i<asins.length;i+=20){if(Date.now()>=deadline)throw new Error('timeout');result=await readListings({asins:asins.slice(i,i+20),config,maxDurationMs:deadline-Date.now()});if(result.status!=='complete'||result.accountKey!==config.accountKey||result.sellerId!==config.sellerId)throw new Error('scope');rows.push(...result.rows);}listings={...result,asins,rows,attemptedAt:now()};}
-      catch{errors.push('Amazonの出品状態を取得できません。商品ページを開くか再取得してください');listings={...input.watch.observations.listings,status:'failed',attemptedAt:now()};}
+      catch{errors.push('Amazonの出品状態を取得できません。商品ページを開くか再取得してください');listings={...input.watch.observations.listings,status:'failed',asins,attemptedAt:now()};}
     }
     const ids=[...new Set(input.monitor.links.map(l=>l.listingId))];
     const previous=input.watch.observations.yahoo||[];

@@ -58,6 +58,11 @@ test("fetch failure preserves previous evidence but exposes an unknown state, no
   const update=createStockAmazonRefresh({...f,config,now:()=>at,readListings:async()=>{throw new Error("secret upstream message");}});await update({expectedRevision:2,actor:"owner"});
   const s=await f.store.read();assert.equal(s.amazonListings.rows.length,1);assert.equal(stockAmazonView(product,s.amazonListings,at,account).offers.length,0);assert.doesNotMatch(JSON.stringify(s),/secret upstream/);assert.equal(s.balances[0].usable,3);
 });
+
+test("failed first reads record their current ASIN scope without inventing empty offers",async()=>{
+  const f=fixture();await createStockAmazonRefresh({...f,config,now:()=>at,readListings:async()=>{throw new Error('unavailable');}})({expectedRevision:1,actor:'owner'});
+  const state=await f.store.read();assert.deepEqual(state.amazonListings.asins,[asin]);assert.equal(state.amazonListings.status,'failed');assert.equal(state.amazonListings.rows,undefined);
+});
 test("an account mismatch fails before sending any Amazon request",async()=>{
   const f=fixture();let called=false;await assert.rejects(createStockAmazonRefresh({...f,config:{...config,sellerId:"RIVAL"},readListings:async()=>{called=true;}})({expectedRevision:1,actor:"owner"}),{status:409});assert.equal(called,false);
 });
