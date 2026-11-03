@@ -20,9 +20,28 @@ Vercelの実Cron定義は本番の配備固有ホストを呼ぶ。一方、旧s
 
 この3商品のFBA0通知は11/2のメールに含まれ、送信受付済みだった。Gmailでも件名「【在庫管理ツール】在庫・出品・見直しの確認 5件」のINBOX到着を11/2 15:42として確認した。現在の保存状態を隔離コピーで再評価しても、同じ問題の再通知待ちは0件だった。取得できなかった数量を0と扱った結果ではない。
 
-今回の調査で実メールは送らず、出品・価格・現物数量・紐付け・計画・通知設定を変更しない。利用者の登録待ちが原因でもない。修正後の自然起動は次回の実行時刻・保存結果・条件成立時の受信で別途確認する。
+今回の調査で実メールは送らず、出品・価格・現物数量・紐付け・計画・通知設定を変更していない。利用者の登録待ちが原因でもない。修正後の自然起動は次回の実行時刻・保存結果・条件成立時の受信で別途確認する。
 
-証跡はGit対象外のoutput/notification-morning-readonly-20261103-1122.jsonとnotification-morning-audit-20261103.json。配備と本番HEADの確認結果は検証後に本書へ追記する。
+証跡はGit対象外のoutput/notification-morning-readonly-20261103-1122.jsonとnotification-morning-audit-20261103.json。
+
+## 本番反映と最後の確認
+
+11:36 JST、ソース1229bbf09390a1c8dc6e644212b9c3f812a1035cを本番dpl_FrWrYppnjfMqJWUFgDorR7bCcx4qへ反映。READY/production、固定URLとCron定義の配備ID一致を確認した。配備URLはamazon-yahoo-inventory-i00rmh6qq-bc-bridalcatjps-projects.vercel.app。
+
+| 検査 | 結果 |
+| --- | --- |
+| 単体試験 | 263件+追加3件=266件合格 |
+| 配備パッケージ | 9検査合格、688ファイルに秘密値・業務データなし |
+| 実Cronホスト | 正しいCRON_SECRETのHEADは204。Deployment Protectionは無効化せず、CLIの標準アクセス経路で確認 |
+| 固定公開URL | 同じ秘密キーのHEADは204、匿名・誤キーは401 |
+| 公開画面/API | 公開5資産のSHA256一致、匿名4読取APIは401 |
+| 最新状態の再取得 | 11:35:58 JST完了。FBA20 ASIN、ヤフオク15/15、エラー0。APIは読取のみ、通知なしの既存refresh経路 |
+| 再取得後の紐付け | 15組すべてFBA数量を解決。HP E232はFBA0/ヤフオク終了0、DenonはFBA0/ヤフオク1/自社1。両FBA0は既通知で、隔離再評価の未送信候補は0 |
+| 保全 | 紐付け/実在庫/計画/下書きの版・SHA256不変。product-watchの取得観測だけ18→21。メール記録3件のまま、新規送信0 |
+
+11:35の再取得はAmazon注文の再確認や通常通知ジョブの実行ではない。販売確認末尾は11/2 16:22 JSTのまま。11/3朝の実行が成功したとも、11/4の自然起動が確認済みとも扱わない。次の予定枠は11/4の09:00〜09:59 JSTで、Codex側の予約・継続監視は今回追加していない。
+
+追加証跡（Git対象外）：output/cron-origin-live-20261103.json、notification-observations-refresh-20261103.json、notification-morning-readonly-20261103-1137.json、notification-morning-audit-post-refresh-20261103.json。
 
 ## 毎回の報告
 
@@ -32,6 +51,6 @@ READMEへ、作業終了時は「利用者に残る登録・確認作業」と�
 
 利用者：登録継続、赤い超過/終了の確認、SKU/状態の確認、スマホ回線の実機保存確認。
 
-開発：本番修正の反映と認証付きHEAD→自然起動と新規販売/補充/期限の通知→自社発送SKUの数量監視。認証依存の警告、再出品後IDの追跡、広告/売上判断、滞留CSV、楽天中古補助、大量登録の分割は別残件。
+開発：11/4以降の自然起動と新規販売/補充/期限の通知→自社発送SKUの数量監視。認証依存の警告、再出品後IDの追跡、広告/売上判断、滞留CSV、楽天中古補助、大量登録の分割は別残件。
 
 参考：[Vercel Cronの管理](https://vercel.com/docs/cron-jobs/manage-cron-jobs)、[Runtime Logsの保存期間](https://vercel.com/docs/logs/runtime)。
