@@ -23,22 +23,25 @@ export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOStri
  if(receipts.length>=10000)throw fail("URL変更履歴の保存上限です",409);
  const s=source(docs,command.key),primary=s.kind==="plan"?'sales-planning':s.kind==="stock"?'physical-stock':'link-monitor';
  if(expectedRevision!==docs['link-monitor'].revision||![primary,...(s.stock?['physical-stock']:[])].every(k=>sourceRevisions?.[k]===docs[k].revision))throw fail("ほかの編集・自動確認が保存されました。URL入力を残したまま最新の内容を読み直してください",409);
- if(command.kind==='inventory'){
-  const sku=command.sellerSku,q=command.manualFbaQuantity;
+ if(command.kind==='inventory'||command.kind==='manual-fba'){
+  const manualOnly=command.kind==='manual-fba',sku=command.sellerSku??(manualOnly?productLinkInfo(docs,command.key).sellerSku:undefined),q=command.manualFbaQuantity;
   if(typeof sku!=='string'||sku.length>200||/[\x00-\x1f]/.test(sku)||q!==null&&(!Number.isSafeInteger(q)||q<0||q>1000000))throw fail('SKUと手入力のFBA在庫数を確認してください');
   if(!s.asin)throw fail('先にAmazonの商品URLを登録してください');
-  const sellerSku=sku.trim(),review={key:inventoryKey(s),asin:s.asin,sellerSku,manualFbaQuantity:q,checkedAt:at,actor};
+  const sellerSku=sku.trim(),storedSku=productLinkInfo(docs,command.key).sellerSku;
+  if(manualOnly&&storedSku&&storedSku!==sellerSku)throw fail('商品のSKUが更新されました。入力を残して最新の内容を確認してください',409);
+  const catalog=m.catalog.find(p=>p.id===s.item.catalogId),condition=s.stock?.condition||(s.kind==='plan'?s.item.condition:/^new/i.test(catalog?.condition||'')?'new':/^used/i.test(catalog?.condition||'')?'used':'unknown');
+  const review={key:inventoryKey(s),asin:s.asin,sellerSku,manualFbaQuantity:q,checkedAt:at,actor,condition,...(manualOnly?{mode:'manual'}:{})};
   const targetLink=s.kind==='link'?s.item:s.kind==='plan'&&s.item.source.kind==='link'?m.links.find(l=>l.id===s.item.source.id):null;
-  if(targetLink){const from=targetLink.amazonSellerSku||'';targetLink.amazonSellerSku=sellerSku;(targetLink.history||=[]).push({kind:'sku_selected',at,actor,from,to:sellerSku});}
-  if(s.stock)applyStockCommand(docs['physical-stock'].state,{operationId:command.operationId,kind:'edit',productId:s.stock.id,product:{...s.stock,sellerSku},reason:'比較対象のAmazon SKUを確認'},{actor,at});
-  if(s.kind==='plan'){
+  if(targetLink&&!manualOnly){const from=targetLink.amazonSellerSku||'';targetLink.amazonSellerSku=sellerSku;(targetLink.history||=[]).push({kind:'sku_selected',at,actor,from,to:sellerSku});}
+  if(s.stock&&!manualOnly)applyStockCommand(docs['physical-stock'].state,{operationId:command.operationId,kind:'edit',productId:s.stock.id,product:{...s.stock,sellerSku},reason:'比較対象のAmazon SKUを確認'},{actor,at});
+  if(s.kind==='plan'&&!manualOnly){
    const catalog=m.catalog.find(p=>p.id===targetLink?.catalogId),origin=s.stock?{kind:'stock',...s.stock}:targetLink?{kind:'link',id:targetLink.id,asin:targetLink.asin||catalog?.asin||'',sellerSku:targetLink.amazonSellerSku||catalog?.sellerSku||'',condition:targetLink.matchBy==='asin'?'unknown':/^new/i.test(catalog?.condition||'')?'new':/^used/i.test(catalog?.condition||'')?'used':'unknown',setContents:catalog?.setContents||''}:null;
    applyPlanningCommand(docs['sales-planning'].state,{operationId:command.operationId,kind:'edit',planId:s.id,plan:{...s.item,sellerSku}},{actor,at,sources:origin?[origin]:[]});
   }
   const previous=(m.inventoryReviews||[]).find(r=>r.key===review.key);
   if(previous)(m.inventoryReviewHistory||=[]).push({...previous,replacedAt:at});
   m.inventoryReviews=[...(m.inventoryReviews||[]).filter(r=>r.key!==review.key),review];
-  const receipt={id:command.operationId,digest,actor,at,key:command.key,kind:'inventory'};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({kind:'inventory_review_saved',at,actor,key:command.key});return receipt;
+  const receipt={id:command.operationId,digest,actor,at,key:command.key,kind:command.kind};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({kind:'inventory_review_saved',at,actor,key:command.key});return receipt;
  }
  let asin;try{asin=asinFromInput(command.amazon);}catch(e){throw fail(e.message);}if(s.asin&&s.asin!==asin)throw fail("登録済みの商品とASINが異なります。商品情報の訂正から確認してください",409);
  if(s.stock?.asin&&s.stock.asin!==asin)throw fail("元の在庫と計画の商品が異なります。商品情報を揃えてからURLを登録してください",409);

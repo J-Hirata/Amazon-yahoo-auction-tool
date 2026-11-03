@@ -11,7 +11,7 @@ export function yahooAvailability(y,at){
  return {...y,state:'active',quantity:quantity??(y.saleType==='auction'?1:null),quantitySource:quantity!==null?'yahoo':y.saleType==='auction'?'single_auction':'unknown'};
 }
 export function reviewFor(row,monitor){
- return (monitor.inventoryReviews||[]).filter(r=>row.sourceKeys.includes(r.key)&&r.asin===row.asin&&(r.sellerSku||'')===(row.sellerSku||row.fba?.sellerSku||'')).sort((a,b)=>String(b.checkedAt).localeCompare(String(a.checkedAt)))[0];
+ return (monitor.inventoryReviews||[]).filter(r=>row.sourceKeys.includes(r.key)&&r.asin===row.asin&&(r.sellerSku||'')===(row.sellerSku||row.fba?.sellerSku||'')&&(!r.condition||r.condition==='unknown'||r.condition===row.condition)).sort((a,b)=>String(b.checkedAt).localeCompare(String(a.checkedAt)))[0];
 }
 export function ownListingSnapshot(row,monitor,watch,extra){
  return [monitor.salesTargets?.listingSnapshot,watch?.observations?.listings,extra].filter(s=>s?.asins?.includes(row.asin)).sort((a,b)=>Date.parse(b.attemptedAt||b.checkedAt)-Date.parse(a.attemptedAt||a.checkedAt))[0];
@@ -28,7 +28,8 @@ export function skuOptions(row,monitor,watch,at,extra){
 export function stockDisplay(row,monitor,at){
  const review=reviewFor(row,monitor),manual=count(review?.manualFbaQuantity),original=row.fba||{quantity:null,status:'unknown'};
  const merchantOnly=original.status==='not_fba'||row.channels?.fba?.state==='absent'&&['active','inactive'].includes(row.channels?.merchant?.state);
- const fba=count(original.quantity)!==null?{...original,source:'amazon'}:!merchantOnly&&manual!==null&&current(review.checkedAt,at)&&!(original.status==='ambiguous'&&!row.sellerSku)?{...original,quantity:manual,status:'manual',source:'manual',checkedAt:review.checkedAt,sellerSku:review.sellerSku||row.sellerSku||''}:{...original,quantity:null,source:'unknown'};
+ const manualValid=manual!==null&&!merchantOnly&&(review.mode==='manual'||current(review.checkedAt,at));
+ const fba=count(original.quantity)!==null?{...original,source:'amazon'}:manualValid?{...original,quantity:manual,status:'manual',autoStatus:original.status,source:'manual',stale:!current(review.checkedAt,at),checkedAt:review.checkedAt,sellerSku:review.sellerSku||row.sellerSku||''}:{...original,quantity:null,source:'unknown'};
  const yahoo=(row.yahoo||[]).map(y=>yahooAvailability(y,at));
  const known=yahoo.filter(y=>y.quantity!==null),required=known.reduce((n,y)=>n+y.quantity*(count(y.unitsPerListing)||1),0);
  return {fba,yahoo,yahooQuantity:yahoo.length&&known.length===yahoo.length?known.reduce((n,y)=>n+y.quantity,0):null,knownRequired:required,sku:row.sellerSku||fba.sellerSku||'',condition:conditionName(row.amazonCondition||fba.condition||row.condition),
@@ -37,13 +38,14 @@ export function stockDisplay(row,monitor,at){
 export function attachAvailability(rows,monitor,at){
  for(const row of rows)row.availability=stockDisplay(row,monitor,at);
  const pools=new Map();
- for(const row of rows){const a=row.availability;if(!a.sku||!row.asin)continue;const key=JSON.stringify([row.asin,a.sku]);const p=pools.get(key)||{quantities:new Set(),listings:new Map()};if(a.fba.quantity!==null)p.quantities.add(a.fba.quantity);for(const y of a.yahoo)p.listings.set(y.listingId,y);pools.set(key,p);}
+ for(const row of rows){const a=row.availability;if(!a.sku||!row.asin)continue;const key=JSON.stringify([row.asin,a.sku]);const p=pools.get(key)||{quantities:new Set(),listings:new Map()};if(a.fba.quantity!==null&&!a.fba.stale)p.quantities.add(a.fba.quantity);for(const y of a.yahoo)p.listings.set(y.listingId,y);pools.set(key,p);}
  for(const row of rows){
   const a=row.availability,p=a.sku?pools.get(JSON.stringify([row.asin,a.sku])):null;
   const items=p?[...p.listings.values()]:a.yahoo,known=items.filter(y=>y.quantity!==null),required=known.reduce((n,y)=>n+y.quantity*(count(y.unitsPerListing)||1),0);
   a.poolRequired=required;a.poolListings=items.length;a.poolComplete=known.length===items.length;
   const ended=a.yahoo.length&&a.yahoo.every(y=>y.state==='ended');
-  if(p?.quantities.size>1){a.level='warning';a.message='同じSKUの在庫記録が不一致';}
+  if(a.fba.source==='manual'&&(!a.sku||a.fba.stale)){a.level='warning';a.message=a.fba.stale?'手入力の確認日が古いため在庫比較は未確認':'FBA数は手入力・SKU未選択のため在庫比較は未確認';}
+  else if(p?.quantities.size>1){a.level='warning';a.message='同じSKUの在庫記録が不一致';}
   else if(a.fba.quantity!==null&&required>a.fba.quantity){a.level='danger';a.message=`${items.length>1?'同じSKUのヤフオク合計':'ヤフオク'}がFBAより${required-a.fba.quantity}個多い`;}
   else if(ended){a.level='danger';a.message=a.fba.quantity>0?'出品終了・再出品を確認':'ヤフオク出品終了';}
   else if(a.linkConflicts.length){a.level='warning';a.message='紐付け先のSKU・商品情報を確認';}

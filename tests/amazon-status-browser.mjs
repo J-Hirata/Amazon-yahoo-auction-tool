@@ -20,6 +20,7 @@ try{
  const book=()=>page.locator('#stockRows > tr').filter({hasText:'隔離テスト・新品の販売中書籍'}).locator('.product-access:visible');
  const merchant=()=>page.locator('#stockRows > tr').filter({hasText:'隔離テスト・自己発送モニター'}).locator('.product-access:visible');
  const dialog=page.getByRole('dialog',{name:'SKUとFBA在庫の確認',exact:true});
+ const reviewLink=async name=>{const more=book().locator('.product-workspace-more');if(!await more.evaluate(n=>n.open))await more.locator('summary').click();return more.locator('.product-workspace-nav').getByRole('link',{name,exact:true});};
  const popupFor=async link=>{assert.equal(await link.getAttribute('target'),'_blank');assert.match(await link.getAttribute('rel'),/noopener/);const pending=page.waitForEvent('popup');await link.click();const popup=await pending;await popup.locator('#planningDialog[open]').waitFor();return popup;};
  await mkdir(directory,{recursive:true});await page.goto(base+'/?view=stock');await book().waitFor();await page.getByRole('button',{name:'タイル表示',exact:true}).click();
  assert.equal(await book().locator('.amazon-stock b').innerText(),'未確認');
@@ -47,18 +48,18 @@ try{
  await dialog.getByRole('button',{name:'取消',exact:true}).click();pass('merchant available quantity is visible and cannot be entered as FBA inventory');
 
  await page.locator('#stockSearch').fill('B000BOOK01');await book().waitFor();
- await book().getByRole('link',{name:'販売見直しへ',exact:true}).scrollIntoViewIfNeeded();
+ await (await reviewLink('販売見直しへ')).scrollIntoViewIfNeeded();
  const sourceUrl=page.url(),sourceScroll=await page.evaluate(()=>scrollY),beforePopup=await read();
- let popup=await popupFor(book().getByRole('link',{name:'販売見直しへ',exact:true}));
+ let popup=await popupFor(await reviewLink('販売見直しへ'));
  assert.equal(page.url(),sourceUrl);assert.equal(await page.locator('#stockSearch').inputValue(),'B000BOOK01');assert.equal(await page.evaluate(()=>scrollY),sourceScroll);
  assert.equal(await popup.locator('#planningDialog [name=source]').inputValue(),'stock:'+bookId);assert.equal(await popup.locator('#planningDialog [name=sellerSku]').inputValue(),'NEW-ACTIVE');
  await popup.locator('#planningDialog [name=note]').fill('Not saved yet');await popup.close();assert.deepEqual(await read(),beforePopup);pass('new review opens in another tab and leaves source filter, URL, scroll and database unchanged');
 
- popup=await popupFor(book().getByRole('link',{name:'販売見直しへ',exact:true}));
+ popup=await popupFor(await reviewLink('販売見直しへ'));
  await popup.locator('#planningDialog [name=availableOn]').fill('2026-10-30');await popup.locator('#planningDialog [name=durationDays]').fill('14');await popup.locator('#planningDialog [name=note]').fill('Keep planned dates and note');
  await popup.locator('#planningSave').click();await popup.locator('#planningDialog').waitFor({state:'hidden'});await popup.close();
  await page.reload();await book().waitFor();await page.locator('#stockSearch').fill('B000BOOK01');
- const planned=await read();popup=await popupFor(book().getByRole('link',{name:'販売見直し',exact:true}));
+ const planned=await read();popup=await popupFor(await reviewLink('販売見直し'));
  assert.equal(await popup.locator('#planningDialog [name=note]').inputValue(),'Keep planned dates and note');assert.equal(await popup.locator('#planningDialog [name=availableOn]').inputValue(),'2026-10-30');
  await popup.getByRole('button',{name:'取消',exact:true}).click();await popup.close();assert.deepEqual(await read(),planned);pass('existing review opens separately without duplicating the plan or changing dates');
 

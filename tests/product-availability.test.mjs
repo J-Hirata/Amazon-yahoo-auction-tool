@@ -66,10 +66,20 @@ test('manual fallback preserves zero, expires, and never overrides an actual Ama
  monitor.inventoryReviews[0].checkedAt='2026-10-01T00:00:00Z';assert.equal(stockDisplay(row({fba:{}}),monitor,at).fba.quantity,null);
 });
 
-test('manual stock cannot resolve multiple grades until a SKU is selected',()=>{
+test('manual stock displays without a selected SKU but does not resolve automatic grade comparison',()=>{
  const monitor={inventoryReviews:[{key:'link:fixture',asin,sellerSku:'',manualFbaQuantity:10,checkedAt:at}]};
- assert.equal(stockDisplay(row({sellerSku:'',fba:{quantity:null,status:'ambiguous'}}),monitor,at).fba.quantity,null);
+ const r=row({sellerSku:'',fba:{quantity:null,status:'ambiguous'}}),a=attachAvailability([r],monitor,at)[0].availability;
+ assert.equal(a.fba.quantity,10);assert.equal(a.fba.source,'manual');assert.equal(a.fba.autoStatus,'ambiguous');assert.equal(r.fba.status,'ambiguous');assert.equal(a.level,'warning');assert.match(a.message,/比較は未確認/);
  monitor.inventoryReviews[0].sellerSku='ANOTHER';assert.equal(stockDisplay(row({fba:{quantity:null}}),monitor,at).fba.quantity,null);
+});
+
+test('explicit manual confirmation persists as a dated reference; stale or changed-condition counts are not trusted for comparisons',()=>{
+ const monitor={inventoryReviews:[{key:'link:fixture',asin,sellerSku:'',condition:'used',mode:'manual',manualFbaQuantity:92,checkedAt:'2026-11-01T04:00:00Z'}]};
+ const r=row({sellerSku:'',fba:{quantity:null,status:'ambiguous'}}),a=attachAvailability([r],monitor,at)[0].availability;
+ assert.equal(a.fba.quantity,92);assert.equal(a.fba.stale,true);assert.match(a.message,/確認日が古い/);assert.equal(r.fba.quantity,null);
+ assert.equal(stockDisplay({...r,condition:'new'},monitor,at).fba.quantity,null);
+ monitor.inventoryReviews[0].manualFbaQuantity=0;assert.equal(stockDisplay(r,monitor,at).fba.quantity,0);
+ monitor.inventoryReviews[0].manualFbaQuantity=null;assert.equal(stockDisplay(r,monitor,at).fba.quantity,null);
 });
 
 test('a manual count saved without a SKU cannot carry over to a subsequently selected SKU',()=>{

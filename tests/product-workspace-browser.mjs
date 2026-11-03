@@ -21,6 +21,7 @@ try{
   const before=await read('/__fixture/state'),reserve=before['physical-stock'].state.products.find(p=>p.asin==='B000TEST05');
   const links=before['link-monitor'].state.links.filter(l=>l.asin==='B000TEST05');
   const row=(selector,title)=>page.locator(selector).filter({hasText:title}),panel=r=>r.locator('.product-access:visible');
+  const workspaceLink=async(p,name)=>{const more=p.locator('.product-workspace-more');if(!await more.evaluate(n=>n.open))await more.locator('summary').click();return more.locator('.product-workspace-nav').getByRole('link',{name,exact:true});};
   const followReview=async a=>{assert.equal(await a.getAttribute('target'),'_blank');assert.match(await a.getAttribute('rel'),/noopener/);await page.goto(new URL(await a.getAttribute('href'),base).href);};
   await mkdir(directory,{recursive:true});
   await page.goto(base);await page.locator('#linkRows .product-access:visible').first().waitFor();
@@ -30,7 +31,7 @@ try{
   assert.doesNotMatch(await selfShip.locator('.inventory-risk').innerText(),/補充元/);
   let first=panel(row('#linkRows > tr','隔離テスト・共有するモニター 5'));
   assert.match(await first.locator('.physical-stock-lines').innerText(),/未関連/);
-  await first.getByRole('link',{name:'実在庫をつなぐ',exact:true}).click();
+  await (await workspaceLink(first,'実在庫をつなぐ')).click();
   const connect=page.locator('#stockLinkDialog');await connect.waitFor();
   assert.equal(await connect.getByRole('checkbox').count(),2);
   for(const c of await connect.getByRole('checkbox').all())await c.check();
@@ -43,7 +44,7 @@ try{
   assert.deepEqual(linked['link-monitor'].state,before['link-monitor'].state);pass('existing listings associate to existing stock without changing URLs or physical quantities');
   const stockPanel=panel(row('#stockRows > tr','隔離テスト・補充用在庫'));
   assert.match(await stockPanel.locator('.physical-stock-lines').innerText(),/コンテナ\s*15個\s*会社・自宅\s*1個/);
-  await stockPanel.getByRole('link',{name:'紐付け 2件',exact:true}).click();
+  await (await workspaceLink(stockPanel,'紐付け 2件')).click();
   await page.locator('#linkRows .product-access:visible').first().waitFor();
   for(const title of ['隔離テスト・共有するモニター 5','隔離テスト・共有するモニター 9']){
     const p=panel(row('#linkRows > tr',title));assert.match(await p.locator('.physical-stock-lines').innerText(),/15個\s*会社・自宅\s*1個/);
@@ -51,7 +52,7 @@ try{
   }
   pass('both same-SKU listing cards share reserve counts while FBA capacity stays separate');
   first=panel(row('#linkRows > tr','隔離テスト・共有するモニター 5'));
-  await followReview(first.getByRole('link',{name:'販売見直しへ',exact:true}));
+  await followReview(await workspaceLink(first,'販売見直しへ'));
   const planning=page.locator('#planningDialog');await planning.waitFor();
   assert.equal(await planning.locator('[name=sellerSku]').inputValue(),'RESERVE-SKU');
   const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'});
@@ -62,16 +63,16 @@ try{
   assert.ok(saved);assert.equal(saved.source.kind,'link');
   await page.goto(base+'/#item='+encodeURIComponent('link:'+links[1].id));
   const second=panel(row('#linkRows > tr','隔離テスト・共有するモニター 9'));await second.waitFor();
-  await followReview(second.getByRole('link',{name:'販売見直し',exact:true}));await planning.waitFor();
+  await followReview(await workspaceLink(second,'販売見直し'));await planning.waitFor();
   assert.equal(await planning.locator('[name=note]').inputValue(),saved.note);
   assert.equal(await planning.locator('[name=availableOn]').inputValue(),today);
   await planning.getByRole('button',{name:'取消',exact:true}).click();
   assert.equal((await read('/__fixture/state'))['sales-planning'].state.plans.length,planned['sales-planning'].state.plans.length);pass('review opens from another listing without duplicating its plan or resetting dates');
   const planPanel=panel(row('#planningRows > tr','隔離テスト・共有するモニター 5'));
   assert.equal(await planPanel.locator('.physical-stock-lines > div').count(),2);
-  await planPanel.getByRole('link',{name:'全商品',exact:true}).click();
+  await (await workspaceLink(planPanel,'全商品')).click();
   await page.locator('.overview-card.workspace-selected').waitFor();
-  const overview=page.locator('.overview-card.workspace-selected');assert.match(await overview.innerText(),/15個/);assert.match(await overview.innerText(),/販売見直し登録済み/);
+  const overview=page.locator('.overview-card.workspace-selected');assert.match(await overview.innerText(),/15個/);assert.ok(await overview.locator('.membership-planning').isVisible());await overview.locator('.product-workspace-more>summary').click();
   await overview.getByRole('link',{name:'補充条件',exact:true}).click();
   const config=page.locator('#overviewDialog');await config.waitFor();
   await config.getByLabel('補充の目安',{exact:true}).selectOption('50');

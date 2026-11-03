@@ -45,6 +45,27 @@ test('manual FBA zero and SKU save without changing physical counts, links or me
  assert.equal(productLinkInfo(f.docs,e.command.key).manualReview.manualFbaQuantity,null);assert.equal(f.docs['link-monitor'].state.inventoryReviewHistory[0].manualFbaQuantity,0);
 });
 
+test('quantity-only manual confirmation needs no SKU and does not rewrite products, plans, links or physical counts',()=>{
+ for(const kind of ['stock','plan','link']){
+  const f=linkFixture(),before=structuredClone(f.docs),key=kind+':'+(kind==='stock'?f.stockId:kind==='plan'?f.planId:f.link.id);
+  const e=edit(f,key,{kind:'manual-fba',sellerSku:'',manualFbaQuantity:92});applyProductLinkEdit(f.docs,e.command,e.options);
+  assert.deepEqual(f.docs['physical-stock'],before['physical-stock']);assert.deepEqual(f.docs['sales-planning'],before['sales-planning']);assert.deepEqual(f.docs['link-monitor'].state.links,before['link-monitor'].state.links);
+  const review=productLinkInfo(f.docs,key).manualReview;assert.equal(review.manualFbaQuantity,92);assert.equal(review.sellerSku,'');assert.equal(review.mode,'manual');
+  assert.equal(applyProductLinkEdit(f.docs,e.command,e.options).replayed,true);
+  const zero=edit(f,key,{kind:'manual-fba',sellerSku:'',manualFbaQuantity:0});applyProductLinkEdit(f.docs,zero.command,zero.options);assert.equal(productLinkInfo(f.docs,key).manualReview.manualFbaQuantity,0);
+  const clear=edit(f,key,{kind:'manual-fba',sellerSku:'',manualFbaQuantity:null});applyProductLinkEdit(f.docs,clear.command,clear.options);assert.equal(productLinkInfo(f.docs,key).manualReview.manualFbaQuantity,null);
+  assert.equal(f.docs['link-monitor'].state.inventoryReviewHistory.length,2);
+ }
+});
+
+test('quantity-only confirmation cannot replace an existing SKU and rejects stale sources and invalid quantities',()=>{
+ const f=linkFixture();f.docs['physical-stock'].state.products[0].sellerSku='EXISTING';
+ const e=edit(f,'stock:'+f.stockId,{kind:'manual-fba',sellerSku:'OTHER',manualFbaQuantity:92});assert.throws(()=>applyProductLinkEdit(f.docs,e.command,e.options),{status:409});
+ for(const q of [-1,1.5,undefined,1000001]){const input=edit(f,e.command.key,{kind:'manual-fba',sellerSku:'EXISTING',manualFbaQuantity:q});assert.throws(()=>applyProductLinkEdit(f.docs,input.command,input.options));}
+ const valid=edit(f,e.command.key,{kind:'manual-fba',sellerSku:'EXISTING',manualFbaQuantity:92});assert.throws(()=>applyProductLinkEdit(f.docs,valid.command,{...valid.options,sourceRevisions:{...valid.options.sourceRevisions,'physical-stock':0}}),{status:409});
+ applyProductLinkEdit(f.docs,valid.command,valid.options);assert.equal(f.docs['physical-stock'].state.products[0].sellerSku,'EXISTING');
+});
+
 test('manual and referenced plans retain dates, actions and notes when confirming an empty SKU',()=>{
  for(const kind of ['manual','stock','link']){
   const f=linkFixture(),p=f.docs['sales-planning'].state.plans[0];p.source={kind,id:kind==='stock'?f.stockId:kind==='link'?f.link.id:''};

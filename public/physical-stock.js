@@ -82,7 +82,7 @@ export async function openStock({userId, readOnly}) {
     for (const button of document.querySelectorAll("[data-stock-places]")) button.addEventListener("click", () => openPlaces(button.dataset.stockPlaces, button.dataset.place));
     for (const [index,row] of [...document.querySelectorAll("#stockRows tr")].entries()) {
       const product=products[index]; if(!product)continue;
-      const direct=document.createElement('div');access.mount(direct,'stock:'+product.id,{asin:product.asin,title:product.title,listingIds:product.linked.map(l=>l.listingId)});row.firstElementChild.append(direct);
+      const direct=document.createElement('div');access.mount(direct,'stock:'+product.id,{asin:product.asin,title:product.title,listingIds:product.linked.map(l=>l.listingId)});row.firstElementChild.append(direct);const memberships=direct.querySelector('.product-membership');if(memberships)row.querySelector('.stock-badges').append(memberships);
       const review=document.createElement("a");review.href=`/?view=planning#plan=stock:${encodeURIComponent(product.id)}`;review.textContent="販売の監視・見直しへ追加";review.className="planning-entry-link";review.target='_blank';review.rel='noopener noreferrer';review.title='別タブで開く';
       row.querySelector(".stock-row-actions").append(review);
       let button=row.querySelector("[data-stock-connect]");
