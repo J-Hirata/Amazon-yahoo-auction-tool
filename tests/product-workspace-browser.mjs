@@ -24,6 +24,9 @@ try{
   await mkdir(directory,{recursive:true});
   await page.goto(base);await page.locator('#linkRows .product-access:visible').first().waitFor();
   await page.getByRole('button',{name:'タイル表示',exact:true}).click();
+  const selfShip=panel(row('#linkRows > tr','隔離テスト・URL確認モニター'));
+  assert.match(await selfShip.locator('.inventory-risk').innerText(),/自社発送用の実在庫あり/);
+  assert.doesNotMatch(await selfShip.locator('.inventory-risk').innerText(),/補充元/);
   let first=panel(row('#linkRows > tr','隔離テスト・共有するモニター 5'));
   assert.match(await first.locator('.physical-stock-lines').innerText(),/未関連/);
   await first.getByRole('link',{name:'実在庫をつなぐ',exact:true}).click();

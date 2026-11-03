@@ -24,6 +24,7 @@ const mismatchId=randomUUID();
 applyStockCommand(physical,{operationId:randomUUID(),kind:'create',productId:mismatchId,product:{title:'隔離テスト・SKU不一致',asin:'B000TEST01',sellerSku:'SKU-VERY-GOOD',condition:'used',unit:'個',linkedLinkIds:[link.id]},initialCounts:{container:2,home:0}},{actor,at});
 let docs={'link-monitor':{state:monitor,revision:0},'physical-stock':{state:physical,revision:0},'sales-planning':{state:planningState,revision:0}},watchRevision=0;
 if(process.env.WORKSPACE_FIXTURE==='1'){
+  physical.products[0].fbaEligibility='not_possible';
   const id=randomUUID(),asin='B000TEST05',sellerSku='RESERVE-SKU';
   applyStockCommand(physical,{operationId:randomUUID(),kind:'create',productId:id,product:{title:'隔離テスト・補充用在庫',asin,condition:'used',unit:'個',fbaEligibility:'possible'},initialCounts:{container:15,home:1}},{actor,at});
   for(const [listingId,quantity] of [['d1000000005',5],['d1000000006',9]]){

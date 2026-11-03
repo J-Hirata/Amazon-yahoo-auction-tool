@@ -27,7 +27,7 @@ export function createInventoryPanel({request,load,info,onChanged,readOnly}){
   const button=(text,fn)=>{const b=el('button',text);b.type='button';b.disabled=readOnly();b.addEventListener('click',fn);return b;};
   const sku=el('div',`SKU：${a?.sku||p.sellerSku||'未指定'}`,'product-sku');sku.title=sku.textContent;
   if(a?.condition&&a.condition!=='unknown'&&a.condition!=='状態未確認')sku.append(el('span',a.condition));host.append(sku);
-  if(a?.level==='danger'&&a.message.includes('多い'))host.append(el('strong',a.message+(p.live?.workspace?.stocks.length?'・補充元の在庫を確認':''),'inventory-risk danger'));
+  if(a?.level==='danger'&&a.message.includes('多い'))host.append(el('strong',a.message+(p.live?.workspace?.stocks.length?p.live.workspace.replenishment?.eligible===false?'・自社発送用の実在庫あり':'・補充元の在庫を確認':''),'inventory-risk danger'));
   const markets=el('div',undefined,'product-access-links');
   function market(label,url,q,status,tone){
    const node=url?el('a'):button('',editUrl);node.className='market-stock '+tone;
