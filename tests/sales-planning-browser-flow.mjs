@@ -11,7 +11,7 @@ export async function verifyPlanningUI({page,planningStore,stockStore,monitorSto
   await page.locator("#planningNew").click();
   await form.locator('#planningSources summary').click();const source=form.locator('[data-plan-source^="stock:"]').first();assert.ok(await source.count());
   await source.click();assert.equal(await form.locator('[name="asin"]').evaluate(el=>el.readOnly),true);
-  await form.locator('[name="availableOn"]').fill(date(-20));await form.locator('[name="salesMemo"]').fill("確認した20日間で2個。手入力メモ。");
+  await form.locator('[name="kind"]').selectOption('amazon');await form.locator('[name="availableOn"]').fill(date(-20));await form.locator('[name="salesMemo"]').fill("確認した20日間で2個。手入力メモ。");
   await save();assert.match(await rows.first().textContent(),/見直し時期/);assert.match(await rows.first().textContent(),/コンテナ/);
   await page.reload();await rows.first().waitFor();assert.equal((await planningStore.read()).plans.length,1);assert.equal((await planningStore.read()).plans[0].durationDays,14);
   pass("sales-planning page saves an explicit stock reference and actual availability date without copying quantities; reload preserves the due review");

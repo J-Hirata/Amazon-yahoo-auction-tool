@@ -8,12 +8,18 @@ const fail=(message,status)=>Object.assign(new Error(message),{status});
 export function createCloudPlanning({store,stock,monitorStore,overview,readCatalog,now=()=>new Date().toISOString()}){
   async function sources(){
     const physical=await stock.view(),monitor=await monitorStore.read(),at=now(),liveRows=overview?(await overview.view()).rows:[];
+    const context=(key)=>{
+      const live=liveRows.find(r=>r.sourceKeys.includes(key));
+      const notes=physical.products.filter(p=>live?.stockIds.includes(p.id)).filter(p=>p.memo).map(p=>({key:'stock:'+p.id,label:'在庫メモ',text:p.memo}));
+      for(const link of monitor.links.filter(l=>live?.linkIds.includes(l.id)&&l.userMemo))notes.push({key:'link:'+link.id,label:'紐付けメモ',text:link.userMemo});
+      return {availability:live?.availability||null,notes};
+    };
     const rows=physical.products.map(p=>({kind:"stock",id:p.id,title:p.title,asin:p.asin,sellerSku:p.sellerSku,condition:p.condition,setContents:p.setContents,imageUrl:p.photo?.url||"",href:"/?view=stock#item="+encodeURIComponent('stock:'+p.id),locations:p.totals.locations,
-      fba:p.fba,amazon:p.amazon,listingIds:p.linked.map(l=>l.listingId)}));
+      fba:p.fba,amazon:p.amazon,listingIds:p.linked.map(l=>l.listingId),...context('stock:'+p.id),memo:p.memo||''}));
     for(const link of monitor.links){const a=assessLink(link,monitor,at),p=a.product,y=a.listing,age=Date.parse(at)-Date.parse(p?.checkedAt),fresh=Number.isFinite(age)&&age>=-60000&&age<=90*60000&&!p?.error&&a.inventory!=="unlinked";
       const live=liveRows.find(r=>r.linkIds.includes(link.id));
       rows.push({kind:"link",id:link.id,title:y?.title||p?.title||link.asin,asin:p?.asin||link.asin||"",sellerSku:link.amazonSellerSku||live?.availability.sku||p?.sellerSku||"",condition:conditionFamily(live?.fba.condition||p?.condition),setContents:p?.setContents||"",imageUrl:stockImageUrl(y?.imageUrl)||"",href:"/#item="+encodeURIComponent('link:'+link.id),locations:live?.locations||[],
-        fba:live?.fba||{quantity:fresh&&typeof p?.fulfillableQuantity==="number"?p.fulfillableQuantity:null,label:fresh?"FBA取得分":"未確認・古い情報",checkedAt:p?.checkedAt||null},listingIds:live?.yahoo?.map(y=>y.listingId)||[link.listingId],yahooStatus:a.yahoo});
+        fba:live?.fba||{quantity:fresh&&typeof p?.fulfillableQuantity==="number"?p.fulfillableQuantity:null,label:fresh?"FBA取得分":"未確認・古い情報",checkedAt:p?.checkedAt||null},listingIds:live?.yahoo?.map(y=>y.listingId)||[link.listingId],yahooStatus:a.yahoo,...context('link:'+link.id),memo:link.userMemo||''});
     }
     return rows;
   }

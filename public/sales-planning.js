@@ -29,8 +29,19 @@ export async function openPlanning({userId,readOnly}){
     box.hidden=!source&&!image;box.replaceChildren();
     if(box.hidden)return;
     if(image){const img=document.createElement("img");img.src=image;img.alt=source?"選択した商品の参考画像":"Amazon共通カタログ画像";img.referrerPolicy="no-referrer";img.addEventListener("error",()=>{img.hidden=true;});box.append(img);}
-    const text=document.createElement("span");text.textContent=source?`${source.title} ／ ${conditions[source.condition]} ／ ${source.asin||"ASINなし"}`:form.elements.title.value||form.elements.asin.value;
+    const text=document.createElement("span");text.className='planning-selected-name';
+    const title=document.createElement('strong');title.textContent=source?.title||form.elements.title.value||form.elements.asin.value;text.append(title);
+    if(source){const detail=document.createElement('small');detail.textContent=[conditions[source.condition],source.asin||'ASINなし',source.sellerSku?'SKU：'+source.sellerSku:'SKU未指定',source.setContents].filter(Boolean).join(' ／ ');text.append(detail);}
     box.append(text);
+    if(source){
+      const availability=source.availability,locations=source.locations||[],quantity=v=>Number.isSafeInteger(v)&&v>=0?v+'個':'未確認';
+      const values=[[availability?.fba?.source==='manual'?'FBA（手入力）':'FBA',availability?availability.fba?.quantity:source.fba?.quantity],['ヤフオク',availability?.yahooQuantity],['コンテナ',locations.find(l=>l.locationId==='container')?.usable],['会社・自宅',locations.find(l=>l.locationId==='home')?.usable]];
+      const counts=document.createElement('dl');counts.className='planning-source-stock';
+      for(const [label,value] of values){const item=document.createElement('div'),dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=label;dd.textContent=label==='ヤフオク'&&!source.listingIds?.length?'未登録':quantity(value);item.append(dt,dd);counts.append(item);}box.append(counts);
+      const notes=source.notes?.length?source.notes:source.memo?[{label:'在庫メモ',text:source.memo}]:[];
+      for(const note of notes){const p=document.createElement('p');p.className='planning-source-note';const label=document.createElement('small');label.textContent=note.label;p.append(label,document.createTextNode(note.text));box.append(p);}
+      const a=document.createElement('a');a.href=source.href;a.target='_blank';a.rel='noopener noreferrer';a.textContent='元の商品を別タブで開く';a.className='planning-source-origin';box.append(a);
+    }
     if(!source&&image){const caption=document.createElement("small");caption.textContent="Amazon共通カタログ画像";box.append(caption);}
   }
   function renderSources(){
@@ -97,16 +108,16 @@ export async function openPlanning({userId,readOnly}){
     const plans=view.plans.filter(p=>matches(p,filter)&&[p.title,p.asin,p.sellerSku,p.note,p.salesMemo].join(" ").toLowerCase().includes(query)).sort((a,b)=>sort==="new"?b.createdAt.localeCompare(a.createdAt):sort==="old"?a.createdAt.localeCompare(b.createdAt):(nextCheck(a)||"9999").localeCompare(nextCheck(b)||"9999")||a.createdAt.localeCompare(b.createdAt));
     $("#planningRows").innerHTML=plans.length?plans.map(p=>{
       const schedule=p.schedule,source=p.reference,photo=catalogImage(source?.imageUrl||p.imageUrl)||"/catalog-image.svg",date=nextCheck(p)||"未設定",remaining=date==="未設定"?null:Math.round((Date.parse(date)-Date.parse(new Date().toLocaleDateString("sv-SE",{timeZone:"Asia/Tokyo"})))/86400000);
-      const live=access.info("plan:"+p.id).live;
+      const live=access.info("plan:"+p.id).live,fbaQuantity=live?.availability?live.availability.fba.quantity:live?live.fba?.quantity:source?.availability?source.availability.fba.quantity:source?.fba?.quantity;
       const location=source?.locations?.map(l=>`${l.locationId==="container"?"コンテナ":"自宅・会社"} <b>${l.usable===null?"未確認":escape(l.usable)+"個"}</b>`).join("<br>")||"";
-      const references=p.referenceIssue?`<span class="error">${escape(p.referenceIssue)}</span>`:source?`${location?`<span>${location}</span>`:""}<span>FBA取得分：<b>${live?.fba?.quantity!==null&&live?.fba?.quantity!==undefined?escape(live.fba.quantity)+"個":source.fba?.quantity===null||source.fba?.quantity===undefined?"「状態を再取得」から取得":escape(source.fba.quantity)+"個"}</b></span><span>ヤフオク：${source.listingIds?.length?source.listingIds.map(id=>`<a href="https://auctions.yahoo.co.jp/jp/auction/${encodeURIComponent(id)}" target="_blank" rel="noopener noreferrer">${escape(id)}</a>`).join(" ／ "):"関連付けなし"}</span><a href="${escape(source.href)}">元の商品を確認</a>`:"在庫台帳への登録なし";
+      const references=p.referenceIssue?`<span class="error">${escape(p.referenceIssue)}</span>`:source?`${location?`<span>${location}</span>`:""}<span>FBA数量：<b>${Number.isSafeInteger(fbaQuantity)?escape(fbaQuantity)+"個":"未確認"}</b></span><span>ヤフオク：${source.listingIds?.length?source.listingIds.map(id=>`<a href="https://auctions.yahoo.co.jp/jp/auction/${encodeURIComponent(id)}" target="_blank" rel="noopener noreferrer">${escape(id)}</a>`).join(" ／ "):"関連付けなし"}</span><a href="${escape(source.href)}">元の商品を確認</a>`:"在庫台帳への登録なし";
       const asinLink=p.asin?` ／ <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(p.asin)}" target="_blank" rel="noopener noreferrer">${escape(p.asin)}</a>`:" ／ ASIN未登録";
       const sales=p.salesMemo?`<p class="planning-note">${escape(p.salesMemo)}</p>`:'<span class="planning-meta">販売実績：未記録</span>';
       const copy=p.asin?`<button type="button" data-plan-copy="${escape(p.asin)}" class="planning-secondary" aria-label="ASINをコピー" title="ASINをコピー">${icon("copy")}</button>`:"";
       return `<tr data-plan-id="${escape(p.id)}">
         <td><div class="planning-product"><img class="planning-photo" src="${escape(photo)}" alt="商品参考画像" loading="lazy" referrerpolicy="no-referrer"><div>
           <strong>${escape(p.title)}</strong><span class="planning-meta">${escape(conditions[p.condition])}${asinLink}</span>
-          ${p.sellerSku?`<span class="planning-meta">SKU：${escape(p.sellerSku)}</span>`:""}${p.setContents?`<span class="planning-meta">${escape(p.setContents)}</span>`:""}</div></div><div data-plan-access="${p.id}"></div></td>
+          ${p.sellerSku?`<span class="planning-meta">SKU：${escape(p.sellerSku)}</span>`:""}${p.setContents?`<span class="planning-meta">${escape(p.setContents)}</span>`:""}</div></div>${(source?.notes||[]).map(n=>`<p class="planning-source-note"><small>${escape(n.label)}</small>${escape(n.text)}</p>`).join('')}<div data-plan-access="${p.id}"></div></td>
         <td data-label="現在の取り組み"><span class="planning-badge ${escape(schedule.stage)}">${escape(stages[schedule.stage])}</span>
           <div>${escape(kinds[p.kind])}${p.kind!=="review"?` ／ ${p.durationDays}日`:""}</div><span class="planning-meta">販売可能日：${escape(p.availableOn||"未確認")}</span>
           ${p.kind==="advertising"?`<span class="planning-meta">広告開始日：${escape(p.adStartedOn||"未確認")}</span>`:""}<span class="planning-meta">広告配信状況：未確認（広告API未接続）</span>${sales}</td>
@@ -151,14 +162,19 @@ export async function openPlanning({userId,readOnly}){
     for(const name of ["title","asin","sellerSku","condition","setContents"]){if(source)form.elements[name].value=source[name]||"";else form.elements[name].value=name==="condition"?"unknown":"";}
     for(const name of ["asin","sellerSku","setContents"])form.elements[name].readOnly=Boolean(source);
     form.elements.condition.disabled=Boolean(source&&source.condition!=="unknown");
-    inputAsin=form.elements.asin.value;showSelected(source);$("#planningManual").hidden=!source;
+    form.elements.imageUrl.value=source?.imageUrl||'';
+    inputAsin=form.elements.asin.value;showSelected(source);$("#planningManual").hidden=true;$("#planningSources").hidden=Boolean(source);
+    $("#planningIdentity").open=!source;
+    $("#planningDialogTitle").textContent=source?'この商品の販売見直し':'商品を追加';
+    $("#planningSave").innerHTML=icon('save')+(source?'見直し対象に追加':'保存');
+    if(source){form.elements.kind.value='review';$("#planningSources").open=false;}updateFields();
   }
   function open(plan){
     lookupSerial++;lookupAsin="";lookupPromise=null;autoTitle="";clearTimeout(lookupTimer);
     editing=plan||null;planId=plan?.id||crypto.randomUUID();form.reset();$("#planningFormStatus").textContent="";
     form.elements.imageUrl.value="";form.elements.availabilityNote.value="";
     $("#planningCatalogStatus").textContent="";$("#planningSourceSearch").value="";$("#planningSources").open=false;$("#planningSources").hidden=Boolean(plan);$("#planningManual").hidden=true;
-    $("#planningDialogTitle").textContent=plan?"方針・確認日を変更":"商品を追加";
+    $("#planningDialogTitle").textContent=plan?"方針・確認日を変更":"商品を追加";$("#planningSave").innerHTML=icon('save')+'保存';$("#planningIdentity").open=!plan||plan.source.kind==='manual';
     const selected=new Set(plan?.decisions||[plan?.decision||"undecided"]);
     actionDrafts=Object.fromEntries((plan?.actions||[]).map(a=>[a.decision,{...a}]));
     $("#planningDecisions").innerHTML=Object.entries(decisions).filter(([key])=>key!=="undecided").map(([key,label])=>`<label><input type="checkbox" name="decisions" value="${key}" ${selected.has(key)?"checked":""}>${escape(label)}</label>`).join("");

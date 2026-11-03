@@ -3,6 +3,7 @@ import {asinFromInput,registerPageLink,observeListing} from "./link-monitor.js";
 import {yahooListingUrl} from "./yahoo-observation.js";
 import {applyStockCommand} from "./physical-stock.js";
 import {applyPlanningCommand} from "./sales-planning.js";
+import {resolvedLinkSku,resolvedLinkCondition,conditionFamily} from './product-workspace.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const uuid=v=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v||"");
 function source(docs,key){
@@ -16,13 +17,41 @@ function source(docs,key){
 }
 const inventoryKey=s=>s.kind==='plan'&&s.stock?'stock:'+s.stock.id:s.kind==='plan'&&s.item.source.kind==='link'?'link:'+s.item.source.id:`${s.kind}:${s.id}`;
 export function productLinkInfo(docs,key){const s=source(docs,key),m=docs['link-monitor'].state;return {key,title:s.title,asin:s.asin,sellerSku:s.kind==='link'?s.item.amazonSellerSku||m.catalog.find(p=>p.id===s.item.catalogId)?.sellerSku||'':s.stock?.sellerSku||s.item.sellerSku||'',manualReview:(m.inventoryReviews||[]).find(r=>r.key===inventoryKey(s))||null,revision:docs['link-monitor'].revision,sourceRevisions:Object.fromEntries(Object.entries(docs).map(([k,d])=>[k,d.revision])),yahoo:s.linkIds.map(id=>m.links.find(l=>l.id===id)).filter(Boolean).map(l=>({linkId:l.id,listingId:l.listingId,url:`https://auctions.yahoo.co.jp/jp/auction/${l.listingId}`}))};}
-export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOString(),expectedRevision,sourceRevisions}={}){
+function associationIdentity(s,docs,watch,at){
+ const m=docs['link-monitor'].state,catalog=m.catalog.find(p=>p.id===s.item.catalogId);
+ return s.kind==='link'?{asin:s.asin,sellerSku:resolvedLinkSku(s.item,m,watch,at),condition:resolvedLinkCondition(s.item,m,watch,at),setContents:catalog?.setContents||''}:{asin:s.asin,sellerSku:s.item.sellerSku||'',condition:s.item.condition,setContents:s.item.setContents||''};
+}
+function checkAssociation(s,target,docs,watch,at){
+ if(!s.asin||s.asin!==target.asin)throw fail('同じASINの商品を選んでください。数量は変更していません',409);
+ const m=docs['link-monitor'].state,link=target.kind==='link'?target:s.kind==='link'?s:null;
+ if(!link||!link.item.verified||link.item.observationConflict)throw fail('確認済みの紐付け商品を選んでください',409);
+ const identities=[s,target].map(p=>associationIdentity(p,docs,watch,at));
+ const stock=s.stock||target.stock;
+ if(stock)identities.push({sellerSku:stock.sellerSku,condition:stock.condition,setContents:stock.setContents});
+ for(const id of new Set([...s.linkIds,...target.linkIds,...(stock?.linkedLinkIds||[])])){const item=m.links.find(l=>l.id===id);if(item)identities.push(associationIdentity(source(docs,'link:'+id),docs,watch,at));}
+ const skus=new Set(identities.map(p=>p.sellerSku).filter(Boolean)),families=new Set(identities.map(p=>p.condition==='parts'?'parts':conditionFamily(p.condition)).filter(c=>c!=='unknown'));
+ const rank=v=>String(v||'').replace(/[_ -]/g,'').toLowerCase(),ranks=new Set(identities.map(p=>rank(p.condition)).filter(c=>/^used(likenew|verygood|good|acceptable)$/.test(c)));
+ const sets=new Set(identities.map(p=>p.setContents?.trim()).filter(Boolean));
+ if(skus.size>1||families.size>1||ranks.size>1||sets.size>1)throw fail('SKU・状態・セット内容が異なる商品は関連付けできません。元の商品情報を確認してください',409);
+}
+export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOString(),expectedRevision,sourceRevisions,watch}={}){
  if(!uuid(command?.operationId)||!actor)throw fail("保存する操作と本人を確認してください");
  const m=docs['link-monitor'].state,digest=createHash('sha256').update(JSON.stringify(command)).digest('hex'),receipts=m.productLinkReceipts||[],old=receipts.find(r=>r.id===command.operationId);
  if(old){if(old.digest!==digest||old.actor!==actor)throw fail("同じ操作IDの内容が異なります",409);return {...old,replayed:true};}
  if(receipts.length>=10000)throw fail("URL変更履歴の保存上限です",409);
  const s=source(docs,command.key),primary=s.kind==="plan"?'sales-planning':s.kind==="stock"?'physical-stock':'link-monitor';
  if(expectedRevision!==docs['link-monitor'].revision||![primary,...(s.stock?['physical-stock']:[])].every(k=>sourceRevisions?.[k]===docs[k].revision))throw fail("ほかの編集・自動確認が保存されました。URL入力を残したまま最新の内容を読み直してください",409);
+ if(command.kind==='associate-existing'){
+  if(command.confirmed!==true)throw fail('選んだ商品の関連付けを確認してください');
+  const target=source(docs,command.targetKey),targetDocument=target.kind==='stock'?'physical-stock':target.kind==='plan'?'sales-planning':'link-monitor';
+  if(sourceRevisions?.[targetDocument]!==docs[targetDocument].revision)throw fail('選択先の商品が更新されました。最新の内容で選び直してください',409);
+  if(s.kind==='link'?target.kind!=='stock':target.kind!=='link')throw fail('登録済みの出品と在庫・計画の組み合わせを選んでください');
+  checkAssociation(s,target,docs,watch,at);
+  const stock=s.stock||target.stock,linkId=s.kind==='link'?s.id:target.id;
+  if(stock&&!stock.linkedLinkIds.includes(linkId))applyStockCommand(docs['physical-stock'].state,{operationId:command.operationId,kind:'edit',productId:stock.id,product:{...stock,linkedLinkIds:[...stock.linkedLinkIds,linkId]},reason:'登録済みの出品と在庫を関連付け'},{actor,at});
+  if(s.kind==='plan'&&!s.stock&&!s.linkIds.includes(linkId))applyPlanningCommand(docs['sales-planning'].state,{operationId:command.operationId,kind:'edit',planId:s.id,plan:{...s.item,linkedLinkIds:[...(s.item.linkedLinkIds||[]),linkId]}},{actor,at});
+  const receipt={id:command.operationId,digest,actor,at,key:command.key,targetKey:command.targetKey,linkId,kind:command.kind};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({kind:'product_association_saved',at,actor,key:command.key,targetKey:command.targetKey});return receipt;
+ }
  if(command.kind==='inventory'||command.kind==='manual-fba'){
   const manualOnly=command.kind==='manual-fba',sku=command.sellerSku??(manualOnly?productLinkInfo(docs,command.key).sellerSku:undefined),q=command.manualFbaQuantity;
   if(typeof sku!=='string'||sku.length>200||/[\x00-\x1f]/.test(sku)||q!==null&&(!Number.isSafeInteger(q)||q<0||q>1000000))throw fail('SKUと手入力のFBA在庫数を確認してください');
@@ -79,5 +108,5 @@ export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOStri
  const receipt={id:command.operationId,digest,actor,at,key:command.key,linkId};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({at,kind:"product_url_saved",actor,key:command.key});return receipt;
 }
 export function createProductLinkEditor({transaction,overview,refresh}){
- return {async list(){const [docs,view]=await Promise.all([transaction.read(),overview.view()]);const entries={};for(const row of view.rows)for(const key of row.sourceKeys)if(/^(link|stock|plan):/.test(key)){try{entries[key]={...productLinkInfo(docs,key),live:{fba:row.fba,channels:row.channels,yahoo:row.yahoo||[],availability:row.availability,skuOptions:row.skuOptions||[],workspace:row.workspace}};}catch{}}return {entries};},async save(command,options){return transaction.update(docs=>applyProductLinkEdit(docs,command,options));},refresh};
+ return {async list(){const [docs,view]=await Promise.all([transaction.read(),overview.view()]);const entries={};for(const row of view.rows)for(const key of row.sourceKeys)if(/^(link|stock|plan):/.test(key)){try{const s=source(docs,key);entries[key]={...productLinkInfo(docs,key),imageUrl:row.imageUrl||'',condition:s.kind==='link'?row.amazonCondition||row.fba.condition||row.condition:s.item.condition,setContents:s.item.setContents||docs['link-monitor'].state.catalog.find(c=>c.id===s.item.catalogId)?.setContents||'',memo:s.stock?.memo||s.item.userMemo||s.item.note||'',resolvedSku:row.availability.sku||'',live:{fba:row.fba,channels:row.channels,yahoo:row.yahoo||[],availability:row.availability,skuOptions:row.skuOptions||[],workspace:row.workspace}};}catch{}}return {entries};},async save(command,options){const watch=command?.kind==='associate-existing'?(await overview.inputs()).watch:undefined;return transaction.update(docs=>applyProductLinkEdit(docs,command,{...options,watch}));},refresh};
 }

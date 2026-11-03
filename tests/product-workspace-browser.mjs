@@ -56,7 +56,7 @@ try{
   const planning=page.locator('#planningDialog');await planning.waitFor();
   assert.equal(await planning.locator('[name=sellerSku]').inputValue(),'RESERVE-SKU');
   const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Tokyo'});
-  await planning.locator('[name=availableOn]').fill(today);await planning.locator('[name=durationDays]').fill('14');
+  await planning.locator('[name=kind]').selectOption('amazon');await planning.locator('[name=availableOn]').fill(today);await planning.locator('[name=durationDays]').fill('14');
   await planning.locator('[name=note]').fill('Keep this review across pages');
   await planning.locator('#planningSave').click();await planning.waitFor({state:'hidden'});
   const planned=await read('/__fixture/state'),saved=planned['sales-planning'].state.plans.find(p=>p.asin==='B000TEST05');

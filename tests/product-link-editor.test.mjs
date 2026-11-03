@@ -87,3 +87,52 @@ test('inventory corrections reject stale or invalid values and roll back if a re
  await assert.rejects(tx.update(d=>applyProductLinkEdit(d,e.command,e.options)),{status:409});assert.deepEqual(pool.state(),before);
  assert.throws(()=>applyProductLinkEdit(f.docs,e.command,{...e.options,expectedRevision:3}),{status:409});
 });
+
+test('choosing a registered listing attaches its existing ID without copying stock, URLs, SKU or memo',()=>{
+ const f=linkFixture(),stock=f.docs['physical-stock'].state.products[0];stock.linkedLinkIds=[];stock.memo='コンテナ確認 脚なしか？ あれば補充';
+ const before=structuredClone(f.docs),e=edit(f,'stock:'+f.stockId,{kind:'associate-existing',targetKey:'link:'+f.link.id,confirmed:true});
+ const receipt=applyProductLinkEdit(f.docs,e.command,e.options);
+ assert.equal(receipt.linkId,f.link.id);assert.deepEqual(stock.linkedLinkIds,[f.link.id]);assert.equal(stock.sellerSku,before['physical-stock'].state.products[0].sellerSku);assert.equal(stock.memo,before['physical-stock'].state.products[0].memo);
+ assert.deepEqual(f.docs['physical-stock'].state.balances,before['physical-stock'].state.balances);assert.deepEqual(f.docs['link-monitor'].state.links,before['link-monitor'].state.links);assert.deepEqual(f.docs['sales-planning'],before['sales-planning']);
+ assert.equal(applyProductLinkEdit(f.docs,e.command,e.options).replayed,true);assert.equal(f.docs['physical-stock'].state.events.length,before['physical-stock'].state.events.length+1);
+});
+
+test('a listing can choose existing stock in reverse and a plan can reuse existing listing IDs without resetting dates',()=>{
+ for(const kind of ['link','plan','stock-plan']){
+  const f=linkFixture(),stock=f.docs['physical-stock'].state.products[0];stock.linkedLinkIds=[];
+  const p=f.docs['sales-planning'].state.plans[0];if(kind==='stock-plan')p.source={kind:'stock',id:f.stockId};const before=structuredClone(p),balances=structuredClone(f.docs['physical-stock'].state.balances);
+  const e=edit(f,kind==='link'?'link:'+f.link.id:'plan:'+f.planId,{kind:'associate-existing',targetKey:kind==='link'?'stock:'+f.stockId:'link:'+f.link.id,confirmed:true});
+  applyProductLinkEdit(f.docs,e.command,e.options);
+  assert.deepEqual(f.docs['physical-stock'].state.balances,balances);
+  if(kind==='plan')assert.deepEqual(p.linkedLinkIds,[f.link.id]);else assert.deepEqual(stock.linkedLinkIds,[f.link.id]);
+  for(const key of ['id','createdAt','source','note','availableOn','reviewOn','decisions','actions'])assert.deepEqual(p[key],before[key]);assert.equal(f.docs['link-monitor'].state.links.length,1);
+ }
+});
+
+test('existing associations reject other ASINs, SKUs, conditions, sets, unverified listings and missing confirmation',()=>{
+ for(const mutate of [
+  f=>{f.docs['physical-stock'].state.products[0].asin='B000OTHER1';},
+  f=>{f.docs['physical-stock'].state.products[0].sellerSku='OTHER';f.link.amazonSellerSku='OWN';},
+  f=>{f.docs['physical-stock'].state.products[0].condition='new';f.docs['link-monitor'].state.catalog.push({id:'fixture-catalog',asin,condition:'UsedGood'});f.link.catalogId='fixture-catalog';},
+  f=>{f.docs['physical-stock'].state.products[0].setContents='スタンドなし';f.docs['link-monitor'].state.catalog.push({id:'fixture-catalog',asin,condition:'UsedGood',setContents:'スタンド付き'});f.link.catalogId='fixture-catalog';},
+  f=>{f.link.verified=false;},f=>{f.link.observationConflict=true;}
+ ]){
+  const f=linkFixture();f.docs['physical-stock'].state.products[0].linkedLinkIds=[];mutate(f);const before=structuredClone(f.docs),e=edit(f,'stock:'+f.stockId,{kind:'associate-existing',targetKey:'link:'+f.link.id,confirmed:true});
+  assert.throws(()=>applyProductLinkEdit(f.docs,e.command,e.options),{status:409});assert.deepEqual(f.docs,before);
+ }
+ const f=linkFixture(),e=edit(f,'stock:'+f.stockId,{kind:'associate-existing',targetKey:'link:'+f.link.id});assert.throws(()=>applyProductLinkEdit(f.docs,e.command,e.options),{status:400});
+});
+
+test('adding a second listing cannot combine distinct SKUs or used ranks on stock with an unselected SKU',()=>{
+ for(const mode of ['sku','rank']){
+  const f=linkFixture(),m=f.docs['link-monitor'].state,second=registerPageLink(m,{amazon:asin,yahoo:url,submitted:true},at);
+  for(const [l,condition] of [[f.link,'UsedGood'],[second,'UsedVeryGood']]){const id=randomUUID();m.catalog.push({id,asin,condition});l.catalogId=id;l.amazonSellerSku=mode==='sku'?condition:'';}
+  const e=edit(f,'stock:'+f.stockId,{kind:'associate-existing',targetKey:'link:'+second.id,confirmed:true});assert.throws(()=>applyProductLinkEdit(f.docs,e.command,e.options),{status:409});
+ }
+});
+
+test('existing selection checks the destination revision and transaction rollback preserves both documents',async()=>{
+ const f=linkFixture();f.docs['physical-stock'].state.products[0].linkedLinkIds=[];const e=edit(f,'link:'+f.link.id,{kind:'associate-existing',targetKey:'stock:'+f.stockId,confirmed:true});
+ assert.throws(()=>applyProductLinkEdit(f.docs,e.command,{...e.options,sourceRevisions:{...e.options.sourceRevisions,'physical-stock':0}}),{status:409});
+ const pool=fakePool(f,{failSecond:true}),tx=createDocumentTransaction({pool,validators}),before=structuredClone(pool.state());await assert.rejects(tx.update(d=>applyProductLinkEdit(d,e.command,e.options)));assert.deepEqual(pool.state(),before);
+});

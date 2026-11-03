@@ -11,11 +11,13 @@
       <details id="planningSources"><summary>登録済みの商品を写真から選ぶ</summary><label>商品を探す<input id="planningSourceSearch" type="search" placeholder="商品名・ASIN"></label><div id="planningSourceCards" class="planning-source-cards"></div></details>
       <div id="planningSelectedProduct" class="planning-selected" hidden></div><button id="planningManual" class="planning-secondary" type="button" hidden>別のASINで登録</button>
     </div>
+    <details id="planningIdentity" class="planning-wide" open><summary>商品情報</summary><div class="planning-identity-fields">
     <label class="planning-wide">ASIN<input name="asin" aria-label="ASIN" maxlength="10" pattern="[A-Za-z0-9]{10}" placeholder="ASINを入れると商品名・写真を取得します"></label><p id="planningCatalogStatus" class="planning-wide" role="status" aria-live="polite"></p>
     <label class="planning-wide">商品名（自動取得・変更可）<input name="title" maxlength="200" placeholder="空欄でもASINで登録できます"></label>
     <input name="imageUrl" type="hidden"><input name="availabilityNote" type="hidden">
     <label>SKU（任意）<input name="sellerSku" maxlength="200"></label>
     <label>新品・中古<select name="condition"><option value="unknown">未確認</option><option value="new">新品</option><option value="used">中古</option><option value="parts">部品・現状品</option></select></label><label>状態・セット内容（任意）<input name="setContents" maxlength="300"></label>
+    </div></details>
     <label>取り組み<select name="kind"><option value="amazon">Amazonで様子を見る</option><option value="advertising">広告テスト</option><option value="review">販売方針の見直し</option></select></label><label>状態<select name="status"><option value="active">確認を続ける</option><option value="hold">保留</option><option value="closed">完了</option></select></label>
     <label data-plan-period>確認期間（日）<input name="durationDays" type="number" min="1" max="365" step="1" value="14" required></label><label data-plan-review>次回確認日<input name="reviewOn" type="date"></label>
     <label data-plan-availability>実際に販売可能になった日<input name="availableOn" type="date"></label><label data-plan-ad>実際に広告を開始した日<input name="adStartedOn" type="date"></label>

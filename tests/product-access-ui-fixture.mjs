@@ -48,6 +48,11 @@ if(process.env.AMAZON_STATUS_FIXTURE==='1'){
  monitor.salesTargets.listingSnapshot.rows.push({asin:merchantAsin,sellerSku:'FBM-SKU',condition:'used_good',statuses:['BUYABLE'],fulfillment:[{channel:'DEFAULT',quantity:2}]});
  watch.observations.fba.items.push({asin:merchantAsin,sellerSku:'FBM-SKU',condition:'UsedGood',fulfillableQuantity:0});
 }
+if(process.env.REVIEW_PICKER_FIXTURE==='1'){
+ const reserve=physical.products.find(p=>p.asin==='B000TEST05');reserve.memo='コンテナ確認 脚なしか？ あれば補充';reserve.imageUrl='https://m.media-amazon.com/images/I/fixture.jpg';
+ for(const link of monitor.links.filter(l=>l.asin===reserve.asin))monitor.listings.find(y=>y.listingId===link.listingId).imageUrl=reserve.imageUrl;
+ const reviewLink=registerPageLink(monitor,{amazon:'B000TEST02',yahoo:'https://auctions.yahoo.co.jp/jp/auction/d1000000012',submitted:true},at);monitor.listings.find(y=>y.listingId===reviewLink.listingId).title='隔離テスト・見直しに既存出品';
+}
 function store(key){return {read:async()=>structuredClone(docs[key].state),readSnapshot:async()=>structuredClone(docs[key]),update:async(fn,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==docs[key].revision)throw Object.assign(new Error('別の編集が保存されました'),{code:'STORAGE_CONFLICT'});const copy=structuredClone(docs[key].state),r=await fn(copy);docs[key]={state:copy,revision:docs[key].revision+1};return r;}};}
 const transaction={read:async()=>structuredClone(docs),update:async fn=>{const copy=structuredClone(docs),r=await fn(copy);for(const key of Object.keys(copy))if(JSON.stringify(copy[key].state)!==JSON.stringify(docs[key].state))copy[key].revision++;docs=copy;return r;}},watchStore={read:async()=>structuredClone(watch),readSnapshot:async()=>({state:structuredClone(watch),revision:watchRevision})},monitorStore=store('link-monitor'),stockStore=store('physical-stock'),planningStore=store('sales-planning'),draftStore={read:async()=>[]};
 watchStore.update=async(fn,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==watchRevision)throw Object.assign(new Error('Watch conflict'),{code:'STORAGE_CONFLICT'});const copy=structuredClone(watch),result=await fn(copy);Object.assign(watch,copy);watchRevision++;return result;};

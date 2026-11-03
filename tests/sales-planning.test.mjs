@@ -117,3 +117,13 @@ test("planning API enforces owner, origin, revision, content type and read-only 
   assert.equal((await make()(request("/operations",{method:"POST",headers,body}))).status,200);
   assert.equal((await make()(request("/operations",{method:"POST",headers,body:JSON.stringify({command:command()})}))).status,409);
 });
+
+test('source review context reads live notes and location quantities instead of copying inventory into a plan',async()=>{
+ const id=randomUUID(),product={id,title:'iiyama E2483HS-B3',asin:'B075D23YM3',sellerSku:'',condition:'used',setContents:'',memo:'コンテナ確認 脚なしか？ あれば補充',photo:null,totals:{locations:[{locationId:'container',usable:13},{locationId:'home',usable:null}]},linked:[],fba:{quantity:null}};
+ const store=memory(emptySalesPlanning()),monitorStore=memory(emptyMonitor()),stock={view:async()=>({products:[structuredClone(product)]})},overview={view:async()=>({rows:[{sourceKeys:['stock:'+id],stockIds:[id],linkIds:[],plans:[],availability:{fba:{quantity:null},yahooQuantity:null},locations:product.totals.locations}]})};
+ const service=createCloudPlanning({store,stock,monitorStore,overview,now:()=>at}),before=structuredClone(product),source=(await service.view()).sources[0];
+ assert.equal(source.notes[0].text,product.memo);assert.deepEqual(source.locations,product.totals.locations);assert.equal(source.locations[1].usable,null);
+ await service.commit(command({title:product.title,asin:product.asin,sellerSku:'',condition:'used',setContents:'',source:{kind:'stock',id},kind:'review',reviewOn:'2026-11-01',note:'別の判断メモ'}),{expectedRevision:0,actor});
+ assert.deepEqual(product,before);const saved=(await store.read()).plans[0];assert.equal(saved.note,'別の判断メモ');assert.equal(saved.availableOn,'');assert.equal(Object.hasOwn(saved,'locations'),false);assert.equal(Object.hasOwn(saved,'memo'),false);
+ product.memo='脚を確認済み';product.totals.locations[0].usable=12;const next=(await service.view()).plans[0];assert.equal(next.reference.notes[0].text,product.memo);assert.equal(next.reference.locations[0].usable,12);assert.equal(next.note,'別の判断メモ');assert.equal(next.reviewOn,'2026-11-01');assert.equal(next.availableOn,'');
+});

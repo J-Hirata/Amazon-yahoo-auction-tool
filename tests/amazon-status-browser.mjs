@@ -56,7 +56,7 @@ try{
  await popup.locator('#planningDialog [name=note]').fill('Not saved yet');await popup.close();assert.deepEqual(await read(),beforePopup);pass('new review opens in another tab and leaves source filter, URL, scroll and database unchanged');
 
  popup=await popupFor(await reviewLink('販売見直しへ'));
- await popup.locator('#planningDialog [name=availableOn]').fill('2026-10-30');await popup.locator('#planningDialog [name=durationDays]').fill('14');await popup.locator('#planningDialog [name=note]').fill('Keep planned dates and note');
+ await popup.locator('#planningDialog [name=kind]').selectOption('amazon');await popup.locator('#planningDialog [name=availableOn]').fill('2026-10-30');await popup.locator('#planningDialog [name=durationDays]').fill('14');await popup.locator('#planningDialog [name=note]').fill('Keep planned dates and note');
  await popup.locator('#planningSave').click();await popup.locator('#planningDialog').waitFor({state:'hidden'});await popup.close();
  await page.reload();await book().waitFor();await page.locator('#stockSearch').fill('B000BOOK01');
  const planned=await read();popup=await popupFor(await reviewLink('販売見直し'));
