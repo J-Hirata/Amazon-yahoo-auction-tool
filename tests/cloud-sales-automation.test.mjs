@@ -4,6 +4,7 @@ import {createCloudSalesAutomation,automationView} from "../src/cloud-sales-auto
 import {resolveSalesSources} from "../src/sales-sources.js";
 import {createVercelEntry} from "../src/vercel-entry.js";
 import {createCloudSales} from "../src/cloud-sales.js";
+import {collectProductAlerts} from "../src/product-monitoring.js";
 
 const at="2026-10-30T00:00:00.000Z",later="2026-10-30T02:00:00.000Z";
 const config={accountKey:"fixture-account",sellerId:"FIXTURE",marketplaceId:"A1VC38T7YXB528"};
@@ -84,6 +85,64 @@ test("daily endpoint rejects missing/wrong secret, preview, extra query and wron
   assert.equal(calls,0);
   const entry=make();assert.equal((await entry(new Request("https://fixture.example/api/cron/sales?extra=1",{headers:{authorization:`Bearer ${secret}`}}))).status,401);
   assert.equal((await entry(new Request("https://fixture.example/api/inventory?__route=/cron/sales",{headers:{authorization:`Bearer ${secret}`}}))).status,200);assert.equal(calls,1);
+});
+
+test("cron accepts only its exact server-configured production deployment and public origin",async()=>{
+  const secret="fixture-".repeat(6),host="inventory-current-team.vercel.app";
+  const env={VERCEL:"1",VERCEL_ENV:"production",VERCEL_URL:host,ASIN_PUBLIC_ORIGIN:"https://fixture.example",CRON_SECRET:secret};
+  let calls=0;
+  const make=(environment=env)=>createVercelEntry({environment:()=>environment,runtimeFactory:async()=>{calls++;return {runSalesAutomation:async()=>({status:"complete"})};}});
+  for(const path of ["/api/cron/sales","/api/inventory?__route=/cron/sales&path=cron/sales"]){
+    assert.equal((await make()(new Request(`https://${host}${path}`,{headers:{authorization:`Bearer ${secret}`}}))).status,200);
+  }
+  assert.equal(calls,2);
+  const badHosts=["inventory-old-team.vercel.app","inventory-current-team.vercel.app.attacker.example",`${host}:8443`];
+  for(const hostname of badHosts)assert.equal((await make()(new Request(`https://${hostname}/api/cron/sales`,{headers:{authorization:`Bearer ${secret}`,host,"x-forwarded-host":host}}))).status,401);
+  for(const patch of [{VERCEL_ENV:"preview"},{VERCEL:"0"},{VERCEL_URL:"https://"+host},{VERCEL_URL:host+"/path"},{VERCEL_URL:""}]){
+    assert.equal((await make({...env,...patch})(new Request(`https://${host}/api/cron/sales`,{headers:{authorization:`Bearer ${secret}`}}))).status,401);
+  }
+  assert.equal((await make()(new Request(`http://${host}/api/cron/sales`,{headers:{authorization:`Bearer ${secret}`}}))).status,401);
+  assert.equal((await make()(new Request(`https://${host}/api/cron/sales`,{headers:{authorization:"Bearer wrong"}}))).status,401);
+  assert.equal(calls,2);
+});
+
+test("authenticated HEAD validates cron origins without initializing runtime, reading DB, or sending",async()=>{
+  const secret="fixture-".repeat(6),host="inventory-current-team.vercel.app";
+  const env={VERCEL:"1",VERCEL_ENV:"production",VERCEL_URL:host,ASIN_PUBLIC_ORIGIN:"https://fixture.example",CRON_SECRET:secret};
+  let calls=0;
+  const entry=createVercelEntry({environment:()=>env,runtimeFactory:async()=>{calls++;throw new Error("HEAD must not open DB");}});
+  for(const origin of [env.ASIN_PUBLIC_ORIGIN,`https://${host}`]){
+    const response=await entry(new Request(origin+"/api/cron/sales",{method:"HEAD",headers:{authorization:`Bearer ${secret}`}}));
+    assert.equal(response.status,204);assert.equal(await response.text(),"");assert.equal(response.headers.get("Cache-Control"),"no-store");
+  }
+  for(const [method,origin,token] of [["HEAD",env.ASIN_PUBLIC_ORIGIN,""],["HEAD","https://other.example",secret],["POST",env.ASIN_PUBLIC_ORIGIN,secret]]){
+    assert.equal((await entry(new Request(origin+"/api/cron/sales",{method,headers:{authorization:`Bearer ${token}`}}))).status,401);
+  }
+  assert.equal(calls,0);
+});
+
+test("linked FBA zero flows through the durable mail dispatcher once and can recur only after recovery",async()=>{
+  const f=fixture();await enable(f,{stockAlerts:true});f.time(later);
+  const watch={signals:{},pendingAlerts:[]};
+  let quantity=0,status="complete";
+  const row=()=>({key:"link:fixture",asin:"B000TEST01",title:"Linked fixture",sources:["link"],localAvailable:3,fba:{status,quantity,sellerSku:"OWN-USED"},rule:{replenishEnabled:false},sales:{fbaQuantity7:null},transfers:[],yahoo:[],plans:[]});
+  const engine=createCloudSalesAutomation({...f,monitoring:{run:async({settings,enqueueAlerts})=>{
+    const pending=collectProductAlerts(watch,[row()],settings,f.now());
+    if(pending.length){await enqueueAlerts(pending);for(const p of pending)p.queuedAt=f.now();}
+    return {status:"complete"};
+  }}});
+  await engine.run();await engine.run();assert.equal(f.calls(),1);
+  assert.match(f.sent()[0].text,/0個/);assert.equal((await f.store.read()).mailOutbox[0].status,"smtp_accepted");
+  status="unknown";quantity=null;await engine.run();assert.equal(f.calls(),1);
+  status="complete";quantity=4;await engine.run();assert.equal(f.calls(),1);
+  quantity=0;await engine.run();assert.equal(f.calls(),2);
+  assert.equal((await f.store.read()).mailOutbox.length,2);
+  const unknown=fixture();await enable(unknown,{stockAlerts:true});unknown.time(later);
+  const quiet=createCloudSalesAutomation({...unknown,monitoring:{run:async({settings,enqueueAlerts})=>{
+    const pending=collectProductAlerts({signals:{},pendingAlerts:[]},[{...row(),fba:{status:"unknown",quantity:null,sellerSku:"OWN-USED"}}],settings,unknown.now());
+    if(pending.length)await enqueueAlerts(pending);return {status:"complete"};
+  }}});
+  await quiet.run();assert.equal(unknown.calls(),0);
 });
 test("adding merchant SKU retains old history/start and replays the missing observation period",async()=>{
   const f=fixture();await f.store.update(s=>{s.amazonAccountKey=config.accountKey;s.amazonSellerId=config.sellerId;s.salesTracking.startedAt="2026-10-25T00:00:00Z";});

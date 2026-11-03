@@ -42,7 +42,11 @@ export function createVercelEntry({runtimeFactory = createCloudRuntime, environm
       if(isCron){
         const env=environment(),secret=env.CRON_SECRET || "",header=canonical.headers.get("authorization") || "";
         const expected=`Bearer ${secret}`;
-        if(canonical.method!=="GET" || new URL(canonical.url).search || env.VERCEL_ENV!=="production" || new URL(canonical.url).origin!==env.ASIN_PUBLIC_ORIGIN || secret.length<32 || Buffer.byteLength(header)!==Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(header),Buffer.from(expected)))return Response.json({error:"認証が必要です"},{status:401,headers:{"Cache-Control":"no-store"}});
+        // Vercel invokes cron on this deployment's hostname, not only its public alias.
+        const deploymentOrigin=env.VERCEL==="1"&&/^[a-z0-9][a-z0-9-]*\.vercel\.app$/.test(env.VERCEL_URL||"")?`https://${env.VERCEL_URL}`:null;
+        const origin=new URL(canonical.url).origin;
+        if(!["GET","HEAD"].includes(canonical.method) || new URL(canonical.url).search || env.VERCEL_ENV!=="production" || origin!==env.ASIN_PUBLIC_ORIGIN&&origin!==deploymentOrigin || secret.length<32 || Buffer.byteLength(header)!==Buffer.byteLength(expected) || !timingSafeEqual(Buffer.from(header),Buffer.from(expected)))return Response.json({error:"認証が必要です"},{status:401,headers:{"Cache-Control":"no-store"}});
+        if(canonical.method==="HEAD")return new Response(null,{status:204,headers:{"Cache-Control":"no-store"}});
       }
       runtime ||= Promise.resolve(runtimeFactory({assetDirectory: path.resolve("dist/cloud"), env: vercelCloudEnvironment(environment())})).then((value) => {
         if (value.pool) attachPool(value.pool);
