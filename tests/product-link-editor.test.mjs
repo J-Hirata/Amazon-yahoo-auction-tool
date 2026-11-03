@@ -136,3 +136,34 @@ test('existing selection checks the destination revision and transaction rollbac
  assert.throws(()=>applyProductLinkEdit(f.docs,e.command,{...e.options,sourceRevisions:{...e.options.sourceRevisions,'physical-stock':0}}),{status:409});
  const pool=fakePool(f,{failSecond:true}),tx=createDocumentTransaction({pool,validators}),before=structuredClone(pool.state());await assert.rejects(tx.update(d=>applyProductLinkEdit(d,e.command,e.options)));assert.deepEqual(pool.state(),before);
 });
+
+test('URL plus review is one transaction using the original stock reference and never copying quantity or starting a sales test',()=>{
+ const f=linkFixture(),before=structuredClone(f.docs),e=edit(f,'stock:'+f.stockId,{review:{planId:randomUUID(),reviewOn:'2026-12-01',note:'2週間後に検討'}});
+ const receipt=applyProductLinkEdit(f.docs,e.command,e.options),p=f.docs['sales-planning'].state.plans.find(p=>p.id===receipt.review.id);
+ assert.equal(f.docs['link-monitor'].state.links.length,2);assert.equal(p.source.kind,'stock');assert.equal(p.source.id,f.stockId);assert.equal(p.reviewOn,'2026-12-01');assert.equal(p.availableOn,'');assert.equal(p.kind,'review');assert.equal(Object.hasOwn(p,'locations'),false);assert.deepEqual(f.docs['physical-stock'].state.balances,before['physical-stock'].state.balances);assert.deepEqual(f.docs['sales-planning'].state.plans[0],before['sales-planning'].state.plans[0]);
+ assert.equal(applyProductLinkEdit(f.docs,e.command,e.options).review.id,p.id);assert.equal(f.docs['sales-planning'].state.plans.length,2);validateSalesPlanning(f.docs['sales-planning'].state);validateMonitorState(f.docs['link-monitor'].state);
+});
+
+test('existing listing plus review reuses its ID; review-only from a card needs no Yahoo URL',()=>{
+ for(const mode of ['associate-existing','register-review']){
+  const f=linkFixture(),stock=f.docs['physical-stock'].state.products[0];stock.linkedLinkIds=[];stock.memo='元のメモ';const before=structuredClone(f.docs),e=edit(f,'stock:'+f.stockId,{kind:mode,targetKey:'link:'+f.link.id,confirmed:true,review:{planId:randomUUID(),reviewOn:'',note:''}});delete e.command.yahoo;delete e.command.amazon;
+  const r=applyProductLinkEdit(f.docs,e.command,e.options),p=f.docs['sales-planning'].state.plans.find(p=>p.id===r.review.id);assert.ok(p);assert.equal(p.source.id,f.stockId);assert.equal(p.availableOn,'');assert.equal(p.reviewOn,'');assert.equal(stock.memo,'元のメモ');assert.equal(f.docs['link-monitor'].state.links.length,1);assert.deepEqual(f.docs['physical-stock'].state.balances,before['physical-stock'].state.balances);
+ }
+});
+
+test('quick review reuses a related active plan and keeps its dates, actions and memo unchanged',()=>{
+ const f=linkFixture(),p=f.docs['sales-planning'].state.plans[0];p.source={kind:'stock',id:f.stockId};const before=structuredClone(f.docs['sales-planning']),e=edit(f,'stock:'+f.stockId,{kind:'register-review',review:{planId:randomUUID(),reviewOn:'2026-12-02',note:'上書きしない'}});
+ const r=applyProductLinkEdit(f.docs,e.command,e.options);assert.equal(r.review.existing,true);assert.equal(r.review.id,p.id);assert.deepEqual(f.docs['sales-planning'],before);
+});
+
+test('a stale planning revision or invalid review rolls back the URL and stock association together',async()=>{
+ for(const patch of [{revision:0},{reviewOn:'2026-02-30'},{note:'x'.repeat(1001)}]){
+  const f=linkFixture(),pool=fakePool(f),tx=createDocumentTransaction({pool,validators}),e=edit(f,'stock:'+f.stockId,{review:{planId:randomUUID(),reviewOn:patch.reviewOn||'',note:patch.note||''}}),before=structuredClone(pool.state());if(patch.revision===0)e.options.sourceRevisions['sales-planning']=0;
+  await assert.rejects(tx.update(d=>applyProductLinkEdit(d,e.command,e.options)));assert.deepEqual(pool.state(),before);
+ }
+});
+
+test('a lost combined commit replays once without duplicate product, plan or quantity events',async()=>{
+ const f=linkFixture(),pool=fakePool(f,{commitUnknown:true}),tx=createDocumentTransaction({pool,validators}),e=edit(f,'stock:'+f.stockId,{review:{planId:randomUUID(),reviewOn:'',note:'保持'}});
+ await assert.rejects(tx.update(d=>applyProductLinkEdit(d,e.command,e.options)),{code:'STORAGE_COMMIT_UNKNOWN'});const docs=await tx.read(),before=structuredClone(docs);assert.equal(applyProductLinkEdit(docs,e.command,e.options).replayed,true);assert.deepEqual(docs,before);assert.equal(docs['sales-planning'].state.plans.length,2);assert.equal(docs['link-monitor'].state.links.length,2);
+});

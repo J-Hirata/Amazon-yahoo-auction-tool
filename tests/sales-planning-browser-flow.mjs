@@ -24,7 +24,7 @@ export async function verifyPlanningUI({page,planningStore,stockStore,monitorSto
   assert.equal((await planningStore.read()).plans[2].adStartedOn,date(-3));assert.match(await page.locator("#planningRows").textContent(),/広告テスト中/);
   const firstId=(await planningStore.read()).plans[0].id;
   await page.locator(`[data-plan-edit="${firstId}"]`).click();await form.locator('[name="decisions"][value="yahoo"]').check();await form.locator('[name="note"]').fill("売れ行きを見てヤフオク併売を検討。まだ出品しない。");await save();
-  await page.locator(`[data-plan-history="${firstId}"]`).click();assert.match(await page.locator("#planningHistoryRows").textContent(),/方針未定 → ヤフオク併売を検討/);await page.locator("#planningHistoryClose").click();
+  await page.locator(`[data-plan-details="${firstId}"]`).click();await page.locator(`[data-plan-history="${firstId}"]`).click();assert.match(await page.locator("#planningHistoryRows").textContent(),/方針未定 → ヤフオク併売を検討/);await page.locator("#planningHistoryClose").click();
   pass("pre-delivery plans never start from registration; separate ad start, adjustable period, decision history and due/waiting filters work without executing ads or listings");
 
   let dropped=false;await page.route("**/api/sales-planning/operations",async route=>{if(route.request().method()==="POST"&&!dropped){dropped=true;await route.fetch();await route.abort("failed");}else await route.continue();});

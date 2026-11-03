@@ -12,7 +12,7 @@ import {createCloudHandler} from "../src/cloud-handler.js";
 import {loadCloudAssets} from "../src/cloud-runtime.js";
 import {demoMonitor} from "../src/link-monitor-demo.js";
 import {createVercelEntry} from "../src/vercel-entry.js";
-import {createPostgresDocumentStore} from "../src/postgres-document-store.js";
+import {createPostgresDocumentStore,createDocumentTransaction} from "../src/postgres-document-store.js";
 import {storageConfiguration} from "../src/storage-runtime.js";
 import {validateMonitorState} from "../src/storage-validation.js";
 import {Pool} from "pg";
@@ -30,6 +30,8 @@ import {verifyCatalogViews} from "./catalog-browser-flow.mjs";
 import {createCloudPlanning} from "../src/cloud-planning.js";
 import {emptySalesPlanning,validateSalesPlanning} from "../src/sales-planning.js";
 import {verifyPlanningUI} from "./sales-planning-browser-flow.mjs";
+import {createProductOverview,emptyProductWatch} from '../src/product-overview.js';
+import {createProductLinkEditor} from '../src/product-link-editor.js';
 
 const {chromium} = createRequire(import.meta.url)(process.env.PLAYWRIGHT_MODULE || "playwright");
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -131,10 +133,19 @@ try {
     readOrders: async ({after, before, targets}) => {orderReads++; return {complete: true, accountKey, sellerId, marketplaceId: "A1VC38T7YXB528", after, before, pages: 1,
       rows: orderReads > 1 ? [] : [{orderId: "fixture-private-order", itemId: "fixture-item", ...targets[0], quantity: 1, status: "UNSHIPPED", fulfillment: "AMAZON", createdAt: after, updatedAt: before}]};}}) : undefined;
   const stock = fullWorkspace ? createCloudStock({store: stockStore, monitorStore: store, draftStore}) : undefined;
-  const planning=fullWorkspace?createCloudPlanning({store:planningStore,stock,monitorStore:store}):undefined;
+  const overview=fullWorkspace?createProductOverview({monitorStore:store,stockStore,planningStore,draftStore,watchStore:{readSnapshot:async()=>({state:emptyProductWatch(),revision:0})}}):undefined;
+  let productLinks;
+  if(fullWorkspace){
+    const validators={'link-monitor':validateMonitorState,'physical-stock':validatePhysicalStock,'sales-planning':validateSalesPlanning};
+    const readDocs=async()=>Object.fromEntries(await Promise.all([['link-monitor',store],['physical-stock',stockStore],['sales-planning',planningStore]].map(async([key,s])=>[key,await s.readSnapshot()])));
+    let transaction={read:readDocs,update:async fn=>{const docs=await readDocs(),before=structuredClone(docs),result=await fn(docs);for(const key of Object.keys(docs))validators[key](docs[key].state);if(JSON.stringify(docs['link-monitor'].state)!==JSON.stringify(before['link-monitor'].state)){state=docs['link-monitor'].state;revision++;}if(JSON.stringify(docs['physical-stock'].state)!==JSON.stringify(before['physical-stock'].state)){stockData=docs['physical-stock'].state;stockRevision++;}if(JSON.stringify(docs['sales-planning'].state)!==JSON.stringify(before['sales-planning'].state)){planningData=docs['sales-planning'].state;planningRevision++;}return result;}};
+    if(realDatabase){const keys={'link-monitor':databaseKey,'physical-stock':stockDatabaseKey,'sales-planning':planningDatabaseKey},tx=createDocumentTransaction({pool:databasePool,validators:Object.fromEntries(Object.entries(keys).map(([key,actual])=>[actual,validators[key]]))}),rename=raw=>Object.fromEntries(Object.entries(keys).map(([key,actual])=>[key,raw[actual]]));transaction={read:async()=>rename(await tx.read()),update:fn=>tx.update(raw=>fn(rename(raw)))};}
+    productLinks=createProductLinkEditor({transaction,overview});
+  }
+  const planning=fullWorkspace?createCloudPlanning({store:planningStore,stock,monitorStore:store,overview}):undefined;
   const stockPhotos = fullWorkspace ? createStockPhotoRefresh({store:stockStore,config:{},readPhotos:async({asins})=>({photos:asins.map(asin=>({asin,imageUrl:"https://m.media-amazon.com/images/I/fixture.jpg"})),errors:[]})}) : undefined;
   const stockAmazon = fullWorkspace ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:{accountKey,sellerId},readListings:async({asins})=>({version:1,status:"complete",source:"own_seller_listings",sellerId,accountKey,marketplaceId:"A1VC38T7YXB528",asins,checkedAt:new Date().toISOString(),rows:asins.map(asin=>({asin,sellerSku:"FIXTURE-"+asin,condition:asin==="B000TEST99"?"new_new":"used_good",statuses:["BUYABLE"],fulfillment:[{channel:"DEFAULT",quantity:1}]}))})}) : undefined;
-  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, stockPhotos, stockAmazon, planning, ownerAccess, fba, mail, sales,
+  const privateHandler = createCloudHandler({config: {origin: base, authUrl, ownerUserId, readOnly: false}, store, draftStore, stock, stockPhotos, stockAmazon, planning, productLinks, ownerAccess, fba, mail, sales,
     verifyIdentity: createIdentityVerifier({authUrl, keySet: publicKey}),
     verifyOwner: createOwnerVerifier({authUrl, ownerUserId, keySet: publicKey, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})}),
     assets: await loadCloudAssets(vercelMode ? path.join(root, ".vercel", "output", "static") : undefined)});

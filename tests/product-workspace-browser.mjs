@@ -31,7 +31,7 @@ try{
   assert.doesNotMatch(await selfShip.locator('.inventory-risk').innerText(),/補充元/);
   let first=panel(row('#linkRows > tr','隔離テスト・共有するモニター 5'));
   assert.match(await first.locator('.physical-stock-lines').innerText(),/未関連/);
-  await (await workspaceLink(first,'実在庫をつなぐ')).click();
+  await followReview(await workspaceLink(first,'実在庫をつなぐ'));
   const connect=page.locator('#stockLinkDialog');await connect.waitFor();
   assert.equal(await connect.getByRole('checkbox').count(),2);
   for(const c of await connect.getByRole('checkbox').all())await c.check();
@@ -44,7 +44,7 @@ try{
   assert.deepEqual(linked['link-monitor'].state,before['link-monitor'].state);pass('existing listings associate to existing stock without changing URLs or physical quantities');
   const stockPanel=panel(row('#stockRows > tr','隔離テスト・補充用在庫'));
   assert.match(await stockPanel.locator('.physical-stock-lines').innerText(),/コンテナ\s*15個\s*会社・自宅\s*1個/);
-  await (await workspaceLink(stockPanel,'紐付け 2件')).click();
+  await followReview(await workspaceLink(stockPanel,'紐付け 2件'));
   await page.locator('#linkRows .product-access:visible').first().waitFor();
   for(const title of ['隔離テスト・共有するモニター 5','隔離テスト・共有するモニター 9']){
     const p=panel(row('#linkRows > tr',title));assert.match(await p.locator('.physical-stock-lines').innerText(),/15個\s*会社・自宅\s*1個/);
@@ -68,12 +68,12 @@ try{
   assert.equal(await planning.locator('[name=availableOn]').inputValue(),today);
   await planning.getByRole('button',{name:'取消',exact:true}).click();
   assert.equal((await read('/__fixture/state'))['sales-planning'].state.plans.length,planned['sales-planning'].state.plans.length);pass('review opens from another listing without duplicating its plan or resetting dates');
-  const planPanel=panel(row('#planningRows > tr','隔離テスト・共有するモニター 5'));
+  await row('#planningRows > tr','隔離テスト・共有するモニター 5').locator('[data-plan-details]').click();const planPanel=page.locator('#planningDetails .product-access');
   assert.equal(await planPanel.locator('.physical-stock-lines > div').count(),2);
-  await (await workspaceLink(planPanel,'全商品')).click();
+  await followReview(await workspaceLink(planPanel,'全商品'));
   await page.locator('.overview-card.workspace-selected').waitFor();
   const overview=page.locator('.overview-card.workspace-selected');assert.match(await overview.innerText(),/15個/);assert.ok(await overview.locator('.membership-planning').isVisible());await overview.locator('.product-workspace-more>summary').click();
-  await overview.getByRole('link',{name:'補充条件',exact:true}).click();
+  await followReview(overview.getByRole('link',{name:'補充条件',exact:true}));
   const config=page.locator('#overviewDialog');await config.waitFor();
   await config.getByLabel('補充の目安',{exact:true}).selectOption('50');
   await config.getByLabel('基準にするFBA数量',{exact:true}).fill('20');

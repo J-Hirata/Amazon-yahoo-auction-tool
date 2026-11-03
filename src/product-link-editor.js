@@ -4,6 +4,7 @@ import {yahooListingUrl} from "./yahoo-observation.js";
 import {applyStockCommand} from "./physical-stock.js";
 import {applyPlanningCommand} from "./sales-planning.js";
 import {resolvedLinkSku,resolvedLinkCondition,conditionFamily} from './product-workspace.js';
+import {productOverview,emptyProductWatch} from './product-overview.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const uuid=v=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v||"");
 function source(docs,key){
@@ -34,6 +35,18 @@ function checkAssociation(s,target,docs,watch,at){
  const sets=new Set(identities.map(p=>p.setContents?.trim()).filter(Boolean));
  if(skus.size>1||families.size>1||ranks.size>1||sets.size>1)throw fail('SKU・状態・セット内容が異なる商品は関連付けできません。元の商品情報を確認してください',409);
 }
+function addReview(docs,key,command,{actor,at,sourceRevisions,watch}){
+ if(!command.review)return null;
+ const input=command.review;if(!uuid(input.planId))throw fail('販売見直しの保存IDを確認してください');
+ const s=source(docs,key),planning=docs['sales-planning'].state;
+ const row=productOverview({monitor:docs['link-monitor'].state,physical:docs['physical-stock'].state,planning,watch:watch||emptyProductWatch(),drafts:[]},at).find(r=>r.sourceKeys.includes(key));
+ const existing=s.kind==='plan'?s.item:row?.plans.find(p=>p.status!=='closed');if(existing)return {id:existing.id,existing:true};
+ if(sourceRevisions?.['sales-planning']!==docs['sales-planning'].revision)throw fail('販売見直しが更新されました。入力を残して最新の登録状況を確認してください',409);
+ const identity=associationIdentity(s,docs,watch,at),condition=s.item.condition==='parts'?'parts':conditionFamily(identity.condition);
+ const origin={kind:s.kind,id:s.id,asin:s.asin,sellerSku:identity.sellerSku,condition,setContents:identity.setContents};
+ applyPlanningCommand(planning,{operationId:command.operationId,planId:input.planId,kind:'create',plan:{...origin,source:{kind:s.kind,id:s.id},title:s.title,imageUrl:row?.imageUrl||'',kind:'review',status:'active',durationDays:14,availableOn:'',adStartedOn:'',reviewOn:input.reviewOn||'',note:input.note||'',decisions:['undecided']}},{actor,at,sources:[origin]});
+ return {id:input.planId,existing:false};
+}
 export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOString(),expectedRevision,sourceRevisions,watch}={}){
  if(!uuid(command?.operationId)||!actor)throw fail("保存する操作と本人を確認してください");
  const m=docs['link-monitor'].state,digest=createHash('sha256').update(JSON.stringify(command)).digest('hex'),receipts=m.productLinkReceipts||[],old=receipts.find(r=>r.id===command.operationId);
@@ -41,6 +54,11 @@ export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOStri
  if(receipts.length>=10000)throw fail("URL変更履歴の保存上限です",409);
  const s=source(docs,command.key),primary=s.kind==="plan"?'sales-planning':s.kind==="stock"?'physical-stock':'link-monitor';
  if(expectedRevision!==docs['link-monitor'].revision||![primary,...(s.stock?['physical-stock']:[])].every(k=>sourceRevisions?.[k]===docs[k].revision))throw fail("ほかの編集・自動確認が保存されました。URL入力を残したまま最新の内容を読み直してください",409);
+ if(command.kind==='register-review'){
+  if(!command.review)throw fail('販売見直しの追加内容を確認してください');
+  const review=addReview(docs,command.key,command,{actor,at,sourceRevisions,watch});
+  const receipt={id:command.operationId,digest,actor,at,key:command.key,kind:command.kind,review};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({kind:'product_review_registered',at,actor,key:command.key});return receipt;
+ }
  if(command.kind==='associate-existing'){
   if(command.confirmed!==true)throw fail('選んだ商品の関連付けを確認してください');
   const target=source(docs,command.targetKey),targetDocument=target.kind==='stock'?'physical-stock':target.kind==='plan'?'sales-planning':'link-monitor';
@@ -50,7 +68,8 @@ export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOStri
   const stock=s.stock||target.stock,linkId=s.kind==='link'?s.id:target.id;
   if(stock&&!stock.linkedLinkIds.includes(linkId))applyStockCommand(docs['physical-stock'].state,{operationId:command.operationId,kind:'edit',productId:stock.id,product:{...stock,linkedLinkIds:[...stock.linkedLinkIds,linkId]},reason:'登録済みの出品と在庫を関連付け'},{actor,at});
   if(s.kind==='plan'&&!s.stock&&!s.linkIds.includes(linkId))applyPlanningCommand(docs['sales-planning'].state,{operationId:command.operationId,kind:'edit',planId:s.id,plan:{...s.item,linkedLinkIds:[...(s.item.linkedLinkIds||[]),linkId]}},{actor,at});
-  const receipt={id:command.operationId,digest,actor,at,key:command.key,targetKey:command.targetKey,linkId,kind:command.kind};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({kind:'product_association_saved',at,actor,key:command.key,targetKey:command.targetKey});return receipt;
+  const review=addReview(docs,command.key,command,{actor,at,sourceRevisions,watch});
+  const receipt={id:command.operationId,digest,actor,at,key:command.key,targetKey:command.targetKey,linkId,kind:command.kind,...(review?{review}:{})};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({kind:'product_association_saved',at,actor,key:command.key,targetKey:command.targetKey});return receipt;
  }
  if(command.kind==='inventory'||command.kind==='manual-fba'){
   const manualOnly=command.kind==='manual-fba',sku=command.sellerSku??(manualOnly?productLinkInfo(docs,command.key).sellerSku:undefined),q=command.manualFbaQuantity;
@@ -105,8 +124,9 @@ export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOStri
    applyPlanningCommand(docs['sales-planning'].state,{operationId:command.operationId,kind:"edit",planId:s.id,plan:{...s.item,asin,linkedLinkIds:linked}},{actor,at,sources});
   }
  }
- const receipt={id:command.operationId,digest,actor,at,key:command.key,linkId};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({at,kind:"product_url_saved",actor,key:command.key});return receipt;
+ const review=addReview(docs,command.key,command,{actor,at,sourceRevisions,watch});
+ const receipt={id:command.operationId,digest,actor,at,key:command.key,linkId,...(review?{review}:{})};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({at,kind:"product_url_saved",actor,key:command.key});return receipt;
 }
 export function createProductLinkEditor({transaction,overview,refresh}){
- return {async list(){const [docs,view]=await Promise.all([transaction.read(),overview.view()]);const entries={};for(const row of view.rows)for(const key of row.sourceKeys)if(/^(link|stock|plan):/.test(key)){try{const s=source(docs,key);entries[key]={...productLinkInfo(docs,key),imageUrl:row.imageUrl||'',condition:s.kind==='link'?row.amazonCondition||row.fba.condition||row.condition:s.item.condition,setContents:s.item.setContents||docs['link-monitor'].state.catalog.find(c=>c.id===s.item.catalogId)?.setContents||'',memo:s.stock?.memo||s.item.userMemo||s.item.note||'',resolvedSku:row.availability.sku||'',live:{fba:row.fba,channels:row.channels,yahoo:row.yahoo||[],availability:row.availability,skuOptions:row.skuOptions||[],workspace:row.workspace}};}catch{}}return {entries};},async save(command,options){const watch=command?.kind==='associate-existing'?(await overview.inputs()).watch:undefined;return transaction.update(docs=>applyProductLinkEdit(docs,command,{...options,watch}));},refresh};
+ return {async list(){const [docs,view]=await Promise.all([transaction.read(),overview.view()]);const entries={};for(const row of view.rows)for(const key of row.sourceKeys)if(/^(link|stock|plan):/.test(key)){try{const s=source(docs,key);entries[key]={...productLinkInfo(docs,key),title:s.kind==='link'&&s.title===s.asin?row.title:s.title,imageUrl:row.imageUrl||'',condition:s.kind==='link'?row.amazonCondition||row.fba.condition||row.condition:s.item.condition,setContents:s.item.setContents||docs['link-monitor'].state.catalog.find(c=>c.id===s.item.catalogId)?.setContents||'',memo:s.stock?.memo||s.item.userMemo||s.item.note||'',resolvedSku:row.availability.sku||'',live:{fba:row.fba,channels:row.channels,yahoo:row.yahoo||[],availability:row.availability,skuOptions:row.skuOptions||[],workspace:row.workspace}};}catch{}}return {entries};},async save(command,options){const watch=command?.kind==='associate-existing'||command?.review?(await overview.inputs()).watch:undefined;return transaction.update(docs=>applyProductLinkEdit(docs,command,{...options,watch}));},refresh};
 }

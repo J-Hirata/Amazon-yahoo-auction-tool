@@ -10,7 +10,7 @@
 
   <dialog id="stockLinkDialog" class="stock-dialog"><form id="stockLinkForm"><header><div><h2>ヤフオクと紐付け</h2><p id="stockLinkTitle" class="stock-muted"></p></div><button type="button" data-close="stockLinkDialog" aria-label="閉じる" title="閉じる"><span data-stock-icon="x"></span></button></header>
     <fieldset class="stock-link-options"><legend>登録済みの出品</legend><div id="stockLinkOptions"></div></fieldset>
-    <div class="stock-link-routes"><a id="stockLinkNew"><span data-stock-icon="link"></span>出品URLを登録する<span data-stock-icon="arrow"></span></a><a id="stockLinkDraft"><span data-stock-icon="draft"></span>未出品：下書きを作る<span data-stock-icon="arrow"></span></a></div>
+    <div class="stock-link-routes"><a id="stockLinkNew" target="_blank" rel="noopener noreferrer"><span data-stock-icon="link"></span>出品URLを登録する<span data-stock-icon="arrow"></span></a><a id="stockLinkDraft" target="_blank" rel="noopener noreferrer"><span data-stock-icon="draft"></span>未出品：下書きを作る<span data-stock-icon="arrow"></span></a></div>
     <p id="stockLinkError" class="stock-error" role="status"></p><footer><button class="secondary" type="button" data-close="stockLinkDialog">取消</button><button id="stockLinkSubmit" type="submit">選んだ出品との紐付けを確認</button></footer>
   </form></dialog>
   <dialog id="stockProductDialog" class="stock-dialog"><form id="stockProductForm"><header><h2 id="stockProductTitle">商品を登録</h2><button type="button" data-close="stockProductDialog" aria-label="閉じる" title="閉じる"><span data-stock-icon="x"></span></button></header>

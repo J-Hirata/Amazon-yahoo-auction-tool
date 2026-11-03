@@ -69,11 +69,11 @@ try{
  for(const width of [390,320]){await page.setViewportSize({width,height:900});assert.equal(await page.locator('#stockRows').evaluate(n=>getComputedStyle(n).gridTemplateColumns.split(' ').length),1);assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));}
  pass('stock mobile one-column layout and saved SKU reload');
  await page.setViewportSize({width:1440,height:1000});await page.goto(base+'/?view=planning');
- const plan=panel(row('#planningRows > tr','隔離テスト・販売計画のURL登録'));await plan.waitFor();
+ await row('#planningRows > tr','隔離テスト・販売計画のURL登録').locator('[data-plan-details]').click();const plan=page.locator('#planningDetails .product-access');await plan.waitFor();
  await plan.getByRole('button',{name:'SKU・在庫数を確認',exact:true}).click();
  await dialog.getByLabel('対応するAmazon SKU').fill('MANUAL-SKU');await dialog.getByLabel('FBA在庫の手入力').fill('0');
  await dialog.getByRole('button',{name:'確認内容を保存',exact:true}).click();await dialog.waitFor({state:'hidden'});
- await waitQuantity(plan,'amazon','0個');assert.equal(await quantity(plan,'amazon'),'0個');await page.reload();await plan.waitFor();assert.equal(await quantity(plan,'amazon'),'0個');
+ await waitQuantity(plan,'amazon','0個');assert.equal(await quantity(plan,'amazon'),'0個');await page.reload();await row('#planningRows > tr','隔離テスト・販売計画のURL登録').locator('[data-plan-details]').click();await plan.waitFor();assert.equal(await quantity(plan,'amazon'),'0個');
  await plan.getByRole('button',{name:'SKU・在庫数を確認',exact:true}).click();await dialog.getByLabel('FBA在庫の手入力').fill('');
  await dialog.getByRole('button',{name:'確認内容を保存',exact:true}).click();await dialog.waitFor({state:'hidden'});await waitQuantity(plan,'amazon','未確認');assert.equal(await quantity(plan,'amazon'),'未確認');
  const after=await state();assert.deepEqual(after['physical-stock'].state.balances,before['physical-stock'].state.balances);

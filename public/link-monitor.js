@@ -33,7 +33,9 @@ function productPreview(listing, product, link) {
   } catch { /* A missing image does not prevent linking. */ }
   if (!image) {image = amazonImage(product?.listingInfo?.offerImageUrls?.[0]); source = "自社Amazon写真";}
   if (!image) {image = amazonImage(product?.listingInfo?.catalogImageUrl); source = "Amazon共通画像";}
-  const title = listing?.title || (product?.title !== product?.asin ? product?.title : "") || link?.previousListingTitle || "商品名：未取得";
+  const reference=link?.id?access.info('link:'+link.id):null;
+  if(!image&&reference?.imageUrl){image=amazonImage(reference.imageUrl);source='登録済み商品画像';}
+  const title = listing?.title || (product?.title !== product?.asin ? product?.title : "") || link?.previousListingTitle || (reference?.title!==reference?.asin?reference?.title:'') || "商品名：未取得";
   return `<div class="linked-product">${image ? `<div class="product-photo"><img src="${escape(image)}" alt="" width="64" height="64" loading="lazy" referrerpolicy="no-referrer"><small>${source}</small></div>` : ""}<span>${escape(title)}</span></div>`;
 }
 const date = (value) => value ? new Date(value).toLocaleString("ja-JP", {timeZone: "Asia/Tokyo"}) : "不明";
@@ -491,3 +493,5 @@ await action(async () => {
   if (saved.fbaJob?.status === "running") await followFbaJob();
   scheduleMailPoll();
 });
+const registrationContext=new URLSearchParams(location.hash.slice(1));
+if(registrationContext.get('edit')==='1'&&/^[0-9a-f-]{36}$/i.test(registrationContext.get('stock')||''))await access.open('stock:'+registrationContext.get('stock'));
