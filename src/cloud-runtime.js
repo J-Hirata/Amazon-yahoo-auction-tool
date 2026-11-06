@@ -78,7 +78,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const mail = transport ? createCloudMail({store,transport}) : undefined;
   const monitoring=overview&&env.ASIN_AMAZON_CLIENT_ID?createProductMonitoring({overview,watchStore,config:cloudAmazonConfig(env),readListings:readOwnAmazonListings}):undefined;
   const productLinks=overview?createProductLinkEditor({transaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning}}),overview,refresh:monitoring?()=>monitoring.run({refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}}):undefined}):undefined;
-  const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring}) : undefined;
+  const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring,readInventory:overview?()=>overview.view():undefined}) : undefined;
   const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, overview, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     productLinks,verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
   return {config, handler, pool,sales,automation,overview,productLinks,runSalesAutomation:automation ? ()=>automation.run() : undefined};

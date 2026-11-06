@@ -1,3 +1,4 @@
+import {salesMailSummary} from "./sales-mail-summary.js";
 import {randomUUID,createHash} from "node:crypto";
 import {NOTIFICATION_ADDRESS} from "./notification-settings.js";
 
@@ -13,7 +14,7 @@ export function automationView(state,at=new Date().toISOString()) {
     enabledAt:settings.enabledAt || null,recipient:NOTIFICATION_ADDRESS,schedule:"1日1回・午前9時台（日本時間）",job:interrupted?{...job,status:"failed",error:"前回の定期確認が途中で止まりました。次回再開します"}:job};
 }
 
-export function createCloudSalesAutomation({store,sales,transport,monitoring,now=()=>new Date().toISOString()}) {
+export function createCloudSalesAutomation({store,sales,transport,monitoring,readInventory=async()=>({rows:[]}),now=()=>new Date().toISOString()}) {
   async function settings({expectedRevision,enabled,fbaSales,merchantSales,errorAlerts,stockAlerts,yahooAlerts,reviewAlerts}) {
     if([enabled,fbaSales,merchantSales,errorAlerts].some(v=>typeof v!=="boolean"))throw fail("通知の種類と自動確認を選択してください",400);
     await store.update(state=>{
@@ -69,6 +70,7 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,now
     return drain({testOnly:true});
   }
   async function queueSales() {
+    let inventory;try{inventory=await readInventory();}catch{inventory={rows:[]};}
     await store.update(state=>{
       const s=state.salesAutomation,t=state.salesTracking;
       if(!s?.enabled || !t)return;
@@ -82,12 +84,8 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,now
         events.push({...event,fulfillment});
       }
       if(!events.length)return;
-      const ids=events.map(e=>e.id).sort(),lines=events.map(e=>{
-        const target=t.trackers.find(v=>v.asin===e.asin&&v.sellerSku===e.sellerSku);
-        return `${target?.title || e.asin}\n${e.fulfillment==="MERCHANT"?"自社発送":e.fulfillment==="AMAZON"?"FBA":"発送方法は要確認"} ／ ${e.delta>0?"注文確定 +":"取消・訂正 "}${e.delta}個\nASIN: ${e.asin} ／ SKU: ${e.sellerSku}\nhttps://www.amazon.co.jp/dp/${e.asin}`;
-      });
-      enqueue(state,{key:`sales:${hash(ids.join(","))}`,subject:"【在庫管理ツール】Amazonの販売・訂正のお知らせ",eventIds:ids,targets:events.map(e=>({asin:e.asin,sellerSku:e.sellerSku})),
-        text:["登録商品のAmazon注文に変化がありました。",...lines,"確認済み期間の末尾："+t.checkedThrough,"並売を続けるか、追加納品するかは管理画面で確認してください。現物在庫・出品は自動変更していません。","https://amazon-yahoo-inventory.vercel.app/"].join("\n\n")});
+      const ids=events.map(e=>e.id).sort(),summary=salesMailSummary({state,events,inventory,at:now()});
+      enqueue(state,{key:`sales:${hash(ids.join(","))}`,subject:"【在庫管理ツール】Amazonの販売・訂正のお知らせ",eventIds:ids,targets:summary.targets,text:summary.text});
       for(const event of t.events)if(ids.includes(event.id))event.delivery="queued";
     });
   }
@@ -111,13 +109,14 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,now
       }
       const state=await store.read();
       if(Date.parse(state.salesTracking.checkedThrough)<Date.parse(now())-15*60000)throw fail("不足期間の補完中です。次回は保存済みの続きから再開します");
-      await queueSales();
+
     }catch(e){if(String(e.code || "").startsWith("STORAGE_"))throw e;error="販売確認を完了できません。販売ゼロとは扱いません。管理画面で取得状況を確認してください";}
     let monitoringResult;
     if(monitoring&&performance.now()-started<180000){
       try{monitoringResult=await monitoring.run({settings:(await store.read()).salesAutomation,enqueueAlerts:queueProductAlerts});}
       catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;monitoringResult={status:"failed",errors:["在庫・出品・期限の監視を完了できません。全商品一覧で確認してください"]};}
     }else if(monitoring)monitoringResult={status:"partial",errors:["実行時間のため在庫・出品監視は次回に再開します"]};
+    if(!error){try{await queueSales();}catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;error="販売メールの集計を完了できません。次回再開します";}}
     await store.update(state=>{
       if(state.salesAutomationJob?.jobId!==jobId)throw fail("定期実行の結果を確認してください");
       state.salesAutomationJob={...state.salesAutomationJob,status:error?"failed":monitoringResult&&monitoringResult.status!=="complete"?"partial":"complete",finishedAt:now(),error,monitoring:monitoringResult};
