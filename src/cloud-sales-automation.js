@@ -70,7 +70,7 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
     return drain({testOnly:true});
   }
   async function queueSales() {
-    let inventory;try{inventory=await readInventory();}catch{inventory={rows:[]};}
+    let inventory;try{inventory=await readInventory();}catch{inventory={rows:[],readFailed:true};}
     await store.update(state=>{
       const s=state.salesAutomation,t=state.salesTracking;
       if(!s?.enabled || !t)return;

@@ -59,5 +59,5 @@ test('daily run uses refreshed inventory and durable replay/retry keeps the orig
 });
 test('inventory read failure preserves sale notification with explicit missing counts',async()=>{
  const f=fixture(),sent=[];const store={read:async()=>structuredClone(f.state),update:async fn=>fn(f.state)};
- const engine=createCloudSalesAutomation({store,now:()=>at,readInventory:async()=>{throw new Error('private failure');},transport:{send:async m=>{sent.push(m);return{status:'smtp_accepted'};}}});await engine.queueSales();await engine.drain();assert.equal(sent.length,1);assert.match(sent[0].text,/取得値なし/);assert.doesNotMatch(sent[0].text,/private failure/);
+ const engine=createCloudSalesAutomation({store,now:()=>at,readInventory:async()=>{throw new Error('private failure');},transport:{send:async m=>{sent.push(m);return{status:'smtp_accepted'};}}});await engine.queueSales();await engine.drain();assert.equal(sent.length,1);assert.match(sent[0].text,/取得値なし/);assert.match(sent[0].text,/在庫情報の読取に失敗/);assert.doesNotMatch(sent[0].text,/private failure|関連付けなし/);
 });

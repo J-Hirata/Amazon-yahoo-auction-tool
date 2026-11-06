@@ -62,7 +62,7 @@ export function salesMailSummary({state,events,inventory={rows:[]},at=new Date()
   const title=(tracking.trackers||[]).find(t=>t.asin===g.asin&&t.sellerSku===g.sellerSku)?.title||g.asin;
   const lines=[title,`${shipping(g.fulfillment)} ／ 注文確定 ${g.positive}個${g.negative?` ／ 取消・訂正 ${g.negative}個 ／ 差引 ${g.positive-g.negative}個`:''}`];
   for(const [date,d] of [...g.dates].sort(([a],[b])=>a.localeCompare(b)))lines.push(`${date}：${d.positive?`注文日の確定販売 ${d.positive}個`:''}${d.positive&&d.negative?' ／ ':''}${d.negative?`取消・訂正 ${d.negative}個（更新日）`:''}`);
-  lines.push(`ASIN: ${g.asin} ／ SKU: ${g.sellerSku}`,`https://www.amazon.co.jp/dp/${g.asin}`,...quantities(g,state,inventory.rows||[],at));
+  lines.push(`ASIN: ${g.asin} ／ SKU: ${g.sellerSku}`,`https://www.amazon.co.jp/dp/${g.asin}`,...(inventory.readFailed?['FBA販売可能（このSKU）：取得値なし','自社・自宅：在庫情報の読取に失敗（台帳を確認）','コンテナ：在庫情報の読取に失敗（台帳を確認）']:quantities(g,state,inventory.rows||[],at)));
   return lines.join('\n');
  });
  return {targets:[...groups.values()].map(({asin,sellerSku})=>({asin,sellerSku})),text:['今回新たに確認したAmazonの販売・訂正を、商品・SKU・発送方法ごとに集計しています。注文日別の内訳は日本時間です。',...sections,`注文確認済み：${stamp(tracking.checkedThrough)}`,'FBA取得値は取得日時点の数量です。販売分をさらに差し引いていません。手入力の推定残数は基準後のAmazon確定販売だけを差し引き、取消による在庫復帰・納品・メルカリや楽天など他販路の販売は自動反映しません。自社・コンテナは台帳の登録値で、現物数量は書き換えていません。','数量の確認・修正：https://amazon-yahoo-inventory.vercel.app/?view=stock','全商品一覧：https://amazon-yahoo-inventory.vercel.app/?view=overview'].join('\n\n')};
