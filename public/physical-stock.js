@@ -96,7 +96,7 @@ export async function openStock({userId, readOnly}) {
     catalog.update($("#stockRows"),products.map((p,index)=>({node:$("#stockRows").children[index],id:p.id,title:p.title,imageUrl:p.photo?.url,imageLabel:p.photo?.label,
       badges:[conditions[p.condition],purposes[p.fbaEligibility],...(p.useChannels||[]).map(c=>c==='merchant'?'自社発送用':'ヤフオク併売用')],metrics:[],
       identity:p.sellerSku||"SKU未登録",memo:p.memo,renderAccess:host=>access.mountCompact(host,"stock:"+p.id,{asin:p.asin,title:p.title,unit:p.unit,listingIds:p.linked.map(l=>l.listingId)}),
-      status:'',
+      status:'',renderActions:host=>{const b=document.createElement('button');b.type='button';b.textContent='商品情報・販路を編集';b.disabled=readOnly||Boolean(pending);b.addEventListener('click',()=>openProduct(p));host.append(b);if(p.useChannels?.includes('yahoo')){const a=document.createElement('a');a.textContent='ヤフオク下書きへ';a.href='/?view=drafts#stock='+p.id;a.target='_blank';a.rel='noopener noreferrer';host.append(a);}},
       measure:p.totals.unknownLocations===0?p.totals.usable:null,registeredAt:p.createdAt})));
     controls();
   }
@@ -154,8 +154,9 @@ export async function openStock({userId, readOnly}) {
     editingProduct = product || null; productForm.reset(); dirty = false; preview = null;
     $("#stockProductError").textContent = ""; $("#stockProductTitle").textContent = product ? "商品情報・メモ" : "商品を登録";
     $("#stockInitialFields").hidden = Boolean(product);
-    $("#stockConcurrentFields").hidden=Boolean(product);productForm.querySelector(".stock-yahoo-url").hidden=true;
+    $("#stockConcurrentFields").hidden=false;productForm.querySelector(".stock-yahoo-url").hidden=true;
     registrationLinks=new Set(product?.linkedLinkIds||[]);
+    productForm.elements.alsoMerchant.checked=Boolean(product?.useChannels?.includes('merchant'));productForm.elements.alsoYahoo.checked=Boolean(product?.useChannels?.includes('yahoo')||product?.linkedLinkIds?.length);productForm.elements.alsoPlanning.checked=Boolean(product&&access.info('stock:'+product.id).live?.workspace?.plans?.some(p=>p.status!=='closed'));productForm.querySelector('.stock-yahoo-url').hidden=!productForm.elements.alsoYahoo.checked;const listingId=product?.linkedLinkIds?.length&&view.linkOptions.find(l=>l.id===product.linkedLinkIds[0])?.listingId;if(listingId)productForm.elements.concurrentYahooUrl.value='https://auctions.yahoo.co.jp/jp/auction/'+listingId;
     for (const field of ["title", "unit", "condition", "setContents", "asin", "sellerSku", "memo", "catalogTask", "fbaEligibility", "reviewDate", "imageUrl"]) {
       if (product) productForm.elements[field].value = product[field] || "";
       productForm.elements[field].disabled = Boolean(product && ["unit", "condition", "setContents"].includes(field));
@@ -225,7 +226,7 @@ export async function openStock({userId, readOnly}) {
     p.linkedLinkIds = [...registrationLinks];
     const registration={merchant:productForm.elements.alsoMerchant.checked,yahoo:productForm.elements.alsoYahoo.checked,planning:productForm.elements.alsoPlanning.checked,yahooUrl:productForm.elements.alsoYahoo.checked?productForm.elements.concurrentYahooUrl.value.trim():''};
     await showPreview({operationId: crypto.randomUUID(), kind: editingProduct ? "edit" : "create", productId: editingProduct?.id || crypto.randomUUID(), product: p,
-      ...(editingProduct ? {} : {...(registration.merchant||registration.yahoo||registration.planning?{registration}:{}),initialCounts: Object.fromEntries(["container", "home"].map((id) => {const value = productForm.elements[id + "Quantity"].value; return [id, value === "" ? null : Number(value)];}))})});
+      ...(registration.merchant||registration.yahoo||registration.planning?{registration}:{}),...(editingProduct ? {} : {initialCounts: Object.fromEntries(["container", "home"].map((id) => {const value = productForm.elements[id + "Quantity"].value; return [id, value === "" ? null : Number(value)];}))})});
   }, "#stockProductError");});
   memoForm.addEventListener('submit',event=>{event.preventDefault();work(async()=>{
     const memo=memoForm.elements.memo.value.trim();if(memo===(memoProduct.memo||''))throw new Error('メモは変更されていません。');

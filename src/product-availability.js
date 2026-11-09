@@ -1,3 +1,4 @@
+import {effectiveFba} from './fba-counter.js';
 // Display stock counts separately from orders, reservations and physical locations.
 export const current = (date, at) => {const age=Date.parse(at)-Date.parse(date);return Number.isFinite(age)&&age>=-60000&&age<=26*3600000;};
 export const count = v => Number.isSafeInteger(v)&&v>=0?v:null;
@@ -29,7 +30,8 @@ export function stockDisplay(row,monitor,at){
  const review=reviewFor(row,monitor),manual=count(review?.manualFbaQuantity),original=row.fba||{quantity:null,status:'unknown'};
  const merchantOnly=original.status==='not_fba'||row.channels?.fba?.state==='absent'&&['active','inactive'].includes(row.channels?.merchant?.state);
  const manualValid=manual!==null&&!merchantOnly&&(review.mode==='manual'||current(review.checkedAt,at));
- const fba=count(original.quantity)!==null?{...original,source:'amazon'}:manualValid?{...original,quantity:manual,status:'manual',autoStatus:original.status,source:'manual',stale:!current(review.checkedAt,at),checkedAt:review.checkedAt,sellerSku:review.sellerSku||row.sellerSku||''}:{...original,quantity:null,source:'unknown'};
+ const projected=effectiveFba(row,review,monitor,at);
+ const fba=projected|| (count(original.quantity)!==null&&(!review||Date.parse(original.checkedAt)>=Date.parse(review.checkedAt))?{...original,source:'amazon'}:manualValid?{...original,quantity:manual,status:'manual',autoStatus:original.status,source:'manual',stale:!current(review.checkedAt,at),checkedAt:review.checkedAt,sellerSku:review.sellerSku||row.sellerSku||''}:{...original,quantity:null,source:'unknown'});
  const yahoo=(row.yahoo||[]).map(y=>yahooAvailability(y,at));
  const known=yahoo.filter(y=>y.quantity!==null),required=known.reduce((n,y)=>n+y.quantity*(count(y.unitsPerListing)||1),0);
  return {fba,yahoo,yahooQuantity:yahoo.length&&known.length===yahoo.length?known.reduce((n,y)=>n+y.quantity,0):null,knownRequired:required,sku:row.sellerSku||fba.sellerSku||'',condition:conditionName(row.amazonCondition||fba.condition||row.condition),

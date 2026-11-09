@@ -1,5 +1,7 @@
+import {alertFba} from './fba-counter.js';
 const quantity=v=>Number.isSafeInteger(v)&&v>=0?v:null;
 export function replenishmentView(row,watch){
+  row={...row,fba:alertFba(row)};
   const rule=row.rule,configured=quantity(rule.baselineQuantity),stored=watch.replenishmentBaselines?.[rule.key];
   const matching=stored&&stored.asin===row.asin&&stored.sellerSku===row.fba.sellerSku&&stored.configuredQuantity===configured;
   const baseline=configured>0?Math.max(configured,matching?quantity(stored.quantity)||0:0):null;

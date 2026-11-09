@@ -62,7 +62,7 @@ test('manual fallback preserves zero, expires, and never overrides an actual Ama
  const monitor={inventoryReviews:[{key:'link:fixture',asin,sellerSku:'USED-GOOD',manualFbaQuantity:0,checkedAt:at}]};
  let a=stockDisplay(row({fba:{quantity:null,status:'unknown'}}),monitor,at);assert.equal(a.fba.quantity,0);assert.equal(a.fba.source,'manual');
  monitor.inventoryReviews[0].manualFbaQuantity=9;
- a=stockDisplay(row({fba:{quantity:0,status:'complete'}}),monitor,at);assert.equal(a.fba.quantity,0);assert.equal(a.fba.source,'amazon');
+ a=stockDisplay(row({fba:{quantity:0,status:'complete',checkedAt:at}}),monitor,at);assert.equal(a.fba.quantity,0);assert.equal(a.fba.source,'amazon');
  monitor.inventoryReviews[0].checkedAt='2026-10-01T00:00:00Z';assert.equal(stockDisplay(row({fba:{}}),monitor,at).fba.quantity,null);
 });
 

@@ -6,7 +6,7 @@ import {applyPlanningCommand} from './sales-planning.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 function registration(command){
   const value=command.registration;
-  if(command.kind!=='create'||!value||Array.isArray(value)||Object.keys(value).some(k=>!['merchant','yahoo','planning','yahooUrl'].includes(k))||['merchant','yahoo','planning'].some(k=>typeof value[k]!=='boolean')||typeof value.yahooUrl!=='string'||value.yahooUrl.length>2048||value.yahooUrl&&!value.yahoo)throw fail('同時登録する販路・監視を確認してください');
+  if(!['create','edit'].includes(command.kind)||!value||Array.isArray(value)||Object.keys(value).some(k=>!['merchant','yahoo','planning','yahooUrl'].includes(k))||['merchant','yahoo','planning'].some(k=>typeof value[k]!=='boolean')||typeof value.yahooUrl!=='string'||value.yahooUrl.length>2048||value.yahooUrl&&!value.yahoo)throw fail('同時登録する販路・監視を確認してください');
   if(value.yahoo&&!command.product?.asin)throw fail('ヤフオクの同時登録にはASINを入力してください');
   return value;
 }
@@ -21,7 +21,7 @@ export async function applyStockRegistration(docs,command,{actor,at,expectedRevi
   if(old){if(old.actor!==actor||old.digest!==stockCommandDigest(command))throw fail('操作IDと内容が一致しません',409);return {...old,replayed:true};}
   if(expectedRevision!==docs['physical-stock'].revision||registrationDocuments(command).some(k=>k!=='physical-stock'&&sourceRevisions?.[k]!==docs[k].revision))throw fail('登録先が更新されました。入力を残して最新の内容で確認し直してください',409);
   const receipt=applyStockCommand(state,structuredClone(command),{actor,at}),p=state.products.find(x=>x.id===receipt.productId),summary=[];
-  p.useChannels=[...(r.merchant?['merchant']:[]),...(r.yahoo?['yahoo']:[])];
+  p.useChannels=[...new Set([...(p.useChannels||[]),...(r.merchant?['merchant']:[]),...(r.yahoo?['yahoo']:[])])];
   if(r.merchant)summary.push('Amazon自社発送の管理対象に追加（出品状態は別途確認）');
   if(r.yahoo&&r.yahooUrl){
     const link=registerPageLink(docs['link-monitor'].state,{amazon:p.asin,yahoo:r.yahooUrl,submitted:true},at);

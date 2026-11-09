@@ -1,3 +1,4 @@
+import {alertFba} from './fba-counter.js';
 // Explicitly selected quantities only. Projections and offered stock are not physical stock.
 export const RISK_SOURCES={fba:'FBA販売可能数',merchant:'Amazon自社発送の出品数量',home:'現物台帳：自社・自宅',container:'現物台帳：コンテナ'};
 const count=n=>Number.isSafeInteger(n)&&n>=0;
@@ -10,7 +11,7 @@ export function riskSettings(value){
 export function riskQuantity(row,source,at){
   const result={source,label:RISK_SOURCES[source]||'対象数量未設定',quantity:null,unit:'個',sku:'',checkedAt:null,status:'unknown',basis:''};
   if(source==='fba'){
-    const f=row.fba||{};Object.assign(result,{sku:f.sellerSku||row.sellerSku||'',checkedAt:f.checkedAt||null,basis:'Amazon取得値。予約・処理中と手入力の推定は含めません'});
+    const f=alertFba(row)||{};Object.assign(result,{sku:f.sellerSku||f.sellerSkus?.join(' / ')||row.sellerSku||'',checkedAt:f.checkedAt||null,basis:f.source==='estimate'?`販売連動の推定残数：手入力${f.counter.baseline} − 基準後の確定販売${f.counter.sales}。他販路・納品・取消復帰は未反映`:'Amazon取得値。販売分を再度引きません'});
     if(f.status==='complete'&&result.sku&&count(f.quantity)&&fresh(f.checkedAt,at))Object.assign(result,{status:'known',quantity:f.quantity});
   }else if(source==='merchant'){
     const c=row.channels?.merchant||{};Object.assign(result,{sku:c.skus?.length===1?c.skus[0]:'',checkedAt:c.checkedAt||null,basis:'Amazon上の出品数量です。現物残数ではありません'});

@@ -1,3 +1,5 @@
+import {incomingFor} from './fba-incoming.js';
+import {alertFba} from './fba-counter.js';
 import {riskSettings,stockRisk,riskQuantity} from "./stock-risk.js";
 import {collectProductAlerts} from "./product-alerts.js";
 import {createHash} from "node:crypto";
@@ -100,7 +102,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     if(row.linkConflicts.length)row.referenceIssue=true;
     row.rules=watch.rules.filter(r=>row.sourceKeys.includes(r.key));row.rule=row.rules.find(r=>r.key===row.key)||row.rules[0]||{key:row.key,tags:[],replenishEnabled:false,threshold:10,minimumSales7:0,coverageDays:0,reviewDays:10,startedOn:"",note:""};
     row.tags=[...new Set(row.rules.flatMap(r=>r.tags))];
-    row.fba=inventoryFor(row,monitor,watch,at);row.sales=salesFor(row,monitor,at);
+    row.fba=inventoryFor(row,monitor,watch,at);row.incoming=incomingFor(row,monitor,at,watch);row.sales=salesFor(row,monitor,at);
     row.daysRemaining=row.fba.quantity!==null&&row.sales.fbaQuantity7>0?Math.round(row.fba.quantity/(row.sales.fbaQuantity7/7)*10)/10:null;
     row.localKnown=row.locations.some(l=>l.usable!==null);row.localAvailable=row.localKnown?row.locations.reduce((sum,l)=>sum+(l.usable||0),0):null;
     row.badges=[...(row.asin&&row.sources.some(s=>s!=="draft")?["amazon"]:[]),...(row.linkIds.length?["yahoo","parallel"]:[]),...(row.locations.some(l=>l.locationId==="container"&&l.usable>0)?["container"]:[]),...(row.locations.some(l=>l.locationId==="home"&&l.usable>0)?["home"]:[]),...row.tags,...(row.plans.length?["planning"]:[]),...(row.sources.includes("draft")?["draft"]:[])];
@@ -117,7 +119,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     if(row.channels.manualConflict)row.attention.push("手動の出品なし記録と出品中の取得情報が不一致");
     row.workspace=productWorkspace(row,{physical,monitor,watch,at});
   }
-  for(const row of attachAvailability(rows,monitor,at)){row.risk=stockRisk(row,at);row.riskOptions=Object.fromEntries(["fba","merchant","home","container"].map(s=>[s,riskQuantity(row,s,at)]));if(row.risk.low===true)row.attention.push(`残数警告：${row.risk.label} ${row.risk.quantity}${row.risk.unit}`);}
+  for(const row of attachAvailability(rows,monitor,at)){const effective=alertFba(row);row.daysRemaining=effective.quantity!==null&&row.sales.fbaQuantity7>0?Math.round(effective.quantity/(row.sales.fbaQuantity7/7)*10)/10:null;row.replenishmentInfo=replenishmentView(row,watch);row.replenishment=row.replenishmentInfo.due;if(row.workspace)row.workspace.replenishment=row.replenishmentInfo;if(row.replenishment&&!row.attention.includes('追加納品を検討'))row.attention.push('追加納品を検討');row.risk=stockRisk(row,at);row.riskOptions=Object.fromEntries(["fba","merchant","home","container"].map(s=>[s,riskQuantity(row,s,at)]));if(row.risk.low===true)row.attention.push(`残数警告：${row.risk.label} ${row.risk.quantity}${row.risk.unit}`);}
   return rows;
 }
 export function createProductOverview({monitorStore,stockStore,planningStore,draftStore,watchStore,now=()=>new Date().toISOString()}){

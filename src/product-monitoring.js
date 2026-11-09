@@ -1,3 +1,4 @@
+import {recordIncomingReflections} from './fba-incoming.js';
 import {randomUUID} from "node:crypto";
 import {readFbaInventory} from "./amazon-fba-reader.js";
 import {fetchYahooListing} from "./yahoo-observation.js";
@@ -51,6 +52,7 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
     const current=await overview.inputs();
     const pending=await watchStore.update(state=>{
       for(const record of current.monitor.mailOutbox||[])if(record.status==='cancelled'&&record.cancelledFor==='conditions_changed')for(const p of state.pendingAlerts||[])if(record.alertIds?.includes(p.id)&&p.queuedAt){delete p.queuedAt;if(record.cancelledAlertIds?.includes(p.id))p.dismissedAt=now();}
+      recordIncomingReflections(state,productOverview({...current,watch:state},now()));
       recordReplenishmentBaselines(state,productOverview({...current,watch:state},now()),now());
       const rows=productOverview({...current,watch:state},now()),pending=collectProductAlerts(state,rows,settings,now());
       if(errors.length&&settings.errorAlerts){

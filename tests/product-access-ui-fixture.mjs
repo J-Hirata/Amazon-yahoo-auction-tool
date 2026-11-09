@@ -58,6 +58,15 @@ if(process.env.REVIEW_PICKER_FIXTURE==='1'){
 if(process.env.DENSE_PLANNING_FIXTURE==='1')for(let i=1;i<30;i++){
  applyPlanningCommand(planningState,{operationId:randomUUID(),kind:'create',planId:randomUUID(),plan:{title:'隔離テスト・長い商品名でも写真と方針を見分けるモニター '+i,asin:'B000DENS'+String(i).padStart(2,'0'),condition:i%2?'used':'new',source:{kind:'manual',id:''},kind:'review',status:'active',durationDays:14,reviewOn:'2026-12-'+String(i).padStart(2,'0'),decisions:['advertising','yahoo'],note:'長い判断メモ。'.repeat(50),imageUrl:'https://m.media-amazon.com/images/I/fixture.jpg'}},{actor,at});
 }
+
+if(process.env.STOCK_COUNTER_FIXTURE==='1'){
+ const id=randomUUID(),asin='4056116334',sku='BOOK-NEW',base=new Date(Date.parse(at)-3*86400000).toISOString();
+ applyStockCommand(physical,{operationId:randomUUID(),kind:'create',productId:id,product:{title:'確認用・学研 スーパーのりものデラックス',asin,condition:'new',unit:'個',fbaEligibility:'possible',linkedLinkIds:[]},initialCounts:{container:150,home:null}},{actor,at});
+ monitor.inventoryReviews=[{key:'stock:'+id,asin,sellerSku:'',condition:'new',mode:'manual',manualFbaQuantity:97,checkedAt:base}];
+ monitor.salesTracking={trackers:[sku,'BOOK-OLD'].map(sellerSku=>({asin,sellerSku,sourceId:'stock:'+id,startedAt:base,fulfillment:['AMAZON']})),events:[{id:'book-sale',asin,sellerSku:sku,fulfillment:'AMAZON',delta:19,eligibleFromAt:at}],checkedThrough:at,sync:{status:'complete'}};
+ watch.rules.push({key:'stock:'+id,tags:[],lowStock:{source:'fba',threshold:20},replenishEnabled:false,threshold:10,minimumSales7:0,coverageDays:0,reviewDays:10,startedOn:'',note:''});
+}
+
 function store(key){return {read:async()=>structuredClone(docs[key].state),readSnapshot:async()=>structuredClone(docs[key]),update:async(fn,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==docs[key].revision)throw Object.assign(new Error('別の編集が保存されました'),{code:'STORAGE_CONFLICT'});const copy=structuredClone(docs[key].state),r=await fn(copy);docs[key]={state:copy,revision:docs[key].revision+1};return r;}};}
 const transaction={read:async()=>structuredClone(docs),update:async fn=>{const copy=structuredClone(docs),r=await fn(copy);for(const key of Object.keys(copy))if(JSON.stringify(copy[key].state)!==JSON.stringify(docs[key].state))copy[key].revision++;docs=copy;return r;}},watchStore={read:async()=>structuredClone(watch),readSnapshot:async()=>({state:structuredClone(watch),revision:watchRevision})},monitorStore=store('link-monitor'),stockStore=store('physical-stock'),planningStore=store('sales-planning'),draftStore=store('draft-items');
 watchStore.update=async(fn,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==watchRevision)throw Object.assign(new Error('Watch conflict'),{code:'STORAGE_CONFLICT'});const copy=structuredClone(watch),result=await fn(copy);Object.assign(watch,copy);watchRevision++;return result;};

@@ -24,11 +24,11 @@ test("overview merges only explicit references, preserves separate locations, an
   const f=fixture(),before=structuredClone(f),rows=productOverview(f,at);assert.equal(rows.length,1);const r=rows[0];assert.deepEqual(r.sources,["stock","link","plan"]);assert.equal(r.localAvailable,50);assert.equal(r.fba.quantity,10);assert.equal(r.sales.quantity7,7);assert.equal(r.daysRemaining,10);assert.equal(r.replenishment,true);assert.ok(r.badges.includes("container"));assert.deepEqual(f,before);
 });
 
-test('a manual FBA number is displayed without manufacturing a successful inventory read or automatic zero notification',()=>{
+test('a tracked baseline is projected and alerts explicitly say estimated without manufacturing an Amazon read',()=>{
  const f=fixture();f.planning.plans=[];f.watch.observations.fba.status='failed';f.watch.observations.fba.complete=false;
  f.monitor.inventoryReviews=[{key:'stock:'+stockId,asin,sellerSku:sku,condition:'used',mode:'manual',manualFbaQuantity:0,checkedAt:at}];
- const rows=productOverview(f,at);assert.equal(rows[0].availability.fba.quantity,0);assert.equal(rows[0].availability.fba.source,'manual');assert.equal(rows[0].fba.quantity,null);assert.equal(rows[0].fba.status,'unknown');
- assert.deepEqual(collectProductAlerts(f.watch,rows,{...settings,reviewAlerts:false},at),[]);
+ const rows=productOverview(f,at);assert.equal(rows[0].availability.fba.quantity,0);assert.equal(rows[0].availability.fba.source,'estimate');assert.equal(rows[0].fba.quantity,null);assert.equal(rows[0].fba.status,'unknown');
+ const alerts=collectProductAlerts(f.watch,rows,{...settings,reviewAlerts:false},at);assert.equal(alerts.length,2);assert.ok(alerts.every(a=>/推定残数/.test(a.message)));
 });
 test("same ASIN is not enough to merge unlinked stock, manual plans, drafts or different conditions",()=>{
   const f=fixture();f.planning.plans.push({...f.planning.plans[0],id:randomUUID(),source:{kind:"manual",id:""},condition:"new"});f.drafts=[{asin,title:"下書き"}];f.physical.products.push({...f.physical.products[0],id:randomUUID(),condition:"new",linkedLinkIds:[]});assert.equal(productOverview(f,at).length,4);

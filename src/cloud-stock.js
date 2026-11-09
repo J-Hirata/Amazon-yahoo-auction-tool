@@ -68,7 +68,7 @@ export function createCloudStock({store, monitorStore, draftStore, watchStore, r
     if(command.registration){
       if(!registrationTransaction)throw fail('同時登録を利用できません。入力を残して画面を更新してください',503);
       const docs=await registrationTransaction.read(),sourceRevisions=Object.fromEntries(registrationDocuments(command).filter(k=>k!=='physical-stock').map(k=>[k,docs[k].revision]));
-      checkLinks(command,docs['link-monitor'].state,undefined,linksFor(docs['link-monitor'].state,now(),watchStore?await watchStore.read():undefined));
+      checkLinks(command,docs['link-monitor'].state,docs['physical-stock'].state.products.find(p=>p.id===command.productId),linksFor(docs['link-monitor'].state,now(),watchStore?await watchStore.read():undefined));
       const receipt=await applyStockRegistration(docs,command,{actor,at:now(),expectedRevision,sourceRevisions}),state=docs['physical-stock'].state,product=state.products.find(p=>p.id===receipt.productId);
       return {revision:expectedRevision,sourceRevisions,receipt,product,event:state.events.find(e=>e.operationId===receipt.id),duplicates:state.products.filter(p=>p.id!==product.id&&(product.asin&&p.asin===product.asin||p.title.toLowerCase()===product.title.toLowerCase())).map(p=>({managementId:p.managementId,title:p.title})).slice(0,5)};
     }
@@ -87,7 +87,7 @@ export function createCloudStock({store, monitorStore, draftStore, watchStore, r
       if(!registrationTransaction)throw fail('同時登録を利用できません。入力を残して画面を更新してください',503);
       const watch=watchStore?await watchStore.read():undefined;
       const receipt=await registrationTransaction.update(async docs=>{
-        if(!docs['physical-stock'].state.receipts.some(r=>r.id===command.operationId))checkLinks(command,docs['link-monitor'].state,undefined,linksFor(docs['link-monitor'].state,now(),watch));
+        if(!docs['physical-stock'].state.receipts.some(r=>r.id===command.operationId))checkLinks(command,docs['link-monitor'].state,docs['physical-stock'].state.products.find(p=>p.id===command.productId),linksFor(docs['link-monitor'].state,now(),watch));
         return applyStockRegistration(docs,command,{actor,at:now(),expectedRevision,sourceRevisions});
       });
       return {receipt,result:await view()};

@@ -1,4 +1,5 @@
-// Mail-only projections. Never write calculated quantities back to inventory.
+import {manualFbaCounter} from './fba-counter.js';
+// Shared counter used by screen, alerts and mail. Never write calculated quantities back to inventory.
 const validTime=v=>Number.isFinite(Date.parse(v));
 const number=v=>Number.isSafeInteger(v)&&v>=0?v:null;
 const stamp=v=>validTime(v)?new Date(v).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo',hour12:false}):'日時不明';
@@ -30,10 +31,7 @@ function quantities(group,state,rows,at){
  }));
  // API observations are already net of reservations/sales. A manual baseline is a separate projection.
  if(manual){
-  const skus=new Set(manual.sku?[manual.sku]:manual.scopes.map(t=>t.sellerSku));
-  const tracking=state.salesTracking;
-  const covered=skus.size&&tracking?.sync?.status==='complete'&&validTime(tracking.checkedThrough)&&Date.parse(tracking.checkedThrough)>=Date.parse(manual.checkedAt)&&Date.parse(manual.checkedAt)<=Date.parse(at)&&[...skus].every(s=>manual.scopes.some(t=>t.sellerSku===s&&validTime(t.startedAt)&&Date.parse(t.startedAt)<=Date.parse(manual.checkedAt)));
-  const sales=uniqueEvents(tracking?.events||[]).filter(e=>e.asin===group.asin&&skus.has(e.sellerSku)&&e.fulfillment==='AMAZON'&&e.delta>0&&Date.parse(e.eligibleFromAt)>Date.parse(manual.checkedAt)&&Date.parse(e.eligibleFromAt)<=Date.parse(tracking?.checkedThrough)).reduce((n,e)=>n+e.delta,0);
+  const counter=manualFbaCounter(manual.row,manual.row.availability.review,state,at),covered=counter&&['estimated','stale','negative'].includes(counter.status),sales=counter?.sales||0;
   const scope=manual.sku?'このSKU':'商品全体・SKU未指定';
   lines.push(covered?`FBA推定残数（${scope}）：${manual.quantity-sales}個${manual.quantity-sales<0?'（基準数を要確認）':''} ／ 手入力${manual.quantity}個 − 基準後のAmazon確定販売${sales}個`:`FBA推定残数（${scope}）：計算保留（販売追跡期間・対象SKUを確認）`);
   lines[lines.length-1]+=`（手入力基準：${stamp(manual.checkedAt)}）`;

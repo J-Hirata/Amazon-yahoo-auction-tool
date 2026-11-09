@@ -57,3 +57,9 @@ test('legacy product edits retain selected uses and do not change counts or moni
  applyStockCommand(stock,{operationId:randomUUID(),kind:'edit',productId:p.id,product:{...legacy,memo:'更新'}},{actor,at});
  assert.deepEqual(p.useChannels,useChannels);assert.deepEqual(stock.balances,before);
 });
+
+ test('existing inventory can add draft and monitoring in one edit without changing any physical counts; repeated edits do not duplicate',async()=>{
+ const f=fixture(),c=command({merchant:true,yahoo:false,planning:false,yahooUrl:''});await save(f,c);const before=f.read()['physical-stock'].state.balances,product=f.read()['physical-stock'].state.products[0];
+ for(let i=0;i<2;i++){const edit={operationId:randomUUID(),kind:'edit',productId:product.id,product:{...product,memo:'メモを保持'},registration:{merchant:false,yahoo:true,planning:true,yahooUrl:''}};const revision=f.read()['physical-stock'].revision,p=await f.stock.preview(edit,{expectedRevision:revision,actor});await f.stock.commit(edit,{expectedRevision:revision,sourceRevisions:p.sourceRevisions,actor,confirmed:true});}
+ const after=f.read();assert.deepEqual(after['physical-stock'].state.balances,before);assert.equal(after['draft-items'].state.length,1);assert.equal(after['sales-planning'].state.plans.length,1);assert.deepEqual(after['physical-stock'].state.products[0].useChannels,['merchant','yahoo']);
+ });

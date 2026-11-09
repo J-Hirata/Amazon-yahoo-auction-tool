@@ -1,3 +1,4 @@
+import {alertFba} from './fba-counter.js';
 import {randomUUID} from "node:crypto";
 import {planningToday} from "./sales-planning.js";
 import {stockRisk,quantityEvidence} from "./stock-risk.js";
@@ -16,7 +17,8 @@ export function collectProductAlerts(state,rows,settings,at){
     else if(!value){signals[key]={active:false,known:true,at};for(const p of pending)if(p.key===key&&!p.queuedAt)p.dismissedAt=at;}
   }
   const fbaKeys=new Set(),yahooKeys=new Set(),planKeys=new Set(),riskKeys=new Set();
-  for(const row of rows){
+  for(const original of rows){
+    const row={...original,fba:alertFba(original)};
     if(!row.sources.every(s=>s==="draft")){
       const risk=stockRisk(row,at),riskKey=`low-stock:${row.rule.key||row.key}:${risk.signature}`;
       if(risk.configured&&!riskKeys.has(riskKey)){
@@ -29,10 +31,10 @@ export function collectProductAlerts(state,rows,settings,at){
       if(!fbaKeys.has(fbaKey)){
         fbaKeys.add(fbaKey);
         const local=row.localAvailable===null?"手元在庫：未確認":`手元の使用可能在庫：${row.localAvailable}個`;
-        observe(`fba-zero:${fbaKey}`,risk.configured&&risk.source==="fba"?false:row.fba.status==="complete"?row.fba.quantity===0:null,"stockAlerts",row,`FBAの販売可能数が0個です。${local}。自己発送の在庫とは別です。併売の継続・補充を確認してください。`);
+        observe(`fba-zero:${fbaKey}`,risk.configured&&risk.source==="fba"?false:row.fba.status==="complete"?row.fba.quantity===0:null,"stockAlerts",row,`FBAの${row.fba.source==='estimate'?'推定残数':'販売可能数'}が0個です。${local}。自己発送の在庫とは別です。併売の継続・補充を確認してください。`);
       }
       observe(`replenish:${row.key}`,row.rule.replenishEnabled&&row.fba.status==="complete"&&row.localAvailable!==null&&(row.rule.minimumSales7===0||row.sales.fbaQuantity7!==null)?row.replenishment:row.rule.replenishEnabled?null:false,"stockAlerts",row,
-        `追加納品を検討してください。FBA販売可能${row.fba.quantity}個、手元使用可能${row.localAvailable}個。${row.replenishmentInfo?.byRatio?`基準${row.replenishmentInfo.baseline}個の${row.replenishmentInfo.percent}%以下です。`:''}${(row.locations||[]).map(l=>`${l.locationId==='container'?'コンテナ':'会社・自宅'}：${l.usable===null?'未確認':l.usable+'個'}`).join(' ／ ')}。FBAの直近7日販売${row.sales.fbaQuantity7??"未確認"}個、残り${row.daysRemaining??"未確認"}日分。納品中：${(row.transfers||[]).filter(t=>t.to==="fba").reduce((n,t)=>n+t.remaining,0)}個（台帳記録）。納品手配前に実数と受領状況を確認してください。`);
+        `追加納品を検討してください。FBA${row.fba.source==='estimate'?'推定残数':'販売可能'}${row.fba.quantity}個、手元使用可能${row.localAvailable}個。${row.replenishmentInfo?.byRatio?`基準${row.replenishmentInfo.baseline}個の${row.replenishmentInfo.percent}%以下です。`:''}${(row.locations||[]).map(l=>`${l.locationId==='container'?'コンテナ':'会社・自宅'}：${l.usable===null?'未確認':l.usable+'個'}`).join(' ／ ')}。FBAの直近7日販売${row.sales.fbaQuantity7??"未確認"}個、残り${row.daysRemaining??"未確認"}日分。納品中：${(row.transfers||[]).filter(t=>t.to==="fba").reduce((n,t)=>n+t.remaining,0)}個（台帳記録）。納品予定：${(row.incoming||[]).filter(p=>p.remaining>0).map(p=>p.remaining+'個'+(p.expectedOn?'・'+p.expectedOn+'到着予定':'')).join(' ／ ')||'登録なし'}。納品手配前に実数と受領状況を確認してください。`);
     }
     for(const y of row.yahoo||[])if(!yahooKeys.has(y.listingId)){
       yahooKeys.add(y.listingId);const age=Date.parse(at)-Date.parse(y.checkedAt),fresh=Number.isFinite(age)&&age>=-60000&&age<=26*3600000;

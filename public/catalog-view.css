@@ -65,3 +65,6 @@
 .compact-inventory button.compact-stock-count{display:block!important;min-width:0!important;width:auto!important;background:#f7faf8!important;color:#355f49!important;border:0!important;border-left:1px solid #dce5df!important;min-height:0!important;padding:3px!important;border-radius:0!important;text-align:center!important;font:inherit!important}.compact-inventory button.compact-stock-count:hover{background:#e8f4ec!important}.compact-inventory button.compact-stock-count dt{text-decoration:underline;text-underline-offset:2px}
 
 .compact-inventory button.compact-stock-count dd{font:600 11px/18px system-ui!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.catalog-grid[data-tile-size=small] button.compact-stock-count dd{font-size:9px!important}
+
+/* Counts and shipment plans must remain visible at every density. */
+.catalog-grid[data-tile-size]>.catalog-with-access:not(.catalog-expanded) .catalog-summary{height:auto;min-height:350px}.catalog-grid[data-tile-size=small]>.catalog-with-access:not(.catalog-expanded) .catalog-summary{height:auto;min-height:290px}.catalog-grid[data-tile-size=large]>.catalog-with-access:not(.catalog-expanded) .catalog-summary{height:auto;min-height:440px}.catalog-grid[data-tile-size] .catalog-access{flex:none;overflow:visible}.catalog-card-actions{flex:none;display:flex;flex-wrap:wrap;gap:4px}

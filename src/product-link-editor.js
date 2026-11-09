@@ -1,3 +1,4 @@
+import {saveIncoming} from './fba-incoming.js';
 import {createHash} from "node:crypto";
 import {asinFromInput,registerPageLink,observeListing} from "./link-monitor.js";
 import {yahooListingUrl} from "./yahoo-observation.js";
@@ -54,6 +55,11 @@ export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOStri
  if(receipts.length>=10000)throw fail("URL変更履歴の保存上限です",409);
  const s=source(docs,command.key),primary=s.kind==="plan"?'sales-planning':s.kind==="stock"?'physical-stock':'link-monitor';
  if(expectedRevision!==docs['link-monitor'].revision||![primary,...(s.stock?['physical-stock']:[])].every(k=>sourceRevisions?.[k]===docs[k].revision))throw fail("ほかの編集・自動確認が保存されました。URL入力を残したまま最新の内容を読み直してください",409);
+ if(['incoming','incoming-close'].includes(command.kind)){
+  const row=productOverview({monitor:m,physical:docs['physical-stock'].state,planning:docs['sales-planning'].state,watch:watch||emptyProductWatch(),drafts:[]},at).find(r=>r.sourceKeys.includes(command.key));
+  if(!row?.asin)throw fail('Amazon商品を登録してから納品予定を入力してください');
+  const incomingId=saveIncoming(m,row,command,{at,actor});const receipt={id:command.operationId,digest,actor,at,key:command.key,kind:command.kind,incomingId};receipts.push(receipt);m.productLinkReceipts=receipts;return receipt;
+ }
  if(command.kind==='register-review'){
   if(!command.review)throw fail('販売見直しの追加内容を確認してください');
   const review=addReview(docs,command.key,command,{actor,at,sourceRevisions,watch});
@@ -128,5 +134,5 @@ export function applyProductLinkEdit(docs,command,{actor,at=new Date().toISOStri
  const receipt={id:command.operationId,digest,actor,at,key:command.key,linkId,...(review?{review}:{})};receipts.push(receipt);m.productLinkReceipts=receipts;m.logs.push({at,kind:"product_url_saved",actor,key:command.key});return receipt;
 }
 export function createProductLinkEditor({transaction,overview,refresh}){
- return {async list(){const [docs,view]=await Promise.all([transaction.read(),overview.view()]);const entries={};for(const row of view.rows)for(const key of row.sourceKeys)if(/^(link|stock|plan):/.test(key)){try{const s=source(docs,key);entries[key]={...productLinkInfo(docs,key),title:s.kind==='link'&&s.title===s.asin?row.title:s.title,imageUrl:row.imageUrl||'',condition:s.kind==='link'?row.amazonCondition||row.fba.condition||row.condition:s.item.condition,setContents:s.item.setContents||docs['link-monitor'].state.catalog.find(c=>c.id===s.item.catalogId)?.setContents||'',memo:s.stock?.memo||s.item.userMemo||s.item.note||'',resolvedSku:row.availability.sku||'',live:{fba:row.fba,channels:row.channels,yahoo:row.yahoo||[],availability:row.availability,skuOptions:row.skuOptions||[],workspace:row.workspace}};}catch{}}return {entries};},async save(command,options){const watch=command?.kind==='associate-existing'||command?.review?(await overview.inputs()).watch:undefined;return transaction.update(docs=>applyProductLinkEdit(docs,command,{...options,watch}));},refresh};
+ return {async list(){const [docs,view]=await Promise.all([transaction.read(),overview.view()]);const entries={};for(const row of view.rows)for(const key of row.sourceKeys)if(/^(link|stock|plan):/.test(key)){try{const s=source(docs,key);entries[key]={...productLinkInfo(docs,key),title:s.kind==='link'&&s.title===s.asin?row.title:s.title,imageUrl:row.imageUrl||'',condition:s.kind==='link'?row.amazonCondition||row.fba.condition||row.condition:s.item.condition,setContents:s.item.setContents||docs['link-monitor'].state.catalog.find(c=>c.id===s.item.catalogId)?.setContents||'',memo:s.stock?.memo||s.item.userMemo||s.item.note||'',resolvedSku:row.availability.sku||'',live:{fba:row.fba,incoming:row.incoming,channels:row.channels,yahoo:row.yahoo||[],availability:row.availability,skuOptions:row.skuOptions||[],workspace:row.workspace}};}catch{}}return {entries};},async save(command,options){const watch=['associate-existing','incoming','incoming-close'].includes(command?.kind)||command?.review?(await overview.inputs()).watch:undefined;return transaction.update(docs=>applyProductLinkEdit(docs,command,{...options,watch}));},refresh};
 }
