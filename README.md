@@ -1,6 +1,6 @@
 ﻿# 販売コックピット
 
-2026-11-10：ヤフオク下書きの写真カード・状態別一覧・作業順保存・写真/商品名補完を公開準備中。現在地は[docs/status.md](docs/status.md)、操作と制限は[docs/draft-workbench.md](docs/draft-workbench.md)を参照。
+2026-11-10：ヤフオク下書きの写真カード・状態別一覧・作業順保存・写真/商品名補完を本番反映済み（4287d80 / dpl_FTw6RcN38B8aSav6Wdto7TAsrvxG・READY）。現在地は[docs/status.md](docs/status.md)、操作と制限は[docs/draft-workbench.md](docs/draft-workbench.md)を参照。
 
 2026-11-10：再出品の自動引継ぎと、全商品一覧の小型タイル・複数チェック絞り込みを追加し、本番反映済み（026333d / dpl_27hze4ng7ugNV4UwqTexyMbpLKWH・READY）。再出品は出品通知と旧/新ページを照合し、一致が一意のときだけ既存の紐付けを引き継ぐ。詳細な検証・公開結果は[docs/status.md](docs/status.md)冒頭。
 
