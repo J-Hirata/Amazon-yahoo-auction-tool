@@ -31,3 +31,11 @@
 .planning-filters .planning-modes{margin:0;flex:none}.planning-shell .planning-filters .planning-modes button{width:40px;height:42px;padding:8px}.planning-table.planning-tiles .product-membership a{font-size:10px}
 
 .planning-table.planning-tiles tbody[data-tile-size]{grid-template-columns:repeat(var(--tile-columns,5),minmax(0,1fr))}.planning-table.planning-tiles tbody[data-tile-size=small] tr:not(:has(.planning-empty)){grid-template-rows:120px 56px 36px 76px;padding:8px;gap:4px}.planning-table.planning-tiles tbody[data-tile-size=small] .planning-photo{height:40px}.planning-table.planning-tiles tbody[data-tile-size=small] .planning-product strong{font-size:11px;line-height:16px;height:32px}.planning-table.planning-tiles tbody[data-tile-size=large] tr:not(:has(.planning-empty)){grid-template-rows:195px 72px 40px 100px}.planning-table.planning-tiles tbody[data-tile-size=large] .planning-photo{height:110px}.planning-table.planning-tiles tbody[data-tile-size=large] .planning-next{max-height:54px}
+
+.planning-table.planning-tiles tbody[data-tile-size] tr:not(:has(.planning-empty)){grid-template-rows:auto auto auto minmax(90px,1fr);align-content:start;min-height:330px}
+.planning-table.planning-tiles .planning-product,.planning-table.planning-tiles .planning-memberships{height:auto;min-height:0}
+.planning-table.planning-tiles .planning-meta{line-height:1.5;overflow-wrap:anywhere}
+.planning-table.planning-tiles .planning-row-actions{flex-wrap:wrap;gap:5px;padding-top:6px}
+.planning-table.planning-tiles .planning-row-actions button{max-width:100%;white-space:normal;height:auto;min-height:28px}
+.planning-table.planning-tiles .planning-row-actions [data-plan-details]{font-size:10px}
+.planning-table.planning-tiles td:nth-child(2),.planning-table.planning-tiles td:nth-child(3){padding-block:4px!important}

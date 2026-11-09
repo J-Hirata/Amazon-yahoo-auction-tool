@@ -28,6 +28,7 @@ function fields(input,at){
   if(result.availableOn&&result.availableOn>planningToday(at))throw fail("実際に販売可能だった日を入力してください。未来日では開始しません");
   if(result.adStartedOn&&(!result.availableOn||result.adStartedOn<result.availableOn||result.adStartedOn>planningToday(at)))throw fail("広告開始日は販売可能日以降の実際の日付を入力してください");
   result.actions=normalizeActions(input.actions,decisions);
+  if(input.workspaceStockId!==undefined){if(!uuid(input.workspaceStockId))throw fail("関連する実在庫のIDを確認してください");result.workspaceStockId=input.workspaceStockId;}
   result.linkedLinkIds=input.linkedLinkIds||[];
   if(!Array.isArray(result.linkedLinkIds)||result.linkedLinkIds.length>10||new Set(result.linkedLinkIds).size!==result.linkedLinkIds.length||result.linkedLinkIds.some(id=>!uuid(id)))throw fail("登録する出品の関連付けを確認してください");
   return result;
@@ -66,7 +67,7 @@ export function applyPlanningCommand(state,command,{actor,at=new Date().toISOStr
   }
   if(existing?.decisions?.length>1&&command.plan?.decisions===undefined)throw fail("複数の方針が保存されています。画面を更新してから編集してください",409);
   if(existing?.actions?.length&&command.plan?.actions===undefined)throw fail("期間付きアクションが保存されています。画面を更新してから編集してください",409);
-  const values=fields({...command.plan,linkedLinkIds:command.plan?.linkedLinkIds===undefined?existing?.linkedLinkIds||[]:command.plan.linkedLinkIds,imageUrl:command.plan?.imageUrl===undefined?existing?.imageUrl||"":command.plan.imageUrl},at);
+  const values=fields({...command.plan,...(existing?.workspaceStockId?{workspaceStockId:existing.workspaceStockId}:{}),linkedLinkIds:command.plan?.linkedLinkIds===undefined?existing?.linkedLinkIds||[]:command.plan.linkedLinkIds,imageUrl:command.plan?.imageUrl===undefined?existing?.imageUrl||"":command.plan.imageUrl},at);
   for(const a of values.actions){const previous=existing?.actions?.find(p=>p.id===a.id);if(previous&&previous.decision!==a.decision)throw fail("別の方針は別のアクションとして登録してください",409);}
   if(kind==="create"&&existing||kind==="edit"&&!existing)throw fail("販売計画が更新されています。一覧を確認してください",409);
   const identityChanged=existing&&["asin","sellerSku","condition","setContents"].some(k=>existing[k]!==values[k]);

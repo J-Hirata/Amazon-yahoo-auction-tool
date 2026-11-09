@@ -79,7 +79,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     const sku=linkSku(link);
     const linkCondition=conditionFamily(resolvedLinkCondition(link,monitor,watch,at));
     const candidates=physical.products.filter(s=>(s.linkedLinkIds.includes(link.id)||sku&&s.sellerSku===sku&&monitor.links.some(l=>s.linkedLinkIds.includes(l.id)&&l.verified&&!l.observationConflict&&(l.asin||monitor.catalog.find(p=>p.id===l.catalogId)?.asin)===asin&&linkSku(l)===sku))&&s.asin===asin&&(!s.sellerSku||!sku||s.sellerSku===sku)&&(s.sellerSku||new Set(monitor.links.filter(l=>s.linkedLinkIds.includes(l.id)).map(linkSku).filter(Boolean)).size<=1)&&(linkCondition==='unknown'||s.condition==='unknown'||s.condition===linkCondition));
-    const row=candidates.length===1?byKey.get(`stock:${candidates[0].id}`):add(`link:${link.id}`,{asin,title:listing?.title||link.previousListingTitle||p?.title||asin,sellerSku:sku,condition:link.matchBy==="asin"?"unknown":family(p?.condition),imageUrl:listing?.imageUrl||p?.listingInfo?.catalogImageUrl||""});
+    const row=candidates.length===1?byKey.get(`stock:${candidates[0].id}`):add(`link:${link.id}`,{asin,title:link.workspaceProduct?.title||listing?.title||link.previousListingTitle||p?.title||asin,setContents:link.workspaceProduct?.setContents||p?.setContents||'',sellerSku:sku,condition:link.workspaceProduct?.condition||(link.matchBy==="asin"?"unknown":family(p?.condition)),imageUrl:link.workspaceProduct?.imageUrl||listing?.imageUrl||p?.listingInfo?.catalogImageUrl||""});
     if(sku&&!row.sellerSku)row.sellerSku=sku;
     if(!row.sourceKeys.includes(`link:${link.id}`))row.sourceKeys.push(`link:${link.id}`);if(!row.sources.includes("link"))row.sources.push("link");row.linkIds.push(link.id);linkRows.set(link.id,row);
     if(!row.imageUrl)row.imageUrl=listing?.imageUrl||"";
@@ -87,7 +87,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
   }
   for(const p of planning.plans){
     const explicit=(p.linkedLinkIds||[]).map(id=>linkRows.get(id)).filter(Boolean);
-    const source=p.source.kind==="stock"?byKey.get(`stock:${p.source.id}`):p.source.kind==="link"?linkRows.get(p.source.id):explicit.length===1?explicit[0]:null;
+    const source=p.workspaceStockId?byKey.get(`stock:${p.workspaceStockId}`):p.source.kind==="stock"?byKey.get(`stock:${p.source.id}`):p.source.kind==="link"?linkRows.get(p.source.id):explicit.length===1?explicit[0]:null;
     const match=source&&source.asin===p.asin&&(!p.sellerSku||source.sellerSku===p.sellerSku)&&(!["new","used"].includes(source.condition)||p.condition==='unknown'||p.condition===source.condition);
     const row=match?source:add(`plan:${p.id}`,{asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition,imageUrl:p.imageUrl,referenceIssue:Boolean(source&&!match)});
     if(!row.sourceKeys.includes(`plan:${p.id}`))row.sourceKeys.push(`plan:${p.id}`);if(!row.sources.includes("plan"))row.sources.push("plan");row.plans.push({...p,schedule:planningSchedule(p,at),actionSchedules:actionSchedules(p,at)});if(!row.imageUrl)row.imageUrl=p.imageUrl||"";

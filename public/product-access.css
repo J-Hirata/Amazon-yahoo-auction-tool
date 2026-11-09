@@ -33,3 +33,20 @@
 .product-url-dialog [data-url-title] .product-picker-memo{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.product-url-dialog [data-url-title]{flex:none}
 
 .fba-incoming-line{display:flex;flex-wrap:wrap;gap:4px;align-items:center;margin:5px 0}.fba-incoming-line small{color:#855c12}.fba-incoming-line button{padding:4px 7px;font-size:11px;background:#fff5d9;color:#785015;border:1px solid #deca99}.compact-fba-counter{display:block;color:#745320;font-size:11px;margin-top:3px}.catalog-card-actions button{padding:5px 8px}
+
+.compact-stock-count dd{white-space:nowrap;font-size:12px;line-height:1.6;min-height:20px}
+.catalog-grid[data-tile-size=small] .compact-stock-counts,.planning-tiles tbody[data-tile-size=small] .compact-stock-counts{grid-template-columns:repeat(2,minmax(0,1fr));row-gap:6px}
+.catalog-grid[data-tile-size=small] .compact-stock-count dt,.planning-tiles tbody[data-tile-size=small] .compact-stock-count dt{min-height:14px}
+.compact-listing-status{height:auto;min-height:0;flex:none}
+.product-workspace-dialog{width:min(650px,calc(100vw - 24px))}
+.product-workspace-dialog [hidden]{display:none!important}
+.product-workspace-dialog form>div[data-edit-fields]{display:grid;gap:14px}
+.workspace-editor-heading{display:flex;align-items:center;gap:12px;margin:12px 0;overflow-wrap:anywhere}
+.workspace-editor-heading img{width:58px;height:58px;object-fit:contain;flex:none}
+.workspace-editor-heading strong{font-size:14px;line-height:1.5}
+.product-workspace-dialog [data-status]{white-space:pre-wrap;color:#9b341c}
+.product-workspace-dialog [data-review-lines]{font-size:13px;line-height:1.6;overflow-wrap:anywhere}
+.product-workspace-dialog footer{display:flex;flex-wrap:wrap;gap:8px}
+.product-workspace-dialog .workspace-existing-link{display:flex;align-items:flex-start;gap:8px;font-size:12px;padding:6px 0}
+.product-workspace-dialog [data-link-options]:not(:empty)::before{content:'登録済みのヤフオク商品を紐付け';display:block;font-size:12px;margin-top:10px}
+.product-workspace-dialog input:read-only{background:#f5f7f5;color:#56695e}

@@ -119,7 +119,7 @@ export async function openPlanning({userId,readOnly}){
         <td data-label="在庫"><div data-plan-access="${p.id}"></div></td>
         <td data-label="次の方針"><strong class="planning-next" title="${escape(decisionText(p))}">${escape(decisionText(p))}</strong><p class="planning-memo-preview" title="${escape(memo)}">${escape(memo||'メモなし')}</p>
           <div class="planning-row-actions"><button type="button" data-plan-edit="${p.id}">${icon("pencil")}方針・日付</button>
-          <button type="button" data-plan-details="${p.id}" class="planning-secondary" aria-label="${escape(p.title)}の詳細" title="商品の詳細">${icon("more")}詳細</button></div></td></tr>`;
+          <button type="button" data-plan-details="${p.id}" class="planning-secondary" aria-label="${escape(p.title)}の商品情報・販路編集" title="商品情報・販路編集">${icon("pencil")}商品情報・販路編集</button></div></td></tr>`;
     }).join(""):`<tr><td class="planning-empty" colspan="5">${icon("calendar")}${view.plans.length?"条件に一致する商品がありません":"まだ販売計画は登録されていません"}</td></tr>`;
     for(const img of document.querySelectorAll(".planning-photo"))img.addEventListener("error",()=>{if(img.getAttribute("src")!=="/catalog-image.svg")img.src="/catalog-image.svg";});
     for(const host of document.querySelectorAll('[data-plan-access]')){const p=view.plans.find(p=>p.id===host.dataset.planAccess);access.mountCompact(host,'plan:'+p.id,{asin:p.asin,title:p.title,listingIds:p.reference?.listingIds||[]});const tags=host.querySelector('.product-membership');if(tags)host.closest('tr').querySelector('.planning-memberships').append(tags);}
@@ -127,7 +127,7 @@ export async function openPlanning({userId,readOnly}){
   }
   function bindActions(root){
     for(const button of root.querySelectorAll("[data-plan-edit]"))button.addEventListener("click",()=>{$('#planningDetails').close();open(view.plans.find(p=>p.id===button.dataset.planEdit));});
-    for(const button of root.querySelectorAll('[data-plan-details]'))button.addEventListener('click',()=>detailsFor(button.dataset.planDetails));
+    for(const button of root.querySelectorAll('[data-plan-details]'))button.addEventListener('click',()=>access.edit('plan:'+button.dataset.planDetails));
     for(const button of root.querySelectorAll("[data-plan-history]"))button.addEventListener("click",()=>{$('#planningDetails').close();historyFor(button.dataset.planHistory);});
     for(const button of root.querySelectorAll("[data-plan-source-fix]"))button.addEventListener("click",()=>work(async()=>{
       $('#planningDetails').close();

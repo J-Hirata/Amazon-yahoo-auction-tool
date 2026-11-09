@@ -63,7 +63,7 @@ if(process.env.STOCK_COUNTER_FIXTURE==='1'){
  const id=randomUUID(),asin='4056116334',sku='BOOK-NEW',base=new Date(Date.parse(at)-3*86400000).toISOString();
  applyStockCommand(physical,{operationId:randomUUID(),kind:'create',productId:id,product:{title:'確認用・学研 スーパーのりものデラックス',asin,condition:'new',unit:'個',fbaEligibility:'possible',linkedLinkIds:[]},initialCounts:{container:150,home:null}},{actor,at});
  monitor.inventoryReviews=[{key:'stock:'+id,asin,sellerSku:'',condition:'new',mode:'manual',manualFbaQuantity:97,checkedAt:base}];
- monitor.salesTracking={trackers:[sku,'BOOK-OLD'].map(sellerSku=>({asin,sellerSku,sourceId:'stock:'+id,startedAt:base,fulfillment:['AMAZON']})),events:[{id:'book-sale',asin,sellerSku:sku,fulfillment:'AMAZON',delta:19,eligibleFromAt:at}],checkedThrough:at,sync:{status:'complete'}};
+ monitor.salesTracking={orders:[],trackers:[sku,'BOOK-OLD'].map(sellerSku=>({asin,sellerSku,sourceId:'stock:'+id,startedAt:base,fulfillment:['AMAZON']})),events:[{id:'book-sale',asin,sellerSku:sku,fulfillment:'AMAZON',delta:19,eligibleFromAt:at}],checkedThrough:at,sync:{status:'complete'}};
  watch.rules.push({key:'stock:'+id,tags:[],lowStock:{source:'fba',threshold:20},replenishEnabled:false,threshold:10,minimumSales7:0,coverageDays:0,reviewDays:10,startedOn:'',note:''});
 }
 

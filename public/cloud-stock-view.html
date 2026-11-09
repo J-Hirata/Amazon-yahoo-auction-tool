@@ -22,6 +22,7 @@
     <input type="hidden" name="unit" value="個">
     <fieldset id="stockInitialFields" class="stock-place-fields"><legend>場所ごとの数量</legend><div class="stock-form-grid"><label><span><span data-stock-icon="warehouse"></span>コンテナ</span><div class="stock-number-field"><input name="containerQuantity" type="number" min="0" max="1000000" step="1" placeholder="未確認"><span>個</span></div></label><label><span><span data-stock-icon="house"></span>自宅・会社</span><div class="stock-number-field"><input name="homeQuantity" type="number" min="0" max="1000000" step="1" placeholder="未確認"><span>個</span></div></label></div></fieldset>
     <fieldset id="stockConcurrentFields" class="stock-concurrent-fields"><legend>この商品をほかの販路・販売監視にも登録</legend>
+      <label><input type="checkbox" checked disabled>コンテナ・自社在庫に登録する</label>
       <label><input type="checkbox" name="alsoMerchant">Amazon自社発送にも使う</label>
       <label><input type="checkbox" name="alsoYahoo"><span data-yahoo-use-label>ヤフオク併売を準備する</span></label>
       <label class="stock-yahoo-url" hidden><span data-yahoo-url-label>出品済みならヤフオクURL（任意）</span><input name="concurrentYahooUrl" type="url" maxlength="2048" placeholder="https://auctions.yahoo.co.jp/jp/auction/…"><small>URLなしなら下書き候補へ追加します。ASINが必要です。</small></label>

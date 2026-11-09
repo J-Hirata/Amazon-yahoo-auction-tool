@@ -315,7 +315,7 @@ function render() {
       ${currentMode === "demo" ? "" : `<button type="button" class="product-preview-button" data-product-preview="${escape(link.id)}">画像・商品名を再取得</button><button type="button" class="unlink-button" data-unlink="${escape(link.id)}">解除</button>`}</details></td></tr>`;
   }).join("") : '<tr><td colspan="4">まだ紐付けはありません。</td></tr>';
   if (currentMode === "saved") data.links.forEach((link, index) => {
-    const direct=document.createElement("div");access.mount(direct,"link:"+link.id,{asin:link.asin||link.assessment.product?.asin,listingIds:[link.listingId]});$("#linkRows").children[index].firstElementChild.append(direct);
+    const direct=document.createElement("div");access.mountCompact(direct,"link:"+link.id,{asin:link.asin||link.assessment.product?.asin,listingIds:[link.listingId]});$("#linkRows").children[index].firstElementChild.append(direct);
     const review=document.createElement("a");review.href=`/?view=planning#plan=link:${encodeURIComponent(link.id)}`;review.textContent="販売の見直しへ追加";review.className="planning-entry-link";review.style.display="block";review.target='_blank';review.rel='noopener noreferrer';review.title='別タブで開く';
     $("#linkRows").children[index].lastElementChild.append(review);
     const asin = link.assessment.product?.asin || link.asin;
@@ -368,9 +368,9 @@ function render() {
     const known=Number.isFinite(age)&&age>=-60000&&age<=90*60000&&!p?.error&&a.inventory!=="unlinked"&&typeof p?.fulfillableQuantity==="number";
     const live=currentMode==="saved"?access.info("link:"+link.id).live:null;const qty=live?(live.availability?.fba||live.fba)?.quantity??null:known?p.fulfillableQuantity:null;
     const sales=saved.salesHistory?.products.find(s=>s.linkId===link.id),photo=$("#linkRows").children[index].querySelector(".linked-product img");
-    return {node:$("#linkRows").children[index],id:link.id,title:y?.title||(p?.title!==p?.asin?p?.title:"")||link.previousListingTitle||p?.asin||"商品名未取得",imageUrl:photo?.src,imageLabel:photo?.alt||"出品画像",
+    return {node:$("#linkRows").children[index],id:link.id,title:access.info("link:"+link.id).editor?.product.title||y?.title||(p?.title!==p?.asin?p?.title:"")||link.previousListingTitle||p?.asin||"商品名未取得",imageUrl:photo?.src,imageLabel:photo?.alt||"出品画像",
       badges:[link.asin||p?.asin||"ASINを登録",live?.availability?.condition||p?.condition||"状態を詳細で確認"],identity:live?.availability?.sku||live?.workspace?.sellerSku||link.amazonSellerSku||"",memo:link.userMemo||"",renderAccess:currentMode==="saved"?host=>access.mountCompact(host,"link:"+link.id,{asin:link.asin||p?.asin,listingIds:[link.listingId]}):undefined,metrics:currentMode==="saved"?[]:[{label:"Amazon FBA在庫",value:qty??"未確認",unit:"個"}],
-      status:"",measure:qty,registeredAt:link.createdAt};
+      status:"",...(currentMode==="saved"&&saved?.config.capabilities?.cloud?{openLabel:"商品情報・販路編集",onOpen:()=>access.edit("link:"+link.id),disabled:Boolean(saved?.config.capabilities?.readOnly)}:{}),measure:qty,registeredAt:link.createdAt};
   }));
   const events = [...data.events].reverse();
   const selected = $("#eventSelect").value;

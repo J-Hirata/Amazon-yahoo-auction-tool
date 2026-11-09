@@ -4,6 +4,7 @@ import {applyStockCommand,stockCommandDigest} from './physical-stock.js';
 import {registerPageLink} from './link-monitor.js';
 import {addDrafts} from './cloud-drafts.js';
 import {applyPlanningCommand} from './sales-planning.js';
+import {productOverview,emptyProductWatch} from './product-overview.js';
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 function registration(command){
   const value=command.registration||{merchant:false,yahoo:false,planning:false,yahooUrl:''};
@@ -38,7 +39,7 @@ export async function applyStockRegistration(docs,command,{actor,at,expectedRevi
     summary.push(existing?'既存のヤフオク下書きを利用（入力・状態を保持）':'ヤフオク下書き候補に追加（出品前の確認待ち）');
   }
   if(r.planning){
-    const planning=docs['sales-planning'].state,existing=planning.plans.find(plan=>plan.source.kind==='stock'&&plan.source.id===p.id&&plan.status!=='closed');
+    const planning=docs['sales-planning'].state,row=productOverview({monitor:docs['link-monitor'].state,physical:state,planning,watch:docs['product-watch']?.state||emptyProductWatch(),drafts:[]},at).find(row=>row.sourceKeys.includes('stock:'+p.id)),existing=row?.plans.find(plan=>plan.status!=='closed');
     if(!existing)applyPlanningCommand(planning,{operationId:command.operationId,kind:'create',planId:planId(command.operationId),plan:{title:p.title,asin:p.asin,sellerSku:p.sellerSku,condition:p.condition,setContents:p.setContents,imageUrl:p.imageUrl||'',source:{kind:'stock',id:p.id},kind:'amazon',status:'active',durationDays:10,availableOn:'',reviewOn:'',note:p.memo,decisions:['undecided'],linkedLinkIds:p.linkedLinkIds}},{actor,at,sources:[{kind:'stock',...p}]});
     summary.push(existing?'登録済みの販売監視を利用':'販売監視に追加（販売開始日・方針は後で設定）');
   }

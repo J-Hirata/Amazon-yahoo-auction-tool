@@ -68,3 +68,12 @@
 
 /* Counts and shipment plans must remain visible at every density. */
 .catalog-grid[data-tile-size]>.catalog-with-access:not(.catalog-expanded) .catalog-summary{height:auto;min-height:350px}.catalog-grid[data-tile-size=small]>.catalog-with-access:not(.catalog-expanded) .catalog-summary{height:auto;min-height:290px}.catalog-grid[data-tile-size=large]>.catalog-with-access:not(.catalog-expanded) .catalog-summary{height:auto;min-height:440px}.catalog-grid[data-tile-size] .catalog-access{flex:none;overflow:visible}.catalog-card-actions{flex:none;display:flex;flex-wrap:wrap;gap:4px}
+
+/* Every wrapped badge and stock line occupies its own space at all three sizes. */
+.catalog-grid[data-tile-size] .catalog-summary>*{flex-shrink:0}
+.catalog-grid[data-tile-size] .catalog-badges{height:auto;max-height:none;overflow:visible;align-items:flex-start}
+.catalog-grid[data-tile-size] .catalog-badges>span{white-space:normal;line-height:1.4}
+.catalog-grid[data-tile-size] .catalog-identity{flex:none;min-height:16px;line-height:16px}
+.catalog-grid[data-tile-size] .catalog-footer{flex-wrap:wrap;gap:5px}
+.catalog-grid .catalog-edit-link{font-size:11px!important;padding:4px 6px!important;border:1px solid #bbcec2!important;border-radius:4px;background:#edf5ef!important;color:#276343!important;white-space:normal;max-width:100%;height:auto!important}
+.catalog-grid .catalog-edit-link img{display:none}
