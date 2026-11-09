@@ -1,6 +1,6 @@
 ﻿# 販売コックピット
 
-2026-11-10：本人の明示依頼で、本UIと以前の未公開修正を本番公開準備中。現在の進捗・配備結果は[docs/status.md](docs/status.md)冒頭を参照。下の未反映記録はその時点の履歴。
+2026-11-10：本人の明示依頼で、本UIと以前の未公開修正を本番反映済み。公開URL https://amazon-yahoo-inventory.vercel.app/ 、コードa82abcc、配備dpl_6C6McmEt5xQeSHAZJtMe3GenAXQV / READY。350件の試験、配備物検査、公開URLと登録データ保全を確認。[確認結果と残件](docs/status.md)。以下の未反映記録はその時点の履歴。
 
 **出品・在庫・売れ行きをまとめて管理する、販売の司令室。**
 
