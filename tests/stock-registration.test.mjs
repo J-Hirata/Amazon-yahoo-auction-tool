@@ -1,3 +1,4 @@
+import {emptyProductWatch,validateProductWatch} from '../src/product-overview.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
@@ -9,11 +10,11 @@ import {createCloudStock} from '../src/cloud-stock.js';
 import {addDrafts} from '../src/cloud-drafts.js';
 const at='2026-11-10T02:00:00.000Z',actor='registration-test',asin='B000TEST01';
 function fixture(){
- let docs={'physical-stock':{state:emptyPhysicalStock(),revision:0},'link-monitor':{state:emptyMonitor(),revision:0},'sales-planning':{state:emptySalesPlanning(),revision:0},'draft-items':{state:[],revision:0}};
- const validators={'physical-stock':validatePhysicalStock,'link-monitor':validateMonitorState,'sales-planning':validateSalesPlanning,'draft-items':validateDraftItems};
+ let docs={'physical-stock':{state:emptyPhysicalStock(),revision:0},'link-monitor':{state:emptyMonitor(),revision:0},'sales-planning':{state:emptySalesPlanning(),revision:0},'draft-items':{state:[],revision:0},'product-watch':{state:emptyProductWatch(),revision:0}};
+ const validators={'physical-stock':validatePhysicalStock,'link-monitor':validateMonitorState,'sales-planning':validateSalesPlanning,'draft-items':validateDraftItems,'product-watch':validateProductWatch};
  const transaction={read:async()=>structuredClone(docs),update:async fn=>{const copy=structuredClone(docs),r=await fn(copy);for(const k of Object.keys(copy)){validators[k](copy[k].state);if(JSON.stringify(copy[k].state)!==JSON.stringify(docs[k].state))copy[k].revision++;}docs=copy;return r;}};
  const store=key=>({read:async()=>structuredClone(docs[key].state),readSnapshot:async()=>structuredClone(docs[key]),update:async(fn,{expectedRevision}={})=>transaction.update(d=>{if(expectedRevision!==undefined&&d[key].revision!==expectedRevision)throw new Error('conflict');return fn(d[key].state);})});
- const stock=createCloudStock({store:store('physical-stock'),monitorStore:store('link-monitor'),draftStore:store('draft-items'),registrationTransaction:transaction,now:()=>at});
+ const stock=createCloudStock({store:store('physical-stock'),monitorStore:store('link-monitor'),draftStore:store('draft-items'),watchStore:store('product-watch'),registrationTransaction:transaction,now:()=>at});
  return {stock,transaction,read:()=>structuredClone(docs)};
 }
 function command(registration={merchant:true,yahoo:true,planning:true,yahooUrl:''}){
@@ -63,3 +64,16 @@ test('legacy product edits retain selected uses and do not change counts or moni
  for(let i=0;i<2;i++){const edit={operationId:randomUUID(),kind:'edit',productId:product.id,product:{...product,memo:'メモを保持'},registration:{merchant:false,yahoo:true,planning:true,yahooUrl:''}};const revision=f.read()['physical-stock'].revision,p=await f.stock.preview(edit,{expectedRevision:revision,actor});await f.stock.commit(edit,{expectedRevision:revision,sourceRevisions:p.sourceRevisions,actor,confirmed:true});}
  const after=f.read();assert.deepEqual(after['physical-stock'].state.balances,before);assert.equal(after['draft-items'].state.length,1);assert.equal(after['sales-planning'].state.plans.length,1);assert.deepEqual(after['physical-stock'].state.products[0].useChannels,['merchant','yahoo']);
  });
+
+test('one stock editor save commits metadata, both quantities, FBA baseline, alarm and shipment atomically and replay never repeats',async()=>{
+ const f=fixture(),c=command({merchant:false,yahoo:false,planning:false,yahooUrl:''});await save(f,c);let d=f.read();const product=d['physical-stock'].state.products[0],edit={operationId:randomUUID(),kind:'edit',productId:product.id,product:{...product,memo:'まとめて編集'},workspace:{counts:{container:40,home:2},manualFbaQuantity:78,alarmThreshold:10,incoming:[{quantity:120,sellerSku:product.sellerSku,stage:'transit',expectedOn:'2026-11-17',reference:'FBA123'}]}};
+ const p=await f.stock.preview(edit,{actor,expectedRevision:d['physical-stock'].revision});assert.deepEqual(f.read(),d);const options={actor,expectedRevision:p.revision,sourceRevisions:p.sourceRevisions,confirmed:true};await f.stock.commit(edit,options);d=f.read();assert.equal(d['physical-stock'].state.products[0].memo,'まとめて編集');assert.deepEqual(d['physical-stock'].state.balances.map(b=>b.usable),[40,2]);assert.equal(d['link-monitor'].state.inventoryReviews[0].manualFbaQuantity,78);assert.equal(d['link-monitor'].state.fbaIncoming[0].quantity,120);assert.equal(d['product-watch'].state.rules[0].lowStock.threshold,10);assert.equal((await f.stock.commit(edit,options)).receipt.replayed,true);assert.deepEqual(f.read(),d);
+});
+test('stale alarm revision or invalid incoming data rolls back the entire unified product edit',async()=>{
+ for(const invalid of [false,true]){const f=fixture(),c=command({merchant:false,yahoo:false,planning:false,yahooUrl:''});await save(f,c);const d=f.read(),product=d['physical-stock'].state.products[0],edit={operationId:randomUUID(),kind:'edit',productId:product.id,product:{...product,memo:'保存してはいけない'},workspace:{counts:{container:0},manualFbaQuantity:1,alarmThreshold:0,...(invalid?{incoming:[{quantity:120,stage:'transit',expectedOn:'2026-02-31',reference:''}]}:{})}};
+ if(invalid){await assert.rejects(()=>f.stock.preview(edit,{actor,expectedRevision:d['physical-stock'].revision}),/予定日/);assert.deepEqual(f.read(),d);}
+ else{const p=await f.stock.preview(edit,{actor,expectedRevision:d['physical-stock'].revision});await f.transaction.update(d=>d['product-watch'].state.rules.push({key:'stock:'+product.id,tags:['watch']}));const before=f.read();await assert.rejects(()=>f.stock.commit(edit,{actor,expectedRevision:p.revision,sourceRevisions:p.sourceRevisions,confirmed:true}),/更新/);assert.deepEqual(f.read(),before);}}
+});
+test('unchanged FBA baseline and incoming plans keep their timestamps when only the memo or location quantity changes',async()=>{
+ const f=fixture(),c=command({merchant:false,yahoo:false,planning:false,yahooUrl:''});c.workspace={manualFbaQuantity:97,incoming:[{quantity:120,stage:'packing',expectedOn:'',reference:''}]};await save(f,c);const d=f.read(),m=structuredClone(d['link-monitor'].state),product=d['physical-stock'].state.products[0],edit={operationId:randomUUID(),kind:'edit',productId:product.id,product:{...product,memo:'メモのみ'},workspace:{counts:{home:1}}};const p=await f.stock.preview(edit,{actor,expectedRevision:d['physical-stock'].revision});await f.stock.commit(edit,{actor,expectedRevision:p.revision,sourceRevisions:p.sourceRevisions,confirmed:true});assert.deepEqual(f.read()['link-monitor'].state,m);
+});

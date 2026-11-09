@@ -1,3 +1,4 @@
+import {createStockWorkspaceFields} from './stock-workspace-fields.js';
 import {monitorRequest} from "./monitor-http.js";
 import {createCatalogView} from "./catalog-view.js";
 import {createProductAccess} from "./product-access.js";
@@ -24,6 +25,8 @@ export async function openStock({userId, readOnly}) {
   let registrationLinks=new Set();
   const pendingKey = "physical-stock-pending:" + userId;
   const productForm = $("#stockProductForm"), actionForm = $("#stockActionForm"), placesForm = $("#stockPlacesForm"),memoForm=$('#stockMemoForm');
+  const workspaceFields=createStockWorkspaceFields(productForm),inlineReview=document.createElement('section');inlineReview.id='stockInlineReview';inlineReview.hidden=true;productForm.querySelector(':scope>footer').before(inlineReview);
+  const confirmFooter=$('#stockConfirmDialog > footer'),confirmContent=$('#stockConfirmContent'),confirmError=$('#stockConfirmError');
   const access=createProductAccess({readOnly:()=>readOnly,onChanged:async()=>load()});
   const displayHost=document.createElement("div");$(".stock-table-wrap").before(displayHost);
   const catalog=createCatalogView({key:"stock",host:displayHost,roots:[$("#stockRows")],measureLabels:["確認済み数量 多い順","確認済み数量 少ない順"]});
@@ -31,8 +34,9 @@ export async function openStock({userId, readOnly}) {
   const status = (message, error = false) => {$("#stockStatus").textContent = message; $("#stockStatus").classList.toggle("error", error);};
   try {pending = JSON.parse(sessionStorage.getItem(pendingKey) || "null");} catch {pending = null;}
   function controls() {
+    productForm.inert=busy;
     for (const button of document.querySelectorAll(".stock-shell button")) if(!button.closest('.product-access'))button.disabled = busy;
-    for (const button of document.querySelectorAll("[data-stock-action],[data-stock-edit],[data-stock-places],[data-stock-card-places],[data-stock-card-memo],[data-stock-connect],[data-stock-transfer],#stockMemoSave,#stockNew,[data-reference]")) button.disabled = busy || readOnly || Boolean(pending) || !view;
+    for (const button of document.querySelectorAll("[data-stock-action],.catalog-edit-link,[data-stock-edit],[data-stock-places],[data-stock-card-places],[data-stock-card-memo],[data-stock-connect],[data-stock-transfer],#stockMemoSave,#stockNew,[data-reference]")) button.disabled = busy || readOnly || Boolean(pending) || !view;
     $("#stockCommit").disabled = busy || readOnly || !preview;
     $("#stockCommit").innerHTML = icon("check") + (pending ? "同じ操作を再試行" : "この内容で保存");
     $("#stockRetry").disabled = busy || readOnly;
@@ -95,22 +99,16 @@ export async function openStock({userId, readOnly}) {
     $("#stockHistory").innerHTML = view.events.length ? view.events.map((e) => `<li>${when(e.at)} ／ ${escape(view.products.find((p) => p.id === e.productId)?.title)} ／ ${labels[e.kind]} ／ ${escape(e.reason)}${e.changes.map((c) => `<br>${locationName(c.locationId)}：${["usable", "reserved", "unusable"].map((b) => `${({usable:"使用可能",reserved:"取り置き",unusable:"使用不可"})[b]} ${c.before[b] ?? "未確認"} → ${c.after[b] ?? "未確認"}`).join(" ／ ")}`).join("")}${e.transferAfter ? `<br>移動中 ${e.transferBefore?.remaining ?? 0} → ${e.transferAfter.remaining} ／ 到着 ${e.transferBefore?.received ?? 0} → ${e.transferAfter.received} ／ 戻し ${e.transferBefore?.returned ?? 0} → ${e.transferAfter.returned}` : ""}${e.evidence ? `<br>確認根拠：${escape(e.evidence)}` : ""}${e.metadataAfter ? `<br>ASIN：${escape(e.metadataBefore.asin || "なし")} → ${escape(e.metadataAfter.asin || "なし")} ／ ${escape(tasks[e.metadataAfter.catalogTask])}` : ""}</li>`).join("") : "<li>まだ変更履歴はありません。</li>";
     catalog.update($("#stockRows"),products.map((p,index)=>({node:$("#stockRows").children[index],id:p.id,title:p.title,imageUrl:p.photo?.url,imageLabel:p.photo?.label,
       badges:[conditions[p.condition],purposes[p.fbaEligibility],...(p.useChannels||[]).map(c=>c==='merchant'?'自社発送用':'ヤフオク併売用')],metrics:[],
-      identity:p.sellerSku||"SKU未登録",memo:p.memo,renderAccess:host=>access.mountCompact(host,"stock:"+p.id,{asin:p.asin,title:p.title,unit:p.unit,listingIds:p.linked.map(l=>l.listingId)}),
-      status:'',renderActions:host=>{const b=document.createElement('button');b.type='button';b.textContent='商品情報・販路を編集';b.disabled=readOnly||Boolean(pending);b.addEventListener('click',()=>openProduct(p));host.append(b);if(p.useChannels?.includes('yahoo')){const a=document.createElement('a');a.textContent='ヤフオク下書きへ';a.href='/?view=drafts#stock='+p.id;a.target='_blank';a.rel='noopener noreferrer';host.append(a);}},
+      identity:p.sellerSku||"SKU未登録",memo:p.memo,renderAccess:host=>access.mountCompact(host,"stock:"+p.id,{asin:p.asin,title:p.title,unit:p.unit,listingIds:p.linked.map(l=>l.listingId),productEditor:()=>openProduct(p)}),
+      status:'',openLabel:'商品情報・販路編集',onOpen:()=>{if(!readOnly&&!pending&&!busy)openProduct(p);},disabled:readOnly||Boolean(pending),
       measure:p.totals.unknownLocations===0?p.totals.usable:null,registeredAt:p.createdAt})));
     controls();
   }
   async function load() {view = await request(); await access.load(); render();}
   function mountStockCard(host,p){
-    access.mount(host,'stock:'+p.id,{asin:p.asin,title:p.title,unit:p.unit,listingIds:p.linked.map(l=>l.listingId)});
-    const top=document.createElement('div');top.className='stock-card-edit';
-    if(p.memo){const note=document.createElement('p');note.className='stock-card-memo';const label=document.createElement('strong');label.textContent='メモ';note.append(label,document.createTextNode(p.memo));top.append(note);}
-    const actions=document.createElement('div');actions.className='stock-card-actions';
-    for(const [key,label,shape,action] of [['places','数量を編集','pencil',()=>openPlaces(p.id)],['memo',p.memo?'メモを編集':'メモを追加','notebook',()=>openMemo(p.id)]]){
-      const b=document.createElement('button');b.type='button';b.dataset['stockCard'+key[0].toUpperCase()+key.slice(1)]=p.id;b.title=label;b.setAttribute('aria-label',p.title+'の'+label);b.innerHTML=icon(shape);b.append(document.createTextNode(label));b.addEventListener('click',action);actions.append(b);
-    }
-    top.append(actions);host.prepend(top);
+    access.mountCompact(host,'stock:'+p.id,{asin:p.asin,title:p.title,unit:p.unit,listingIds:p.linked.map(l=>l.listingId),productEditor:()=>openProduct(p)});
   }
+
   function syncRegistrationLinks(){
     const options=registrationCandidates(view.linkOptions,{asin:productForm.elements.asin.value,sellerSku:productForm.elements.sellerSku.value,condition:productForm.elements.condition.value,linkedLinkIds:editingProduct?.linkedLinkIds||[]});
     const valid=new Set(options.filter(l=>!l.mismatch||l.existing).map(l=>l.id));
@@ -152,8 +150,11 @@ export async function openStock({userId, readOnly}) {
   },"#stockLinkError");});
   function openProduct(product, reference) {
     editingProduct = product || null; productForm.reset(); dirty = false; preview = null;
-    $("#stockProductError").textContent = ""; $("#stockProductTitle").textContent = product ? "商品情報・メモ" : "商品を登録";
-    $("#stockInitialFields").hidden = Boolean(product);
+    $("#stockProductError").textContent = ""; $("#stockProductTitle").textContent = product ? "商品情報・販路編集" : "商品を登録";inlineReview.hidden=true;productForm.querySelector(':scope>footer').hidden=false;
+    $("#stockInitialFields").hidden = false;
+    for(const id of ["container","home"])productForm.elements[id+"Quantity"].value=product?.totals?.locations.find(l=>l.locationId===id)?.usable??'';
+    for(const unit of document.querySelectorAll('#stockInitialFields .stock-number-field>span'))unit.textContent=product?.unit||'個';
+    workspaceFields.populate(product,product?access.info('stock:'+product.id).live:null);
     $("#stockConcurrentFields").hidden=false;productForm.querySelector(".stock-yahoo-url").hidden=true;
     registrationLinks=new Set(product?.linkedLinkIds||[]);
     productForm.elements.alsoMerchant.checked=Boolean(product?.useChannels?.includes('merchant'));productForm.elements.alsoYahoo.checked=Boolean(product?.useChannels?.includes('yahoo')||product?.linkedLinkIds?.length);productForm.elements.alsoPlanning.checked=Boolean(product&&access.info('stock:'+product.id).live?.workspace?.plans?.some(p=>p.status!=='closed'));productForm.querySelector('.stock-yahoo-url').hidden=!productForm.elements.alsoYahoo.checked;const listingId=product?.linkedLinkIds?.length&&view.linkOptions.find(l=>l.id===product.linkedLinkIds[0])?.listingId;if(listingId)productForm.elements.concurrentYahooUrl.value='https://auctions.yahoo.co.jp/jp/auction/'+listingId;
@@ -163,7 +164,7 @@ export async function openStock({userId, readOnly}) {
     }
     syncRegistrationLinks();
     if (reference) productForm.elements.title.value = reference[0];
-    $("#stockProductDialog").showModal();
+    $("#stockProductDialog").showModal();$("#stockProductDialog").scrollTop=0;
   }
   function openPlaces(id, focusPlace) {
     placesProduct = view.products.find((p) => p.id === id); placesForm.reset(); dirty = false; preview = null;
@@ -201,14 +202,14 @@ export async function openStock({userId, readOnly}) {
     if (transferId) actionForm.elements.transferId.value = transferId;
     syncAction(); $("#stockActionDialog").showModal();
   }
-  async function showPreview(command, revision = view.storage.revision) {
+  async function showPreview(command, revision = view.storage.revision, inline = false) {
     if (pending && command.operationId !== pending.command.operationId) throw new Error("前の操作の保存結果を確認してから、次の操作を行ってください。");
     const result = await request("/preview", {command}, revision); preview = {command, revision: result.revision,sourceRevisions:result.sourceRevisions};
     const e = result.event;
     const changes = e?.changes.flatMap((c) => ["usable", "reserved", "unusable"].filter((b) => b === "usable" || c.before[b] !== c.after[b] && !(c.before[b] === null && c.after[b] === 0)).map((b) => `<tr><td>${locationName(c.locationId)}${b !== "usable" ? "・" + ({reserved:"取り置き",unusable:"使用不可"})[b] : ""}</td><td>${c.before[b] ?? "未確認"}</td><td><strong>${c.after[b] ?? "未確認"}</strong>${c.after[b] !== null ? escape(result.product.unit) : ""}</td></tr>`)).join("") || "";
     $("#stockConfirmContent").innerHTML = `<strong>${escape(result.product.title)}</strong><p class="stock-muted">${labels[command.kind]}</p>${changes ? `<table><thead><tr><th>場所・区分</th><th>変更前</th><th>変更後</th></tr></thead><tbody>${changes}</tbody></table>` : ""}${e?.transferAfter ? `<p>${locationName(e.transferAfter.from)} → ${locationName(e.transferAfter.to)} ／ 移動中 ${e.transferAfter.remaining}${escape(result.product.unit)}</p>` : ""}<p>${escape(command.reason || result.product.memo || "")}</p>${command.kind === "edit" ? `<p>ASIN：${escape(result.product.asin || "未登録")} ／ ${escape(tasks[result.product.catalogTask])}</p><p>${escape(result.product.memo)}</p>` : ""}<p class="meta">Amazon・ヤフオクの数量や出品は変更しません。</p>`;
     if(result.receipt.registrationSummary?.length){const section=document.createElement('section');section.className='stock-concurrent-summary';for(const text of result.receipt.registrationSummary){const line=document.createElement('p');line.textContent='✓ '+text;section.append(line);}$('#stockConfirmContent').append(section);}
-    $("#stockConfirmError").textContent = ""; $("#stockConfirmDialog").showModal(); controls();
+    confirmError.textContent='';if(inline){inlineReview.replaceChildren(confirmContent,confirmError,confirmFooter);inlineReview.hidden=false;productForm.querySelector(':scope>footer').hidden=true;inlineReview.scrollIntoView({block:'nearest'});}else{$('#stockConfirmDialog').append(confirmContent,confirmError,confirmFooter);$('#stockConfirmDialog').showModal();}controls();
     if (e?.metadataBefore?.fbaEligibility !== undefined && e.metadataBefore.fbaEligibility !== result.product.fbaEligibility) {const line = document.createElement("p"); line.textContent = `用途：${purposes[e.metadataBefore.fbaEligibility]} → ${purposes[result.product.fbaEligibility]}`; $("#stockConfirmContent").prepend(line);}
     if (result.duplicates.length) {const warning = document.createElement("p"); warning.className = "stock-error"; warning.textContent = "同じASIN・商品名の登録あり：" + result.duplicates.map((p) => p.managementId + " " + p.title).join(" ／ ") + "。別の現物・状態か確認してください。"; $("#stockConfirmContent").prepend(warning);}
     const previous=view.products.find(p=>p.id===command.productId);
@@ -224,9 +225,11 @@ export async function openStock({userId, readOnly}) {
     const p = Object.fromEntries(["title", "unit", "condition", "setContents", "asin", "sellerSku", "memo", "catalogTask", "fbaEligibility", "reviewDate", "imageUrl"].map((field) => [field, productForm.elements[field].value]));
     p.imageSource = editingProduct?.imageUrl === p.imageUrl ? editingProduct.imageSource || "manual" : "manual";
     p.linkedLinkIds = [...registrationLinks];
+    const workspace=workspaceFields.values();
+    if(editingProduct){const counts={};for(const id of ['container','home']){const value=productForm.elements[id+'Quantity'].value,before=editingProduct.totals.locations.find(l=>l.locationId===id)?.usable;if(value===''&&before!==null&&before!==undefined)throw new Error('確認済みの数量を空欄にはできません。在庫なしは0を入力してください。');if(value!==''&&Number(value)!==before)counts[id]=Number(value);}if(Object.keys(counts).length)workspace.counts=counts;}
     const registration={merchant:productForm.elements.alsoMerchant.checked,yahoo:productForm.elements.alsoYahoo.checked,planning:productForm.elements.alsoPlanning.checked,yahooUrl:productForm.elements.alsoYahoo.checked?productForm.elements.concurrentYahooUrl.value.trim():''};
-    await showPreview({operationId: crypto.randomUUID(), kind: editingProduct ? "edit" : "create", productId: editingProduct?.id || crypto.randomUUID(), product: p,
-      ...(registration.merchant||registration.yahoo||registration.planning?{registration}:{}),...(editingProduct ? {} : {initialCounts: Object.fromEntries(["container", "home"].map((id) => {const value = productForm.elements[id + "Quantity"].value; return [id, value === "" ? null : Number(value)];}))})});
+    await showPreview({operationId: crypto.randomUUID(), kind: editingProduct ? "edit" : "create", productId: editingProduct?.id || crypto.randomUUID(), product: p,...(Object.keys(workspace).length?{workspace}:{}),
+      ...(registration.merchant||registration.yahoo||registration.planning?{registration}:{}),...(editingProduct ? {} : {initialCounts: Object.fromEntries(["container", "home"].map((id) => {const value = productForm.elements[id + "Quantity"].value; return [id, value === "" ? null : Number(value)];}))})},view.storage.revision,true);
   }, "#stockProductError");});
   memoForm.addEventListener('submit',event=>{event.preventDefault();work(async()=>{
     const memo=memoForm.elements.memo.value.trim();if(memo===(memoProduct.memo||''))throw new Error('メモは変更されていません。');
@@ -279,11 +282,11 @@ export async function openStock({userId, readOnly}) {
   $("#stockPhotos").addEventListener("click", () => work(async () => {status("Amazonの商品画像を取得しています。数量は変更しません。"); const result = await request("/photos", {}); await load(); status(`商品画像 ${result.updated}件を保存しました。${result.errors.length ? `取得できず ${result.errors.length}件：${result.errors.map((e) => e.asin + " " + e.error).join(" ／ ")}` : ""}${result.remaining ? " 未取得分はもう一度取得できます。" : ""} ASIN未登録の商品は画像URLまたはASINを登録してください。`);}));
   $("#stockAmazonCheck").addEventListener("click",()=>work(async()=>{status("登録ASINに対応する御社のAmazon出品を確認しています。数量・出品は変更しません。");const result=await request("/amazon-listings",{});await load();status(result.status === "complete" ? `御社のAmazon出品を確認しました（${result.checkedAsins} ASIN・${result.offers} SKU）。倉庫の実数やヤフオクの関連付けは変更していません。` : result.error,result.status !== "complete");}));
   for (const selector of ["#stockSearch", "#stockLocationFilter", "#stockStateFilter", "#stockPurposeFilter"]) $(selector).addEventListener("input", render);
-  for (const button of document.querySelectorAll(".stock-dialog [data-close]")) button.addEventListener("click", () => {$("#" + button.dataset.close).close(); if (button.dataset.close !== "stockConfirmDialog") dirty = false;});
+  for (const button of document.querySelectorAll(".stock-dialog [data-close]")) button.addEventListener("click", () => {if(button.dataset.close==='stockConfirmDialog'&&inlineReview.contains(button)){inlineReview.hidden=true;preview=null;productForm.querySelector(':scope>footer').hidden=false;controls();}else{$('#'+button.dataset.close).close();if(button.dataset.close!=='stockConfirmDialog')dirty=false;}});
   for (const element of [actionForm.elements.kind, actionForm.elements.locationId, actionForm.elements.to, actionForm.elements.transferId]) element.addEventListener("change", syncAction);
   for (const button of document.querySelectorAll("[data-stock-mode]")) button.addEventListener("click", () => {actionForm.elements.kind.value = button.dataset.stockMode; syncAction(); dirty = true;});
   for(const field of ['asin','sellerSku','condition'])productForm.elements[field].addEventListener('input',syncRegistrationLinks);
-  for (const form of [productForm, actionForm, placesForm,memoForm]) form.addEventListener("input", () => {dirty = true;});
+  for (const form of [productForm, actionForm, placesForm,memoForm]) form.addEventListener("input", () => {dirty = true;if(form===productForm){preview=null;inlineReview.hidden=true;productForm.querySelector(':scope>footer').hidden=false;controls();}});
   window.addEventListener("beforeunload", (event) => {if (dirty || pending) {event.preventDefault(); event.returnValue = "";}});
   $("#stockReferenceRows").innerHTML = references.map((r, index) => `<div class="stock-reference"><span>${escape(r[0])}<br><small>以前のメモ：${r[1] === null ? "数量未確認" : r[1] + r[2]}・現在数ではありません</small></span><button type="button" data-reference="${index}">この商品を入力</button></div>`).join("");
   for (const button of document.querySelectorAll("[data-reference]")) button.addEventListener("click", () => openProduct(null, references[Number(button.dataset.reference)]));

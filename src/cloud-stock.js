@@ -65,7 +65,7 @@ export function stockCsv(view) {
 export function createCloudStock({store, monitorStore, draftStore, watchStore, registrationTransaction, now = () => new Date().toISOString()}) {
   async function view() {return physicalStockView(await store.readSnapshot(), await monitorStore.read(), now(), draftStore ? await draftStore.read() : [],watchStore?await watchStore.read():undefined);}
   async function preview(command, {expectedRevision, actor}) {
-    if(command.registration){
+    if(command.registration||command.workspace){
       if(!registrationTransaction)throw fail('同時登録を利用できません。入力を残して画面を更新してください',503);
       const docs=await registrationTransaction.read(),sourceRevisions=Object.fromEntries(registrationDocuments(command).filter(k=>k!=='physical-stock').map(k=>[k,docs[k].revision]));
       checkLinks(command,docs['link-monitor'].state,docs['physical-stock'].state.products.find(p=>p.id===command.productId),linksFor(docs['link-monitor'].state,now(),watchStore?await watchStore.read():undefined));
@@ -83,7 +83,7 @@ export function createCloudStock({store, monitorStore, draftStore, watchStore, r
   }
   async function commit(command, {expectedRevision, actor, confirmed, sourceRevisions}) {
     if (confirmed !== true) throw fail("変更前後を確認して保存してください", 400);
-    if(command.registration){
+    if(command.registration||command.workspace){
       if(!registrationTransaction)throw fail('同時登録を利用できません。入力を残して画面を更新してください',503);
       const watch=watchStore?await watchStore.read():undefined;
       const receipt=await registrationTransaction.update(async docs=>{

@@ -60,7 +60,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const planningStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"sales-planning",validate:validateSalesPlanning}):undefined;
   const watchStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"product-watch",validate:validateProductWatch}):undefined;
   const draftCatalog=draftStore?createDraftCatalog({store:draftStore,monitorStore:store,stockStore,planningStore,readOnly:config.readOnly,readCatalog:env.ASIN_AMAZON_CLIENT_ID?asin=>readPlanningCatalog({asin,config:cloudAmazonConfig(env)}):undefined}):undefined;
-  const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore,watchStore,registrationTransaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning,"draft-items":validateDraftItems}})}) : undefined;
+  const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore,watchStore,registrationTransaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning,"draft-items":validateDraftItems,"product-watch":validateProductWatch}})}) : undefined;
   const overview=watchStore?createProductOverview({monitorStore:store,stockStore,planningStore,draftStore,watchStore}):undefined;
   const planning=planningStore?createCloudPlanning({store:planningStore,stock,monitorStore:store,overview,
     readCatalog:env.ASIN_AMAZON_CLIENT_ID?asin=>readPlanningCatalog({asin,config:cloudAmazonConfig(env)}):undefined}):undefined;

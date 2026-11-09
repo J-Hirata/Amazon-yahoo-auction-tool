@@ -49,7 +49,7 @@ export function createInventoryPanel({request,load,info,onChanged,readOnly}){
   function market(label,url,q,status,tone,quantityLabel='',editable=false){
    const node=editable?el('div'):url?el('a'):button('',editUrl);node.className='market-stock '+tone;
    if(url&&!editable){node.href=url;node.target='_blank';node.rel='noopener noreferrer';}
-   const line=el('span',undefined,'market-stock-head'),number=editable?button('',()=>open(key,fallback,'manual-fba')):el('span');number.className='market-stock-amount';if(quantityLabel)number.append(el('small',quantityLabel));const value=el('span',undefined,'market-stock-value');value.append(el('b',amount(q)));number.append(value);
+   const line=el('span',undefined,'market-stock-head'),number=editable?button('',()=>fallback.productEditor?fallback.productEditor():open(key,fallback,'manual-fba')):el('span');number.className='market-stock-amount';if(quantityLabel)number.append(el('small',quantityLabel));const value=el('span',undefined,'market-stock-value');value.append(el('b',amount(q)));number.append(value);
    const name=editable?el('a',label):el('span',label);if(editable){name.href=url;name.target='_blank';name.rel='noopener noreferrer';name.className='market-open-link';number.classList.add('market-quantity-edit');number.title='FBA在庫数を入力';number.setAttribute('aria-label','FBA在庫数を入力');number.disabled=readOnly()||p.revision===undefined;value.append(createElement(Pencil,{width:13,height:13,'aria-hidden':'true'}));}
    line.append(name,number);node.append(line,el('span',status,'market-stock-state'));markets.append(node);
   }
