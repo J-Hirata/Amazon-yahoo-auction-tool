@@ -1,5 +1,7 @@
 ﻿# 販売コックピット
 
+2026-11-10：在庫カードを小さな「商品情報・販路編集」へ統合。FBA/納品予定/数量/販路を同じ窓で編集・確認保存でき、登録済みヤフオクURLを自動入力。ASINの文字欠けと空白/全角貼り付けも修正して本番反映済み（b723317）。[操作と検証](docs/stock-counter-incoming.md)。
+
 2026-11-10：FBA残数の販売連動表示とアラーム、既存在庫からの同時登録・直接編集、FBA納品予定を本番反映済み（11d2221）。[確認結果・操作・残件](docs/stock-counter-incoming.md)。
 
 2026-11-10：ヤフオク下書きの写真カード・状態別一覧・作業順保存・写真/商品名補完を本番反映済み（4287d80 / dpl_FTw6RcN38B8aSav6Wdto7TAsrvxG・READY）。現在地は[docs/status.md](docs/status.md)、操作と制限は[docs/draft-workbench.md](docs/draft-workbench.md)を参照。
