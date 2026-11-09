@@ -13,7 +13,7 @@ function registration(command){
 }
 export function registrationDocuments(command){
   const r=registration(command);
-  return [...new Set(['physical-stock',...workspaceDocuments(command.workspace),...(r.yahoo?[r.yahooUrl?'link-monitor':'draft-items']:[]),...(r.planning?['sales-planning']:[])])];
+  return [...new Set(['physical-stock',...workspaceDocuments(command.workspace),...(r.yahoo?[r.yahooUrl||command.product?.linkedLinkIds?.length?'link-monitor':'draft-items']:[]),...(r.planning?['sales-planning']:[])])];
 }
 function planId(id){const hex=createHash('sha256').update(id+':planning').digest('hex');return hex.slice(0,8)+'-'+hex.slice(8,12)+'-4'+hex.slice(13,16)+'-8'+hex.slice(17,20)+'-'+hex.slice(20,32);}
 // Executed on an isolated preview or under one database transaction. No marketplace writes.
@@ -29,6 +29,8 @@ export async function applyStockRegistration(docs,command,{actor,at,expectedRevi
     // A new URL carries no verified SKU/condition identity; keep that uncertainty visible.
     if(!p.linkedLinkIds.includes(link.id))p.linkedLinkIds.push(link.id);
     summary.push('ヤフオクURLを関連付け');
+  }else if(r.yahoo&&p.linkedLinkIds.length){
+    receipt.yahooUrls=p.linkedLinkIds.map(id=>docs['link-monitor'].state.links.find(l=>l.id===id)).filter(Boolean).map(l=>'https://auctions.yahoo.co.jp/jp/auction/'+l.listingId);summary.push('登録済みヤフオク出品を利用：'+receipt.yahooUrls.join(' ／ '));
   }else if(r.yahoo){
     const drafts=docs['draft-items'].state,existing=drafts.find(d=>d.asin===p.asin);
     await addDrafts(drafts,p.asin,at);

@@ -1,3 +1,4 @@
+import {validateAsinInput} from './asin-input.js';
 import {randomUUID, createHash} from "node:crypto";
 import {stockImageUrl} from "./stock-images.js";
 
@@ -14,7 +15,7 @@ function text(value, maximum, required = false) {
 }
 function quantity(value, zero = false) {if (!count(value) || !zero && value === 0) throw fail(zero ? "数量は0以上の整数で入力してください" : "数量は1以上の整数で入力してください"); return value;}
 function choice(value, choices) {if (!choices.includes(value)) throw fail("操作・場所・状態を選択してください"); return value;}
-function asin(value) {const result = text(value, 10).toUpperCase(); if (result && !/^[A-Z0-9]{10}$/.test(result)) throw fail("ASINは10桁で入力してください"); return result;}
+const asin=validateAsinInput;
 export function emptyPhysicalStock() {return {version: 1, products: [], balances: [], transfers: [], events: [], receipts: []};}
 export function stockCommandDigest(command) {
   function ordered(value) {return Array.isArray(value) ? value.map(ordered) : value && typeof value === "object" ? Object.fromEntries(Object.keys(value).sort().map((key) => [key, ordered(value[key])])) : value;}

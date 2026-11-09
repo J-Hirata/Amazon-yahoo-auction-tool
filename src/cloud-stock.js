@@ -1,3 +1,4 @@
+import {validateAsinInput} from './asin-input.js';
 import {applyStockRegistration,registrationDocuments} from './stock-registration.js';
 import {applyStockCommand, stockCommandDigest, stockTotals, STOCK_LOCATIONS} from "./physical-stock.js";
 import {assessLink, PREVIEW_CONFIG} from "./link-monitor.js";
@@ -14,7 +15,7 @@ function checkLinks(command, monitor, previous, options) {
   for (const id of command.product?.linkedLinkIds || []) {
     const link = monitor.links.find((link) => link.id === id);
     const asin = link?.asin || monitor.catalog.find((item) => item.id === link?.catalogId)?.asin;
-    if (!link?.verified || link.observationConflict || command.product.asin?.trim().toUpperCase() !== asin) throw fail("紐付け先と在庫商品のASINが一致しません。数量は変更していません", 409);
+    if (!link?.verified || link.observationConflict || validateAsinInput(command.product.asin) !== asin) throw fail("紐付け先と在庫商品のASINが一致しません。数量は変更していません", 409);
     if (!previous?.linkedLinkIds.includes(id)) {
       const item=options.find(item=>item.id===id), family=conditionFamily(item?.condition);
       if (family!=="unknown"&&command.product.condition!=='unknown'&&family!==command.product.condition || command.product.sellerSku&&item?.sellerSku&&command.product.sellerSku!==item.sellerSku) throw fail("紐付け先と在庫商品の状態・SKUが異なります。別商品か確認してください",409);

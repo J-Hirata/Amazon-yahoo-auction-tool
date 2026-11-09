@@ -14,7 +14,7 @@
     <p id="stockLinkError" class="stock-error" role="status"></p><footer><button class="secondary" type="button" data-close="stockLinkDialog">取消</button><button id="stockLinkSubmit" type="submit">選んだ出品との紐付けを確認</button></footer>
   </form></dialog>
   <dialog id="stockProductDialog" class="stock-dialog"><form id="stockProductForm"><header><h2 id="stockProductTitle">商品を登録</h2><button type="button" data-close="stockProductDialog" aria-label="閉じる" title="閉じる"><span data-stock-icon="x"></span></button></header>
-    <div class="stock-form-grid"><label>ASIN（任意）<input name="asin" maxlength="10" autocomplete="off" autocapitalize="characters" spellcheck="false"></label><label>SKU（任意）<input name="sellerSku" maxlength="200" autocomplete="off" spellcheck="false"></label></div>
+    <div class="stock-form-grid"><label>ASIN（任意）<input name="asin" maxlength="2048" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false"></label><label>SKU（任意）<input name="sellerSku" maxlength="200" autocomplete="off" spellcheck="false"></label></div>
     <fieldset class="stock-registration-links"><legend>登録済みの紐付け</legend><p id="stockRegistrationStatus" class="stock-muted" role="status"></p><div id="stockRegistrationLinks"></div></fieldset>
     <label>商品名<input name="title" maxlength="200" required placeholder="例：Dell P3222QE モニター"></label>
     <label>新品・中古<select name="condition" required><option value="used">中古</option><option value="new">新品</option><option value="parts">部品・現状品</option><option value="unknown">未確認</option></select></label>
@@ -23,8 +23,8 @@
     <fieldset id="stockInitialFields" class="stock-place-fields"><legend>場所ごとの数量</legend><div class="stock-form-grid"><label><span><span data-stock-icon="warehouse"></span>コンテナ</span><div class="stock-number-field"><input name="containerQuantity" type="number" min="0" max="1000000" step="1" placeholder="未確認"><span>個</span></div></label><label><span><span data-stock-icon="house"></span>自宅・会社</span><div class="stock-number-field"><input name="homeQuantity" type="number" min="0" max="1000000" step="1" placeholder="未確認"><span>個</span></div></label></div></fieldset>
     <fieldset id="stockConcurrentFields" class="stock-concurrent-fields"><legend>この商品をほかの販路・販売監視にも登録</legend>
       <label><input type="checkbox" name="alsoMerchant">Amazon自社発送にも使う</label>
-      <label><input type="checkbox" name="alsoYahoo">ヤフオク併売を準備する</label>
-      <label class="stock-yahoo-url" hidden>出品済みならヤフオクURL（任意）<input name="concurrentYahooUrl" type="url" maxlength="2048" placeholder="https://auctions.yahoo.co.jp/jp/auction/…"><small>URLなしなら下書き候補へ追加します。ASINが必要です。</small></label>
+      <label><input type="checkbox" name="alsoYahoo"><span data-yahoo-use-label>ヤフオク併売を準備する</span></label>
+      <label class="stock-yahoo-url" hidden><span data-yahoo-url-label>出品済みならヤフオクURL（任意）</span><input name="concurrentYahooUrl" type="url" maxlength="2048" placeholder="https://auctions.yahoo.co.jp/jp/auction/…"><small>URLなしなら下書き候補へ追加します。ASINが必要です。</small></label>
       <label><input type="checkbox" name="alsoPlanning">販売監視・見直しにも登録する</label>
       <small>複数選択できます。実際の出品操作は各販路で行ってください。</small>
     </fieldset>
