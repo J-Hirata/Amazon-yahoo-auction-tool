@@ -113,7 +113,7 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
         if (config.readOnly) return reply({error: "現在は閲覧のみです"}, 403);
         const match = request.headers.get("if-match");
         if (!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match || "")) return reply({error: "最新の在庫を読み込んでください"}, 428);
-        const data = await jsonBody(request), options = {expectedRevision: Number(match.slice(1, -1)), actor: owner.userId, confirmed: data.confirmed};
+        const data = await jsonBody(request), options = {expectedRevision: Number(match.slice(1, -1)), actor: owner.userId, confirmed: data.confirmed, sourceRevisions:data.sourceRevisions};
         return reply(url.pathname.endsWith("/preview") ? await stock.preview(data.command, options) : await stock.commit(data.command, options));
       }
       if (draftStore && ["/api/items", "/api/next-draft", "/api/export/drafts.csv"].includes(url.pathname) && request.method === "GET") {

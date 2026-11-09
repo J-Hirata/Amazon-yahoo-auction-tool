@@ -369,7 +369,7 @@ function render() {
     const live=currentMode==="saved"?access.info("link:"+link.id).live:null;const qty=live?(live.availability?.fba||live.fba)?.quantity??null:known?p.fulfillableQuantity:null;
     const sales=saved.salesHistory?.products.find(s=>s.linkId===link.id),photo=$("#linkRows").children[index].querySelector(".linked-product img");
     return {node:$("#linkRows").children[index],id:link.id,title:y?.title||(p?.title!==p?.asin?p?.title:"")||link.previousListingTitle||p?.asin||"商品名未取得",imageUrl:photo?.src,imageLabel:photo?.alt||"出品画像",
-      badges:[link.asin||p?.asin||"ASINを登録"],renderAccess:currentMode==="saved"?host=>access.mount(host,"link:"+link.id,{asin:link.asin||p?.asin,listingIds:[link.listingId]}):undefined,metrics:currentMode==="saved"?[]:[{label:"Amazon FBA在庫",value:qty??"未確認",unit:"個"}],
+      badges:[link.asin||p?.asin||"ASINを登録",live?.availability?.condition||p?.condition||"状態を詳細で確認"],identity:live?.availability?.sku||live?.workspace?.sellerSku||link.amazonSellerSku||"",memo:link.userMemo||"",renderAccess:currentMode==="saved"?host=>access.mountCompact(host,"link:"+link.id,{asin:link.asin||p?.asin,listingIds:[link.listingId]}):undefined,metrics:currentMode==="saved"?[]:[{label:"Amazon FBA在庫",value:qty??"未確認",unit:"個"}],
       status:"",measure:qty,registeredAt:link.createdAt};
   }));
   const events = [...data.events].reverse();

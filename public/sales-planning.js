@@ -1,3 +1,4 @@
+import {createTileSize} from './tile-size.js';
 import {monitorRequest} from "./monitor-http.js";
 import {catalogImage} from "./catalog-view.js";
 import {createElement,CalendarClock,RefreshCw,Plus,Search,X,Save,Pencil,History,ClipboardCopy,Ellipsis,List,LayoutGrid} from "lucide";
@@ -19,6 +20,7 @@ export async function openPlanning({userId,readOnly}){
   const form=$("#planningForm"),dialog=$("#planningDialog"),pendingKey="sales-planning-pending:"+userId;
   const access=createProductAccess({readOnly:()=>readOnly,onChanged:async()=>load()});
   const status=(message,error=false)=>{$("#planningStatus").textContent=message;$("#planningStatus").classList.toggle("error",error);};
+  createTileSize({host:document.querySelector('.planning-filters'),roots:[document.querySelector('.planning-table tbody')],key:'planning-size:'+userId});
   let mode="list";try{mode=localStorage.getItem("planning-mode:"+userId)==="tiles"?"tiles":"list";}catch{}
   function showMode(){document.querySelector(".planning-table").classList.toggle("planning-tiles",mode==="tiles");for(const b of document.querySelectorAll("[data-plan-mode]"))b.setAttribute("aria-pressed",String(b.dataset.planMode===mode));}
   for(const b of document.querySelectorAll("[data-plan-mode]"))b.addEventListener("click",()=>{mode=b.dataset.planMode;showMode();try{localStorage.setItem("planning-mode:"+userId,mode);}catch{}});showMode();

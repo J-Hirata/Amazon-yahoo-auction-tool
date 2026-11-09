@@ -21,6 +21,13 @@
     <label>在庫の用途<select name="fbaEligibility"><option value="unknown">未設定</option><option value="possible">FBAへ追加納品する在庫</option><option value="not_possible">自社発送用（FBA納品不可）</option></select></label>
     <input type="hidden" name="unit" value="個">
     <fieldset id="stockInitialFields" class="stock-place-fields"><legend>場所ごとの数量</legend><div class="stock-form-grid"><label><span><span data-stock-icon="warehouse"></span>コンテナ</span><div class="stock-number-field"><input name="containerQuantity" type="number" min="0" max="1000000" step="1" placeholder="未確認"><span>個</span></div></label><label><span><span data-stock-icon="house"></span>自宅・会社</span><div class="stock-number-field"><input name="homeQuantity" type="number" min="0" max="1000000" step="1" placeholder="未確認"><span>個</span></div></label></div></fieldset>
+    <fieldset id="stockConcurrentFields" class="stock-concurrent-fields"><legend>この商品をほかの販路・販売監視にも登録</legend>
+      <label><input type="checkbox" name="alsoMerchant">Amazon自社発送にも使う</label>
+      <label><input type="checkbox" name="alsoYahoo">ヤフオク併売を準備する</label>
+      <label class="stock-yahoo-url" hidden>出品済みならヤフオクURL（任意）<input name="concurrentYahooUrl" type="url" maxlength="2048" placeholder="https://auctions.yahoo.co.jp/jp/auction/…"><small>URLなしなら下書き候補へ追加します。ASINが必要です。</small></label>
+      <label><input type="checkbox" name="alsoPlanning">販売監視・見直しにも登録する</label>
+      <small>複数選択できます。実際の出品操作は各販路で行ってください。</small>
+    </fieldset>
     <label>状態・付属品・セット内容 <span class="stock-optional">任意</span><input name="setContents" maxlength="300" placeholder="例：スタンドなし、電源コード付き"></label>
     <label>ひとことメモ <span class="stock-optional">任意</span><textarea name="memo" rows="2" maxlength="500"></textarea></label>
     <section id="stockExtraFields" class="stock-catalog-settings" aria-labelledby="stockCatalogTitle"><h3 id="stockCatalogTitle">Amazon・ヤフオク／カタログ設定</h3>

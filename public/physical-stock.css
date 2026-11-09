@@ -131,3 +131,5 @@
 }
 @media(max-width:360px) {.stock-dialog .stock-form-grid {grid-template-columns:1fr;}.stock-row-actions button {flex-basis:100%;}}
 @media(prefers-reduced-motion:no-preference) {.stock-shell button {transition:background-color .12s,border-color .12s;}}
+
+.stock-concurrent-fields{border:1px solid #d1ded4;border-radius:8px;padding:12px;background:#f5faf7}.stock-concurrent-fields>label:has(input[type=checkbox]){display:flex;align-items:center;gap:8px;margin:10px 0}.stock-concurrent-fields input[type=checkbox]{width:18px;height:18px;flex:none;margin:0}.stock-concurrent-fields small{display:block;font-size:11px;color:#617769}.stock-concurrent-summary{background:#eef7f0;padding:10px;border-radius:6px}

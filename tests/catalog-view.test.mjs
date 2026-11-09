@@ -3,9 +3,9 @@ import assert from "node:assert/strict";
 import {presentationSettings,presentationOrder,mergeManualOrder,catalogImage} from "../public/catalog-view.js";
 
 test("presentation settings reject unknown modes and never infer a default tile preference",()=>{
-  assert.deepEqual(presentationSettings(),{mode:"list",sort:"original",order:[]});
-  assert.deepEqual(presentationSettings({mode:"tiles",sort:"measureAsc"}),{mode:"tiles",sort:"measureAsc",order:[]});
-  assert.deepEqual(presentationSettings({mode:"other",sort:"other"}),{mode:"list",sort:"original",order:[]});
+  assert.deepEqual(presentationSettings(),{mode:"list",sort:"original",order:[],size:"standard"});
+  assert.deepEqual(presentationSettings({mode:"tiles",sort:"measureAsc"}),{mode:"tiles",sort:"measureAsc",order:[],size:"standard"});
+  assert.deepEqual(presentationSettings({mode:"other",sort:"other"}),{mode:"list",sort:"original",order:[],size:"standard"});
 });
 
 test("registration sorting keeps missing dates last and never substitutes a mutable review date",()=>{

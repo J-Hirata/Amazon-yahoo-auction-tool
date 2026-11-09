@@ -35,6 +35,7 @@ const fileTypes = {
   "cloud-login.html": "text/html; charset=utf-8", "cloud-view.html": "text/html; charset=utf-8", "cloud-drafts-view.html": "text/html; charset=utf-8", "app.js": "text/javascript; charset=utf-8", "demo.html": "text/html; charset=utf-8", "cloud-demo.js": "text/javascript; charset=utf-8",
   "cloud-login.js": "text/javascript; charset=utf-8", "monitor-http.js": "text/javascript; charset=utf-8", "link-monitor.js": "text/javascript; charset=utf-8",
   "cloud-stock-view.html": "text/html; charset=utf-8", "physical-stock.js": "text/javascript; charset=utf-8", "physical-stock.css": "text/css; charset=utf-8",
+  "tile-size.js":"text/javascript; charset=utf-8", "fba-alarm.js":"text/javascript; charset=utf-8",
   "catalog-view.js":"text/javascript; charset=utf-8", "catalog-view.css":"text/css; charset=utf-8", "catalog-list.svg":"image/svg+xml", "catalog-tiles.svg":"image/svg+xml", "catalog-image.svg":"image/svg+xml",
   "catalog-sortable.js":"text/javascript; charset=utf-8", "catalog-grip.svg":"image/svg+xml", "catalog-prev.svg":"image/svg+xml", "catalog-next.svg":"image/svg+xml",
   "cloud-login.css": "text/css; charset=utf-8", "link-monitor.css": "text/css; charset=utf-8", "styles.css": "text/css; charset=utf-8", "extension-logo.png": "image/png",
@@ -56,7 +57,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const stockStore = config.fullWorkspace ? createPostgresDocumentStore({pool, key: "physical-stock", validate: validatePhysicalStock}) : undefined;
   const planningStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"sales-planning",validate:validateSalesPlanning}):undefined;
   const watchStore=config.fullWorkspace?createPostgresDocumentStore({pool,key:"product-watch",validate:validateProductWatch}):undefined;
-  const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore,watchStore}) : undefined;
+  const stock = stockStore ? createCloudStock({store: stockStore, monitorStore: store, draftStore,watchStore,registrationTransaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning,"draft-items":validateDraftItems}})}) : undefined;
   const overview=watchStore?createProductOverview({monitorStore:store,stockStore,planningStore,draftStore,watchStore}):undefined;
   const planning=planningStore?createCloudPlanning({store:planningStore,stock,monitorStore:store,overview,
     readCatalog:env.ASIN_AMAZON_CLIENT_ID?asin=>readPlanningCatalog({asin,config:cloudAmazonConfig(env)}):undefined}):undefined;

@@ -24,6 +24,7 @@ export function validatePhysicalStock(state) {
   if (!state || state.version !== 1 || !["products", "balances", "transfers", "events", "receipts"].every((key) => Array.isArray(state[key]))) throw new Error("手元在庫の保存形式を確認してください");
   const products = new Set(state.products.map((p) => p.id)), pairs = new Set(), operations = new Set();
   if (products.size !== state.products.length || state.products.some((p) => !uuid(p.id) || typeof p.title !== "string" || !p.title)) throw new Error("手元在庫の管理IDを確認してください");
+  if(state.products.some(p=>p.useChannels!==undefined&&(!Array.isArray(p.useChannels)||p.useChannels.some(c=>!['merchant','yahoo'].includes(c))||new Set(p.useChannels).size!==p.useChannels.length)))throw fail('利用する販路の保存形式を確認してください');
   if (state.products.some((p) => p.imageUrl && stockImageUrl(p.imageUrl) !== p.imageUrl)) throw new Error("商品画像の保存先を確認してください");
   if (state.amazonListings && (!["complete","failed"].includes(state.amazonListings.status) || state.amazonListings.status === "complete" &&
     (!Array.isArray(state.amazonListings.rows) || !Array.isArray(state.amazonListings.asins) || state.amazonListings.rows.some((r) => typeof r.asin !== "string" || typeof r.sellerSku !== "string" || !Array.isArray(r.statuses) || !Array.isArray(r.fulfillment))))) throw new Error("自社Amazon出品の確認情報を検証してください");
@@ -47,6 +48,7 @@ function productFields(data) {
     setContents: text(data.setContents, 300), memo: text(data.memo, 500), asin: asin(data.asin), sellerSku: text(data.sellerSku, 200),
     catalogTask: task, fbaEligibility: choice(data.fbaEligibility || "unknown", ["unknown", "possible", "not_possible"]),
     linkedLinkIds: data.linkedLinkIds || [], reviewDate: text(data.reviewDate, 10)};
+  if(data.useChannels!==undefined){if(!Array.isArray(data.useChannels)||data.useChannels.some(c=>!['merchant','yahoo'].includes(c))||new Set(data.useChannels).size!==data.useChannels.length)throw fail('利用する販路を確認してください');result.useChannels=[...data.useChannels];}
   if (!Array.isArray(result.linkedLinkIds) || result.linkedLinkIds.length > 10 || result.linkedLinkIds.some((value) => !uuid(value)) || new Set(result.linkedLinkIds).size !== result.linkedLinkIds.length) throw fail("紐付け先を確認してください");
   if (result.reviewDate && (!/^\d{4}-\d{2}-\d{2}$/.test(result.reviewDate) || new Date(result.reviewDate + "T00:00:00Z").toISOString().slice(0, 10) !== result.reviewDate)) throw fail("再確認日を正しく入力してください");
   if (task === "registered" && !result.asin) throw fail("カタログ登録済みにする場合はASINを入力してください");

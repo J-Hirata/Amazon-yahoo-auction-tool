@@ -1,7 +1,8 @@
+import {createTileSize} from './tile-size.js';
 const modes = ["list", "tiles"], sorts = ["original", "manual", "dateDesc", "dateAsc", "titleAsc", "titleDesc", "measureDesc", "measureAsc"];
 const ids=value=>[...new Set((Array.isArray(value)?value:[]).filter(id=>typeof id==="string"&&id.length>0&&id.length<=200))].slice(0,10000);
 export function presentationSettings(value) {
-  return {mode:modes.includes(value?.mode)?value.mode:"list",sort:sorts.includes(value?.sort)?value.sort:"original",order:ids(value?.order)};
+  return {mode:modes.includes(value?.mode)?value.mode:"list",sort:sorts.includes(value?.sort)?value.sort:"original",order:ids(value?.order),size:["small","standard","large"].includes(value?.size)?value.size:"standard"};
 }
 // Reordering a filtered view must not discard the positions of hidden products.
 export function mergeManualOrder(saved,visible) {
@@ -51,6 +52,7 @@ export function createCatalogView({key,host,roots,measureLabels=["数量 多い�
   const label=node("label","catalog-sort-label"),caption=node("span","","並び順"),select=node("select","catalog-sort");select.setAttribute("aria-label","並び順");
   for(const [value,text] of [["original","元の並び順"],["manual","自由な並び順"],["dateDesc","登録日 新しい順"],["dateAsc","登録日 古い順"],["measureDesc",measureLabels[0]],["measureAsc",measureLabels[1]],["titleAsc","商品名 昇順"],["titleDesc","商品名 降順"]]){const option=node("option","",text);option.value=value;select.append(option);}
   select.value=settings.sort;select.addEventListener("change",()=>{settings.sort=select.value;apply();save();});label.append(caption,select);bar.append(segmented,label);host.append(bar);
+  const density=createTileSize({host:bar,roots,value:settings.size,onChange:size=>{settings.size=size;save();}});
   function save(){try{localStorage.setItem("catalog-view:"+key,JSON.stringify(settings));return true;}catch{live.textContent="このブラウザーに並び順を保存できませんでした。";return false;}}
   const currentIds=root=>[...root.children].filter(el=>el.matches(".catalog-item")&&!el.classList.contains("catalog-drag-fallback")).map(el=>el.dataset.catalogId);
   function remember(root){settings.order=mergeManualOrder(settings.order,currentIds(root));settings.sort="manual";select.value="manual";}
@@ -80,7 +82,7 @@ export function createCatalogView({key,host,roots,measureLabels=["数量 多い�
     for(const root of roots){root.classList.toggle("catalog-grid",settings.mode==="tiles");root.dataset.catalogLayout=settings.mode;
       const table=root.closest("table");if(table)table.classList.toggle("catalog-table-tiles",settings.mode==="tiles");
       for(const item of presentationOrder(groups.get(root)||[],settings.sort,settings.order))root.append(item.node);
-      resize(root);sortables.get(root)?.option("disabled",settings.mode!=="tiles");
+      density?.resize();resize(root);sortables.get(root)?.option("disabled",settings.mode!=="tiles");
       if(settings.mode==="tiles")void enableDrag(root);
     }
   }
@@ -113,7 +115,7 @@ export function createCatalogView({key,host,roots,measureLabels=["数量 多い�
       function expandedState(){const yes=expanded.has(data.id);row.classList.toggle("catalog-expanded",yes);open.setAttribute("aria-expanded",String(yes));open.querySelector("span").textContent=yes?"閉じる":"詳細";}
       open.addEventListener("click",()=>{if(expanded.has(data.id))expanded.delete(data.id);else expanded.add(data.id);expandedState();});
       summary.append(imageBox,title,badges,metrics,state);row.classList.toggle('catalog-with-access',Boolean(data.renderAccess));
-      if(data.renderAccess){const access=node('div','catalog-access');data.renderAccess(access);const memberships=access.querySelector('.product-membership');if(memberships){badges.append(memberships);badges.setAttribute('aria-label','状態・用途・登録済みのページ');}summary.append(access);}summary.append(footer);(row.tagName==="TR"?row.firstElementChild:row).prepend(summary);expandedState();
+      if(data.renderAccess){const access=node('div','catalog-access');data.renderAccess(access);if(data.identity){const id=node("div","catalog-identity","SKU："+data.identity);id.title=id.textContent;access.prepend(id);}if(data.memo){const memo=node("p","catalog-memo",data.memo);memo.title=data.memo;access.append(memo);}const memberships=access.querySelector('.product-membership');if(memberships){badges.append(memberships);badges.setAttribute('aria-label','状態・用途・登録済みのページ');}summary.append(access);}summary.append(footer);(row.tagName==="TR"?row.firstElementChild:row).prepend(summary);expandedState();
     }
     apply();
   }

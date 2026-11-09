@@ -1,3 +1,4 @@
+import {applyStockRegistration,registrationDocuments} from './stock-registration.js';
 import {applyStockCommand, stockCommandDigest, stockTotals, STOCK_LOCATIONS} from "./physical-stock.js";
 import {assessLink, PREVIEW_CONFIG} from "./link-monitor.js";
 import {stockImageUrl} from "./stock-images.js";
@@ -61,9 +62,16 @@ export function stockCsv(view) {
     STOCK_LOCATIONS.find((l) => l.id === balance.locationId).name, balance.usable, balance.reserved, balance.unusable, balance.usable === null ? "未確認" : "確認済み", balance.checkedAt, product.memo]);
   return "\ufeff" + rows.map((row) => row.map(cell).join(",")).join("\r\n");
 }
-export function createCloudStock({store, monitorStore, draftStore, watchStore, now = () => new Date().toISOString()}) {
+export function createCloudStock({store, monitorStore, draftStore, watchStore, registrationTransaction, now = () => new Date().toISOString()}) {
   async function view() {return physicalStockView(await store.readSnapshot(), await monitorStore.read(), now(), draftStore ? await draftStore.read() : [],watchStore?await watchStore.read():undefined);}
   async function preview(command, {expectedRevision, actor}) {
+    if(command.registration){
+      if(!registrationTransaction)throw fail('同時登録を利用できません。入力を残して画面を更新してください',503);
+      const docs=await registrationTransaction.read(),sourceRevisions=Object.fromEntries(registrationDocuments(command).filter(k=>k!=='physical-stock').map(k=>[k,docs[k].revision]));
+      checkLinks(command,docs['link-monitor'].state,undefined,linksFor(docs['link-monitor'].state,now(),watchStore?await watchStore.read():undefined));
+      const receipt=await applyStockRegistration(docs,command,{actor,at:now(),expectedRevision,sourceRevisions}),state=docs['physical-stock'].state,product=state.products.find(p=>p.id===receipt.productId);
+      return {revision:expectedRevision,sourceRevisions,receipt,product,event:state.events.find(e=>e.operationId===receipt.id),duplicates:state.products.filter(p=>p.id!==product.id&&(product.asin&&p.asin===product.asin||p.title.toLowerCase()===product.title.toLowerCase())).map(p=>({managementId:p.managementId,title:p.title})).slice(0,5)};
+    }
     const snapshot = await store.readSnapshot();
     if (snapshot.revision !== expectedRevision) throw fail("在庫が更新されています。最新の内容で確認し直してください", 409);
     const monitor=await monitorStore.read();checkLinks(command, monitor, snapshot.state.products.find(p=>p.id===command.productId),linksFor(monitor,now(),watchStore?await watchStore.read():undefined));
@@ -73,8 +81,17 @@ export function createCloudStock({store, monitorStore, draftStore, watchStore, n
     const duplicates = state.products.filter((p) => p.id !== product.id && (product.asin && p.asin === product.asin || p.title.toLowerCase() === product.title.toLowerCase())).map((p) => ({managementId: p.managementId, title: p.title})).slice(0, 5);
     return {revision: snapshot.revision, receipt, product, event, duplicates};
   }
-  async function commit(command, {expectedRevision, actor, confirmed}) {
+  async function commit(command, {expectedRevision, actor, confirmed, sourceRevisions}) {
     if (confirmed !== true) throw fail("変更前後を確認して保存してください", 400);
+    if(command.registration){
+      if(!registrationTransaction)throw fail('同時登録を利用できません。入力を残して画面を更新してください',503);
+      const watch=watchStore?await watchStore.read():undefined;
+      const receipt=await registrationTransaction.update(async docs=>{
+        if(!docs['physical-stock'].state.receipts.some(r=>r.id===command.operationId))checkLinks(command,docs['link-monitor'].state,undefined,linksFor(docs['link-monitor'].state,now(),watch));
+        return applyStockRegistration(docs,command,{actor,at:now(),expectedRevision,sourceRevisions});
+      });
+      return {receipt,result:await view()};
+    }
     const snapshot = await store.readSnapshot(), previous = snapshot.state.receipts.find((r) => r.id === command?.operationId);
     if (previous) {
       if (previous.digest !== stockCommandDigest(command) || previous.actor !== actor) throw fail("操作IDと内容が一致しません", 409);
