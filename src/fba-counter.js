@@ -17,7 +17,7 @@ export function effectiveFba(row,review,monitor,at){
  const raw=row.fba||{quantity:null,status:'unknown'};if(raw.status==='not_fba'||row.channels?.fba?.state==='absent'&&['active','inactive'].includes(row.channels?.merchant?.state))return null;const counter=manualFbaCounter(row,review,monitor,at);
  let api=raw;
  // A whole-product reference may sum distinct SKUs only within an explicit condition family.
- if(raw.status==='ambiguous'&&!row.sellerSku&&['new','used'].includes(row.condition)&&raw.variants?.length&&new Set(raw.variants.map(v=>v.sellerSku)).size===raw.variants.length&&raw.variants.every(v=>v.sellerSku&&count(v.quantity)))api={...raw,quantity:raw.variants.reduce((n,v)=>n+v.quantity,0),status:'complete',sellerSku:'',sellerSkus:raw.variants.map(v=>v.sellerSku),scope:'product'};
+ if(raw.status==='ambiguous'&&!row.sellerSku&&row.condition==='new'&&raw.variants?.length&&new Set(raw.variants.map(v=>v.sellerSku)).size===raw.variants.length&&raw.variants.every(v=>v.sellerSku&&count(v.quantity)))api={...raw,quantity:raw.variants.reduce((n,v)=>n+v.quantity,0),status:'complete',sellerSku:'',sellerSkus:raw.variants.map(v=>v.sellerSku),scope:'product'};
  if(api.status==='complete'&&count(api.quantity)&&fresh(api.checkedAt,at)&&(!review||Date.parse(api.checkedAt)>=Date.parse(review.checkedAt)))return {...api,source:'amazon',counter};
  if(counter&&['estimated','stale'].includes(counter.status))return {...raw,quantity:counter.quantity,status:'estimated',source:'estimate',stale:counter.status==='stale',checkedAt:counter.checkedAt,sellerSku:review.sellerSku||'',sellerSkus:counter.skus,scope:review.sellerSku?'sku':'product',counter,autoStatus:raw.status};
  return null;
