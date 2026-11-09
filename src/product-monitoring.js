@@ -7,15 +7,17 @@ import {recordReplenishmentBaselines} from './replenishment.js';
 export {collectProductAlerts} from "./product-alerts.js";
 import {collectProductAlerts} from "./product-alerts.js";
 
-export function createProductMonitoring({overview,watchStore,config,readInventory=readFbaInventory,readYahoo=fetchYahooListing,readListings,now=()=>new Date().toISOString()}){
+export function createProductMonitoring({overview,watchStore,config,readInventory=readFbaInventory,readYahoo=fetchYahooListing,readListings,followRelistings,now=()=>new Date().toISOString()}){
   async function run({settings,enqueueAlerts,refreshListings=false}){
     const id=randomUUID(),at=now(),claim=await watchStore.update(state=>{
       if(state.observations.job?.status==="running"&&Date.parse(state.observations.job.leaseUntil)>Date.parse(at))return false;
       state.observations.job={id,status:"running",startedAt:at,leaseUntil:new Date(Date.parse(at)+150000).toISOString()};return true;
     });
     if(!claim)return {status:"running"};
+    let relistingError='';
+    if(followRelistings)try{await followRelistings();}catch{relistingError='再出品メールの確認に失敗しました。以前の紐付けを保持しています';}
     const input=await overview.inputs(),asins=[...new Set(productOverview(input,at).filter(r=>!r.sources.every(s=>s==="draft")).map(r=>r.asin).filter(Boolean))];
-    let fba,listings,errors=[];
+    let fba,listings,errors=relistingError?[relistingError]:[];
     if(asins.length&&asins.length<=100){
       try{fba=await readInventory({asins,config,maxPages:20,maxDurationMs:45000});if(!fba.complete||fba.accountKey!==config.accountKey||fba.sellerId!==config.sellerId||JSON.stringify([...fba.asins].sort())!==JSON.stringify([...asins].sort()))throw new Error("scope");}
       catch{errors.push("FBA在庫を取得できません。以前の数量を現在庫やゼロとは扱いません");fba={...input.watch.observations.fba,status:"failed",complete:false,attemptedAt:now()};}

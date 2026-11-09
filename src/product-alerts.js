@@ -51,7 +51,7 @@ export function collectProductAlerts(state,rows,settings,at){
     if(row.watchDue&&!row.plans.some(p=>p.schedule.dueOn===row.watchDue))observe(`review-watch:${row.rule.key}:${row.watchDue}`,row.watchDue<=planningToday(at),"reviewAlerts",row,`監視商品の見直し時期です。確認日：${row.watchDue}。タグ：${row.tags.join("・")}。${row.rule.note}`);
   }
   for(const p of pending)if(/^(action-|review-|low-stock:|yahoo-ended:|fba-zero:|replenish:)/.test(p.key||"")&&!observed.has(p.key)&&!p.queuedAt)p.dismissedAt=at;
-  for(const key of Object.keys(signals))if(key.startsWith('low-stock:')&&!observed.has(key))signals[key]={active:false,known:true,at};
+  for(const key of Object.keys(signals))if((key.startsWith('low-stock:')||key.startsWith('yahoo-ended:'))&&!observed.has(key))signals[key]={active:false,known:true,at};
   if(pending.length>5000)throw new Error("通知履歴の保存上限を確認してください");
   return pending.filter(p=>!p.queuedAt&&!p.dismissedAt&&(!observed.has(p.key)||decisions.get(p.key)===true));
 }

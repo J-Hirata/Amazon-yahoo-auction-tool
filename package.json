@@ -23,9 +23,11 @@
     "cheerio": "^1.0.0",
     "csv-parse": "^7.0.3",
     "dotenv": "^17.4.2",
+    "imapflow": "2.11.0",
     "jose": "^6.2.13",
     "nodemailer": "^10.2.1",
-    "pg": "^8.23.1"
+    "pg": "^8.23.1",
+    "postal-mime": "4.2.0"
   },
   "overrides": {
     "@neondatabase/auth": {

@@ -60,6 +60,7 @@ export function createProductAccess({readOnly=()=>false,onChanged=async()=>{}}={
   form.elements.replaceLinkId.replaceChildren();const options=selected.key.startsWith('link:')?selected.yahoo:[{linkId:'',listingId:'新しい出品URLを追加'},...selected.yahoo];
   for(const o of options){const option=el('option',o.listingId);option.value=o.linkId;form.elements.replaceLinkId.append(option);}
   if(selected.yahoo.length===1)form.elements.replaceLinkId.value=selected.yahoo[0].linkId||'';selectUrl();
+  if(!pending&&yahoo(fallback?.suggestedListingId))form.elements.yahoo.value=yahoo(fallback.suggestedListingId);
   closePicker();
   const existing=activeReview(selected)||selected.key.startsWith('plan:'),existingNote=dialog.querySelector('[data-url-review-existing]');dialog.querySelector('[data-url-review-choice]').hidden=Boolean(existing);existingNote.hidden=!existing;existingNote.textContent=existing?'販売見直し登録済み（日付・方針は変更しません）':'';
   if(pending){if(pending.command.kind==='associate-existing'){if(entries[pending.command.targetKey])choose(entries[pending.command.targetKey]);}else{form.elements.amazon.value=pending.command.amazon;form.elements.yahoo.value=pending.command.yahoo;form.elements.replaceLinkId.value=pending.command.replaceLinkId;}}
