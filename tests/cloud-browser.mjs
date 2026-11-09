@@ -304,7 +304,7 @@ try {
   }
   pass("desktop and mobile have no horizontal overflow");
   if (fullWorkspace) {
-    await page.locator(".cloud-account nav").getByText("出品下書きツール", {exact: true}).click();
+    await page.locator(".cloud-account nav").getByText("ヤフオク出品下書きツール", {exact: true}).click();
     await page.locator("#cloudApp:not([hidden]) #summary").waitFor();
     assert.match(await page.locator("#cloudApp h1").textContent(),/出品下書きツール/);
     assert.match(await page.locator("#summary").textContent(), /58/);

@@ -5,8 +5,8 @@ export async function verifyStockWorkflow({page,stockStore,monitorStore,root,pas
   const monitor=await monitorStore.read(), first=monitor.links[0], catalog=monitor.catalog.find(p=>p.id===first.catalogId), asin=first.asin||catalog.asin;
   const nav=page.locator(".cloud-account nav");
   const follow=async link=>{assert.equal(await link.getAttribute('target'),'_blank');await page.goto(new URL(await link.getAttribute('href'),page.url()).href);};
-  assert.deepEqual(await nav.locator("a").allTextContents(),["商品紐付けツール","出品下書きツール","コンテナ・自社在庫","販売の監視・見直し"]);
-  assert.equal(await nav.locator(".workspace-market img").count(),1);
+  assert.deepEqual(await nav.locator(".workspace-tool-name").allTextContents(),["商品紐付けツール","ヤフオク出品下書きツール","コンテナ・自社在庫","販売の監視・見直し"]);
+  assert.equal(await nav.locator("img[src='/extension-logo.png']").count(),1);
   await page.locator("#stockNew").click();
   await page.locator('#stockProductForm [name=title]').fill("併売導線の試験商品");
   await page.locator('#stockProductForm [name=condition]').selectOption(/^new/i.test(catalog?.condition||"")?"new":"used");

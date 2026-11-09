@@ -1,30 +1,26 @@
-import {createElement, Link2, FilePenLine, Warehouse, CalendarClock, LayoutGrid} from "lucide";
+
 
 const validId = (value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value || "");
 const contextId = () => {const id = new URLSearchParams(location.hash.slice(1)).get("stock"); return validId(id) ? id : "";};
 
 export function workspaceNavigation({drafts, stock, planning, overview, physicalStock, salesPlanning,productOverview}) {
-  const nav = document.createElement("nav"); nav.setAttribute("aria-label", "管理画面");
-  const market = document.createElement("div"); market.className = "workspace-market";
-  const logo = document.createElement("img"); Object.assign(logo, {src:"/extension-logo.png",alt:"Amazonからヤフオクへ",width:44,height:44});
-  const marketBody = document.createElement("div"), title = document.createElement("span");
-  marketBody.className = "workspace-market-body"; title.className = "workspace-group-title"; title.textContent = "Amazon・ヤフオク併売";
-  const links = document.createElement("div"); links.className = "workspace-links";
-  function item(label, href, selected, shape) {
-    const a = document.createElement("a"), text = document.createElement("span"); a.href = href; text.textContent = label;
-    a.append(createElement(shape,{width:18,height:18,"aria-hidden":"true"}),text);
+  const nav = document.createElement("nav"); nav.className="workspace-tools"; nav.setAttribute("aria-label", "管理画面");
+  function item(label, href, selected, image, key, caption) {
+    const a = document.createElement("a"), text = document.createElement("span"), logo=document.createElement('img'), note=document.createElement('span');
+    a.href = href; a.className='workspace-tool'; a.dataset.tool=key; a.setAttribute('aria-label',label);
+    text.className='workspace-tool-name'; text.textContent = label;
+    Object.assign(logo,{src:image,alt:'',width:56,height:56}); logo.className='workspace-tool-logo';
+    note.className='workspace-tool-caption'; note.textContent=caption; note.setAttribute('aria-hidden','true');
+    a.append(logo,text,note);
     if (selected) a.setAttribute("aria-current","page"); return a;
   }
   const context = contextId(), hash = context ? "#stock=" + context : "";
-  links.append(item("商品紐付けツール","/"+hash,!drafts&&!stock&&!planning&&!overview,Link2),item("出品下書きツール","/?view=drafts"+hash,drafts,FilePenLine));
-  marketBody.append(title,links); market.append(logo,marketBody); nav.append(market);
-  if (physicalStock) {
-    const inventory = document.createElement("div"), caption = document.createElement("span");
-    inventory.className = "workspace-inventory"; caption.className = "workspace-group-title"; caption.textContent = "在庫管理";
-    inventory.append(caption,item("コンテナ・自社在庫","/?view=stock",stock,Warehouse)); nav.append(inventory);
-  }
-  if(salesPlanning){const group=document.createElement("div"),caption=document.createElement("span");group.className="workspace-inventory";caption.className="workspace-group-title";caption.textContent="販売方針";group.append(caption,item("販売の監視・見直し","/?view=planning",planning,CalendarClock));nav.append(group);}
-  if(productOverview){const group=document.createElement('div'),caption=document.createElement('span');group.className='workspace-inventory workspace-overview';caption.className='workspace-group-title';caption.textContent='全体を横断して確認';group.append(caption,item('全商品一覧','/?view=overview',overview,LayoutGrid));nav.append(group);}
+  nav.append(item("商品紐付けツール","/"+hash,!drafts&&!stock&&!planning&&!overview,'/extension-logo.png','links','Amazon・ヤフオクを紐付け'),item("ヤフオク出品下書きツール","/?view=drafts"+hash,drafts,'/workspace-drafts.png','drafts','ヤフオクへの出品準備'));
+  if (physicalStock) nav.append(item("コンテナ・自社在庫","/?view=stock",stock,'/workspace-stock.png','stock','保管場所と実数を管理'));
+  if (salesPlanning) nav.append(item("販売の監視・見直し","/?view=planning",planning,'/workspace-planning.png','planning','売れ行き・次の方針を確認'));
+  if (productOverview) nav.append(item('全商品一覧','/?view=overview',overview,'/workspace-overview.png','overview','販路と在庫をまとめて確認'));
+  nav.style.setProperty('--workspace-tool-count',String(nav.children.length));
+  nav.dataset.count=String(nav.children.length);
   return nav;
 }
 

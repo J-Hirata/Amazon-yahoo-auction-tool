@@ -73,7 +73,7 @@ export async function verifyCatalogViews({page,stockStore,monitorStore,draftStor
   await page.setViewportSize({width:390,height:844});await fit();await page.screenshot({path:path.join(root,"output","catalog-links-mobile.png")});
   await setMode("links","list");
   pass("linkage tiles preserve FBA/unknown labels, all listing IDs, unsaved memo input and original operations without API writes");
-  await page.locator(".cloud-account nav").getByText("出品下書きツール",{exact:true}).click();await page.locator("#cloudApp:not([hidden]) #summary").waitFor();
+  await page.locator(".cloud-account nav").getByText("ヤフオク出品下書きツール",{exact:true}).click();await page.locator("#cloudApp:not([hidden]) #summary").waitFor();
   const visibleCount=await page.locator("#active .item,#waiting .item,#recentHistory .item").count();await setMode("drafts","tiles");
   await page.setViewportSize({width:1440,height:1080});
   await page.waitForFunction(()=>getComputedStyle(document.querySelector("#active")).gridTemplateColumns.split(" ").length===5);

@@ -61,3 +61,7 @@ test('inventory read failure preserves sale notification with explicit missing c
  const f=fixture(),sent=[];const store={read:async()=>structuredClone(f.state),update:async fn=>fn(f.state)};
  const engine=createCloudSalesAutomation({store,now:()=>at,readInventory:async()=>{throw new Error('private failure');},transport:{send:async m=>{sent.push(m);return{status:'smtp_accepted'};}}});await engine.queueSales();await engine.drain();assert.equal(sent.length,1);assert.match(sent[0].text,/取得値なし/);assert.match(sent[0].text,/在庫情報の読取に失敗/);assert.doesNotMatch(sent[0].text,/private failure|関連付けなし/);
 });
+
+test('compact morning summary keeps separate order dates, source quantities and SKU in four lines per product',()=>{
+ const f=fixture(),text=salesMailSummary(f).text;const block=text.split('学研 スーパーのりものデラックス')[1].split('\n\n')[0];assert.equal(block.split('\n').length,4);assert.match(block,/注文確定 5個/);assert.match(block,/2026-11-05/);assert.match(block,/Amazon取得/);assert.match(block,/SKU: book-new/);assert.match(block,/コンテナ：150個/);assert.match(text,/他販路の販売は自動反映しません/);
+});

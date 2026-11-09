@@ -36,7 +36,7 @@ function quantities(group,state,rows,at){
   const sales=uniqueEvents(tracking?.events||[]).filter(e=>e.asin===group.asin&&skus.has(e.sellerSku)&&e.fulfillment==='AMAZON'&&e.delta>0&&Date.parse(e.eligibleFromAt)>Date.parse(manual.checkedAt)&&Date.parse(e.eligibleFromAt)<=Date.parse(tracking?.checkedThrough)).reduce((n,e)=>n+e.delta,0);
   const scope=manual.sku?'このSKU':'商品全体・SKU未指定';
   lines.push(covered?`FBA推定残数（${scope}）：${manual.quantity-sales}個${manual.quantity-sales<0?'（基準数を要確認）':''} ／ 手入力${manual.quantity}個 − 基準後のAmazon確定販売${sales}個`:`FBA推定残数（${scope}）：計算保留（販売追跡期間・対象SKUを確認）`);
-  lines.push(`手入力基準：${stamp(manual.checkedAt)} ／ ${manual.quantity}個`);
+  lines[lines.length-1]+=`（手入力基準：${stamp(manual.checkedAt)}）`;
  }
  const stocks=new Map();for(const r of related)for(const id of r.stockIds||[])if(!stocks.has(id))stocks.set(id,r);
  for(const [id,label] of [['home','自社・自宅'],['container','コンテナ']]){
@@ -45,7 +45,7 @@ function quantities(group,state,rows,at){
   if(!entries.length){lines.push(`${label}：在庫台帳の関連付けなし`);continue;}
   if(units.size!==1||entries.some(e=>number(e.location?.usable)===null)){lines.push(`${label}：${units.size!==1?'単位が異なるため合算保留':'数量未入力'}`);continue;}
   lines.push(`${label}：${entries.reduce((n,e)=>n+e.location.usable,0)}${entries[0].unit}（台帳の使用可能数）`);
-  const dates=[...new Set(entries.map(e=>stamp(e.location.checkedAt)))];lines.push(`${label}の確認：${dates.join(' / ')}`);
+  const dates=[...new Set(entries.map(e=>stamp(e.location.checkedAt)))];lines[lines.length-1]+=`（確認：${dates.join(' / ')}）`;
  }
  return lines;
 }
@@ -60,10 +60,11 @@ export function salesMailSummary({state,events,inventory={rows:[]},at=new Date()
  }
  const sections=[...groups.values()].map(g=>{
   const title=(tracking.trackers||[]).find(t=>t.asin===g.asin&&t.sellerSku===g.sellerSku)?.title||g.asin;
-  const lines=[title,`${shipping(g.fulfillment)} ／ 注文確定 ${g.positive}個${g.negative?` ／ 取消・訂正 ${g.negative}個 ／ 差引 ${g.positive-g.negative}個`:''}`];
-  for(const [date,d] of [...g.dates].sort(([a],[b])=>a.localeCompare(b)))lines.push(`${date}：${d.positive?`注文日の確定販売 ${d.positive}個`:''}${d.positive&&d.negative?' ／ ':''}${d.negative?`取消・訂正 ${d.negative}個（更新日）`:''}`);
-  lines.push(`ASIN: ${g.asin} ／ SKU: ${g.sellerSku}`,`https://www.amazon.co.jp/dp/${g.asin}`,...(inventory.readFailed?['FBA販売可能（このSKU）：取得値なし','自社・自宅：在庫情報の読取に失敗（台帳を確認）','コンテナ：在庫情報の読取に失敗（台帳を確認）']:quantities(g,state,inventory.rows||[],at)));
+  const dates=[...g.dates].sort(([a],[b])=>a.localeCompare(b)).map(([date,d])=>`${date}：${d.positive?`注文日の確定販売 ${d.positive}個`:''}${d.positive&&d.negative?' ／ ':''}${d.negative?`取消・訂正 ${d.negative}個（更新日）`:''}`).join(' ／ ');
+  const summary=`${shipping(g.fulfillment)} ／ 注文確定 ${g.positive}個${g.negative?` ／ 取消・訂正 ${g.negative}個 ／ 差引 ${g.positive-g.negative}個`:''}`;
+  const quantitiesText=(inventory.readFailed?['FBA販売可能（このSKU）：取得値なし','自社・自宅：在庫情報の読取に失敗（台帳を確認）','コンテナ：在庫情報の読取に失敗（台帳を確認）']:quantities(g,state,inventory.rows||[],at)).join(' ／ ');
+  const lines=[`${title} — ${summary}`,dates,quantitiesText,`SKU: ${g.sellerSku} ／ https://www.amazon.co.jp/dp/${g.asin}`];
   return lines.join('\n');
  });
- return {targets:[...groups.values()].map(({asin,sellerSku})=>({asin,sellerSku})),text:['今回新たに確認したAmazonの販売・訂正を、商品・SKU・発送方法ごとに集計しています。注文日別の内訳は日本時間です。',...sections,`注文確認済み：${stamp(tracking.checkedThrough)}`,'FBA取得値は取得日時点の数量です。販売分をさらに差し引いていません。手入力の推定残数は基準後のAmazon確定販売だけを差し引き、取消による在庫復帰・納品・メルカリや楽天など他販路の販売は自動反映しません。自社・コンテナは台帳の登録値で、現物数量は書き換えていません。','数量の確認・修正：https://amazon-yahoo-inventory.vercel.app/?view=stock','全商品一覧：https://amazon-yahoo-inventory.vercel.app/?view=overview'].join('\n\n')};
+ return {targets:[...groups.values()].map(({asin,sellerSku})=>({asin,sellerSku})),text:['Amazon販売集計（今回確認分・注文日は日本時間）。',...sections,`注文確認済み：${stamp(tracking.checkedThrough)}`,'FBA取得値は二重減算しません。推定と台帳は参考値：取消による在庫復帰・納品・他販路の販売は自動反映しません。','数量の確認・修正：https://amazon-yahoo-inventory.vercel.app/?view=stock','全商品一覧：https://amazon-yahoo-inventory.vercel.app/?view=overview'].join('\n\n')};
 }

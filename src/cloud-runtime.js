@@ -34,7 +34,8 @@ const fileTypes = {
   "cloud-stock-view.html": "text/html; charset=utf-8", "physical-stock.js": "text/javascript; charset=utf-8", "physical-stock.css": "text/css; charset=utf-8",
   "catalog-view.js":"text/javascript; charset=utf-8", "catalog-view.css":"text/css; charset=utf-8", "catalog-list.svg":"image/svg+xml", "catalog-tiles.svg":"image/svg+xml", "catalog-image.svg":"image/svg+xml",
   "catalog-sortable.js":"text/javascript; charset=utf-8", "catalog-grip.svg":"image/svg+xml", "catalog-prev.svg":"image/svg+xml", "catalog-next.svg":"image/svg+xml",
-  "cloud-login.css": "text/css; charset=utf-8", "link-monitor.css": "text/css; charset=utf-8", "styles.css": "text/css; charset=utf-8", "extension-logo.png": "image/png"
+  "cloud-login.css": "text/css; charset=utf-8", "link-monitor.css": "text/css; charset=utf-8", "styles.css": "text/css; charset=utf-8", "extension-logo.png": "image/png",
+  "workspace-drafts.png":"image/png","workspace-stock.png":"image/png","workspace-planning.png":"image/png","workspace-overview.png":"image/png","cockpit-mark.svg":"image/svg+xml"
 };
 export async function loadCloudAssets(directory = fileURLToPath(new URL("../dist/cloud/", import.meta.url))) {
   const assets = new Map();
@@ -78,7 +79,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const mail = transport ? createCloudMail({store,transport}) : undefined;
   const monitoring=overview&&env.ASIN_AMAZON_CLIENT_ID?createProductMonitoring({overview,watchStore,config:cloudAmazonConfig(env),readListings:readOwnAmazonListings}):undefined;
   const productLinks=overview?createProductLinkEditor({transaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning}}),overview,refresh:monitoring?()=>monitoring.run({refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}}):undefined}):undefined;
-  const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring,readInventory:overview?()=>overview.view():undefined}) : undefined;
+  const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring,readAlertStates:monitoring?.alertStates,readInventory:overview?()=>overview.view():undefined}) : undefined;
   const handler = createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, overview, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     productLinks,verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
   return {config, handler, pool,sales,automation,overview,productLinks,runSalesAutomation:automation ? ()=>automation.run() : undefined};

@@ -1,6 +1,7 @@
 import {createAuthClient} from "@neondatabase/auth";
 import {configureMonitorRequest} from "./monitor-http.js";
 import {workspaceNavigation, stockWorkflowContext} from "./workspace-navigation.js";
+import {COCKPIT_BRAND,cockpitHeader} from "./cockpit-brand.js";
 
 const form = document.querySelector("#loginForm");
 const status = document.querySelector("#loginStatus");
@@ -48,8 +49,6 @@ async function openApplication() {
   const main = new DOMParser().parseFromString(await htmlResponse.text(), "text/html").querySelector("main");
   if (!main) throw new Error("画面を読み込めませんでした。");
   const panel = document.querySelector("#cloudApp");
-  const account = document.createElement("div");
-  account.className = "cloud-account";
   const mode = document.createElement("span");
   mode.textContent = session.readOnly ? "閲覧のみ" : "クラウド保存";
   const logout = document.createElement("button");
@@ -64,7 +63,8 @@ async function openApplication() {
     } catch (error) {logout.disabled = false; mode.textContent = error.message;}
   });
   const navigation = workspaceNavigation({drafts,stock,planning,overview,physicalStock:session.physicalStock,salesPlanning:session.salesPlanning,productOverview:session.productOverview});
-  account.append(navigation, mode, logout);
+  const account=cockpitHeader({navigation,mode,logout,home:session.productOverview?'/?view=overview':'/'});
+  main.classList.add('cockpit-content');
   panel.append(account, main);
   configureMonitorRequest(authenticatedRequest);
   if (overview) {const {openOverview}=await import("./product-overview.js");await openOverview({userId:session.userId,readOnly:session.readOnly});}
@@ -75,7 +75,7 @@ async function openApplication() {
     try {await stockWorkflowContext({drafts,main,request:authenticatedRequest});}
     catch (error) {const warning=document.createElement("p");warning.className="workspace-context-error";warning.setAttribute("role","alert");warning.textContent=error.message;main.prepend(warning);}
   }
-  document.title = `${overview?"全商品一覧":planning ? "販売の監視・見直し" : stock ? "コンテナ・自社在庫" : drafts ? "出品下書きツール" : "商品紐付けツール"} | Amazon・ヤフオク`;
+  document.title = `${overview?"全商品一覧":planning ? "販売の監視・見直し" : stock ? "コンテナ・自社在庫" : drafts ? "ヤフオク出品下書きツール" : "商品紐付けツール"} | ${COCKPIT_BRAND.title}`;
   document.querySelector("#loginPanel").hidden = true;
   document.querySelector("#authLoading").hidden = true;
   panel.hidden = false;

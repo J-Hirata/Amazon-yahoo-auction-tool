@@ -12,22 +12,51 @@
 #loginForm input {width:100%; box-sizing:border-box; min-width:0; min-height:44px;}
 #loginSubmit {min-height:44px; margin-top:4px;}
 #loginStatus {min-height:24px; line-height:1.6; overflow-wrap:anywhere;}
-.cloud-account {display:flex; align-items:center; justify-content:flex-end; gap:16px; max-width:1280px; padding:16px 24px; margin:auto;border-bottom:1px solid #dce3df;font:14px/1.5 system-ui;}
-.cloud-account span {color:#50595d;}
-.cloud-account button {min-height:40px;}
-.cloud-account {flex-wrap:wrap;}
-.cloud-account nav {display:flex; flex-wrap:wrap; gap:24px; margin-right:auto; align-items:center;min-width:0;max-width:100%;}
-.cloud-account nav a {display:flex;align-items:center;gap:7px;min-height:42px;padding:8px 0;color:#28473a;text-decoration:none;border-bottom:2px solid transparent;min-width:0;}
-.cloud-account nav a[aria-current] {font-weight:700; border-color:#17643b;}
-.cloud-account nav a svg {flex:none;color:#577766;}.cloud-account nav a:focus-visible {outline:2px solid #267cba;outline-offset:3px;}
-.workspace-market {display:flex;gap:12px;align-items:center;min-width:0;}.workspace-market img {object-fit:contain;flex:none;}
-.workspace-market-body {min-width:0;}.workspace-links {display:flex;gap:22px;}.cloud-account .workspace-group-title {display:block;font-size:11px;color:#75827b;}
-.workspace-inventory {border-left:1px solid #d8e2dc;padding-left:24px;}
+.cloud-account {max-width:1440px;margin:0 auto;padding:0 24px 20px;border-bottom:1px solid #d8dee8;font:14px/1.5 system-ui;box-sizing:border-box;}
+.cockpit-topbar {display:flex;align-items:center;justify-content:space-between;gap:24px;padding:20px 0 18px;}
+.cockpit-identity {min-width:0;}
+.cockpit-brand {display:inline-flex;align-items:center;gap:11px;font-size:23px;font-weight:750;line-height:1.4;letter-spacing:.02em;color:#202b3c;text-decoration:none;}
+.cockpit-brand img {display:block;flex:none;width:36px;height:36px;}
+.cockpit-summary {margin:6px 0 0 47px;font-size:13px;line-height:1.7;color:#5a687c;overflow-wrap:anywhere;}
+.workspace-account-controls {display:flex;align-items:center;gap:16px;font-size:12px;color:#5a687c;flex:none;}
+.workspace-account-controls button {min-height:44px;background:#2458a6;border:1px solid #2458a6;border-radius:8px;white-space:nowrap;}
+.cloud-account .workspace-tools {display:grid;grid-template-columns:repeat(var(--workspace-tool-count,5),minmax(0,1fr));gap:8px;min-width:0;}
+.cloud-account .workspace-tool {display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;min-height:112px;box-sizing:border-box;padding:8px 8px;background:#fff;border:1px solid #d8dee8;border-radius:10px;color:#202b3c;text-decoration:none;position:relative;}
+.cloud-account .workspace-tool:hover {border-color:#7e9fca;background:#f8faff;}
+.cloud-account .workspace-tool[aria-current="page"] {border-color:#2458a6;box-shadow:inset 0 -3px #2458a6;background:#edf3fc;}
+.cloud-account .workspace-tool[aria-current="page"]::after {content:'表示中';position:absolute;top:4px;right:6px;font-size:9px;color:#2458a6;font-weight:650;}
+.cloud-account .workspace-tool:focus-visible,.cockpit-brand:focus-visible {outline:3px solid #2458a6;outline-offset:3px;}
+.cloud-account .workspace-tool-logo {display:block;object-fit:contain;width:56px;height:56px;flex:none;}
+.cloud-account .workspace-tool-name {display:flex;align-items:center;justify-content:center;text-align:center;min-height:36px;font-size:13px;font-weight:600;line-height:18px;overflow-wrap:anywhere;color:#202b3c;}
+.cloud-account .workspace-tool[aria-current="page"] .workspace-tool-name {font-weight:750;color:#194883;}
+.cloud-account .workspace-tool-caption {display:none;}
+.cockpit-header {background:#f4f6f8;}
+#cloudApp .cockpit-content {width:min(1440px,calc(100% - 48px));max-width:1440px;margin:24px auto 60px;padding:0;color:#202b3c;}
+#cloudApp .cockpit-content h1 {font-size:25px;line-height:1.5;letter-spacing:0;}
+.draft-capability-note {margin:0 0 24px;padding:16px 20px;background:#edf5fa;border:1px solid #cbdfe9;border-radius:10px;color:#294858;font-size:13px;line-height:1.7;}
+.draft-capability-note p {margin:5px 0 9px;}
+.draft-capability-note a {color:#1b5884;font-weight:600;text-underline-offset:3px;}
 .workspace-context {display:flex;align-items:center;gap:10px 16px;flex-wrap:wrap;padding:14px 0;margin-bottom:20px;border-bottom:1px solid #d9e4dd;font-size:13px;}
 .workspace-context>span {font-size:12px;color:#697c70;}.workspace-context strong {font-size:14px;overflow-wrap:anywhere;}.workspace-context a {color:#256b9c;margin-left:auto;}.workspace-context a.workspace-next {font-weight:650;}.workspace-context-error {color:#9d2530;}
 .workspace-drafts .toolbar h1 {font-size:22px;line-height:1.45;margin:0;letter-spacing:0;overflow-wrap:anywhere;}
 .cloud-unavailable {opacity:0.65; cursor:not-allowed;}
 [hidden] {display:none !important;}
 @media (max-width:600px) {.login-shell {margin:24px auto; padding:20px;} .login-heading h1 {font-size:20px;} .cloud-account {padding:12px 16px 0;}}
-@media(max-width:760px) {.cloud-account {gap:10px;padding-bottom:12px;}.cloud-account nav {width:100%;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;}.workspace-market img {width:36px;height:36px;}.workspace-links {gap:16px;}.cloud-account nav a {font-size:13px;}.workspace-inventory {padding:8px 0 0;border-left:0;border-top:1px solid #e0e6e2;display:flex;align-items:center;gap:16px;}.workspace-context a {margin-left:0;}.workspace-context strong {width:100%;}}
-@media(max-width:360px) {.workspace-market {gap:8px;}.workspace-market img {width:28px;height:28px;}.workspace-links {gap:10px;}.cloud-account nav a {font-size:12px;gap:4px;}.cloud-account nav a svg {width:15px;height:15px;}}
+
+
+/* Sales Cockpit brand: shared login and authenticated workspace. */
+body {background:#f4f6f8;}
+.login-shell {max-width:460px;margin:56px auto;padding:32px;background:#fff;border:1px solid #d8dee8;border-radius:16px;box-shadow:0 12px 32px #202b3c08;}
+.login-heading {gap:13px;padding-bottom:20px;border-color:#e3e8f0;}
+.login-heading h1 {font-size:28px;line-height:1.4;letter-spacing:.02em;color:#202b3c;}
+.cockpit-eyebrow {display:block;font-size:10px;font-weight:650;letter-spacing:.17em;color:#2458a6;margin-bottom:3px;}
+.login-summary {margin:20px 0 12px;font-size:15px;line-height:24px;font-weight:600;color:#34455d;}
+.login-description {font-size:13px;line-height:24px;color:#5a687c;margin:0;}
+#loginForm {margin-top:22px;padding-top:22px;border-top:1px solid #e3e8f0;gap:16px;}
+#loginForm h2 {font-size:18px;line-height:1.5;color:#202b3c;}
+#loginSubmit {background:#2458a6;border-radius:8px;}
+#loginForm input {border-color:#c7d1df;border-radius:8px;}
+#loginForm input:focus-visible,#loginForm button:focus-visible {outline:3px solid #2458a6;outline-offset:2px;}
+@media(min-width:700px) and (max-width:1099px) {.cloud-account .workspace-tools {grid-template-columns:repeat(3,minmax(0,1fr));}.cloud-account .workspace-tools[data-count="2"],.cloud-account .workspace-tools[data-count="4"] {grid-template-columns:repeat(2,minmax(0,1fr));}.cloud-account .workspace-tools[data-count="5"] {grid-template-columns:repeat(6,minmax(0,1fr));}.cloud-account .workspace-tools[data-count="5"] .workspace-tool {grid-column:span 2;}.cloud-account .workspace-tools[data-count="5"] .workspace-tool:nth-last-child(-n+2) {grid-column:span 3;}}
+@media(max-width:699px) {.cloud-account {padding:0 16px 16px;}.cockpit-topbar {align-items:flex-start;flex-direction:column;gap:12px;padding:18px 0 16px;}.cockpit-brand {font-size:22px;}.cockpit-summary {margin-left:0;}.workspace-account-controls {width:100%;justify-content:flex-end;gap:12px;font-size:11px;}.cloud-account .workspace-tools {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;}.cloud-account .workspace-tool {display:grid;grid-template-columns:32px minmax(0,1fr);gap:9px;align-items:center;min-height:72px;padding:10px;}.cloud-account .workspace-tool-logo {width:32px;height:32px;}.cloud-account .workspace-tool-name {font-size:12px;line-height:18px;text-align:left;justify-content:flex-start;min-height:0;}.cloud-account .workspace-tool:last-child:nth-child(odd) {grid-column:1/-1;}.cloud-account .workspace-tool[aria-current="page"]::after {font-size:8px;top:2px;right:4px;}#cloudApp .cockpit-content {width:calc(100% - 32px);margin-top:20px;}.login-shell {width:calc(100% - 32px);max-width:460px;margin:24px auto;padding:24px 20px;}.login-heading h1 {font-size:25px;}.draft-capability-note {padding:14px;font-size:12px;}}
+@media(max-width:359px) {.cloud-account {padding-inline:12px;}.cloud-account .workspace-tools {grid-template-columns:minmax(0,1fr);}.cockpit-brand {font-size:21px;}#cloudApp .cockpit-content {width:calc(100% - 24px);}.login-heading h1 {font-size:23px;}}

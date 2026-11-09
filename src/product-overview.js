@@ -1,3 +1,5 @@
+import {riskSettings,stockRisk,riskQuantity} from "./stock-risk.js";
+import {collectProductAlerts} from "./product-alerts.js";
 import {createHash} from "node:crypto";
 import {stockTotals} from "./physical-stock.js";
 import {planningSchedule,planningToday} from "./sales-planning.js";
@@ -17,6 +19,7 @@ export const emptyProductWatch=()=>({version:1,rules:[],receipts:[],observations
 export function validateProductWatch(state){
   if(state?.version!==1||!Array.isArray(state.rules)||!Array.isArray(state.receipts)||!state.observations||!state.signals)throw fail("商品監視の保存形式を確認してください");
   if(state.rules.length>2000||state.receipts.length>10000||new Set(state.rules.map(r=>r.key)).size!==state.rules.length||Buffer.byteLength(JSON.stringify(state))>8*1024*1024)throw fail("商品監視の保存上限を確認してください");
+  for(const rule of state.rules){if(rule.lowStock!==undefined)riskSettings(rule.lowStock);if(rule.relistStockSource!==undefined&&!['','merchant','home','container'].includes(rule.relistStockSource))throw fail('再出品候補の残数参照元を確認してください');}
   return state;
 }
 export function ruleFields(input,at){
@@ -29,6 +32,8 @@ export function ruleFields(input,at){
     if(input.baselineQuantity!==null&&!number(input.baselineQuantity,1000000)||!number(input.replenishPercent,100)||input.replenishPercent>0&&!(input.baselineQuantity>0))throw fail('補充の基準数と割合を確認してください');
     result.baselineQuantity=input.baselineQuantity;result.replenishPercent=input.replenishPercent;
   }
+  if(input.lowStock!==undefined)result.lowStock=riskSettings(input.lowStock);
+  if(input.relistStockSource!==undefined){if(!['','merchant','home','container'].includes(input.relistStockSource))throw fail('再出品候補の残数参照元を選んでください');result.relistStockSource=input.relistStockSource;}
   if(input.manualListingStatus!==undefined){if(!["unknown","mercari","none"].includes(input.manualListingStatus))throw fail("手動の出品状況を選んでください");result.manualListingStatus=input.manualListingStatus;}
   if(key.startsWith("watch:")){
     const asin=text(input.asin||"",10).toUpperCase(),title=text(input.title||"",200)||asin;
@@ -112,7 +117,8 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     if(row.channels.manualConflict)row.attention.push("手動の出品なし記録と出品中の取得情報が不一致");
     row.workspace=productWorkspace(row,{physical,monitor,watch,at});
   }
-  return attachAvailability(rows,monitor,at);
+  for(const row of attachAvailability(rows,monitor,at)){row.risk=stockRisk(row,at);row.riskOptions=Object.fromEntries(["fba","merchant","home","container"].map(s=>[s,riskQuantity(row,s,at)]));if(row.risk.low===true)row.attention.push(`残数警告：${row.risk.label} ${row.risk.quantity}${row.risk.unit}`);}
+  return rows;
 }
 export function createProductOverview({monitorStore,stockStore,planningStore,draftStore,watchStore,now=()=>new Date().toISOString()}){
   async function inputs(){const [monitor,physical,planning,drafts,watch]=await Promise.all([monitorStore.read(),stockStore.read(),planningStore.read(),draftStore?draftStore.read():[],watchStore.readSnapshot()]);return {monitor,physical,planning,drafts,watch:watch.state,revision:watch.revision};}
@@ -127,5 +133,6 @@ export function createProductOverview({monitorStore,stockStore,planningStore,dra
       const previous=state.rules.find(r=>r.key===rule.key);if(previous&&rule.key.startsWith("watch:")&&previous.asin&&previous.asin!==rule.asin)throw fail("別のASINは新しい監視商品として追加してください",409);if(rule.manualListingStatus!==undefined)rule.manualListingAt=previous?.manualListingStatus===rule.manualListingStatus?previous.manualListingAt||now():now();if(previous)Object.assign(previous,rule);else state.rules.push(rule);state.receipts.push({id:command.operationId,digest,actor,at:now()});validateProductWatch(state);
     },{expectedRevision});return view();
   }
-  return {view,commit,inputs};
+  async function previewRisks(){const data=await inputs(),at=now(),watch=structuredClone(data.watch),settings={...data.monitor.salesAutomation,reviewAlerts:false};const rows=productOverview({...data,watch},at),pending=collectProductAlerts(watch,rows,settings,at);return {checkedAt:at,nonSending:true,daytimeSchedule:"未設定",notificationEnabled:Boolean(settings.enabled),alerts:pending.filter(p=>settings.enabled&&settings[p.category]).map(({title,asin,message,category})=>({title,asin,message,category})),quantities:rows.filter(r=>r.risk.configured).map(r=>({title:r.title,key:r.key,...r.risk}))};}
+  return {view,commit,inputs,previewRisks};
 }

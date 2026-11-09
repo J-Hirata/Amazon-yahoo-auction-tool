@@ -89,7 +89,7 @@ test("zero/low alerts recur only after recovery; unknown does not reset active w
 });
 test("verified Yahoo end notifies once; unavailable pages never mean ended or unsold",()=>{
   const f=fixture(),y=f.watch.observations.yahoo[0];y.status="unknown";y.verified=false;collectProductAlerts(f.watch,productOverview(f,at),settings,at);assert.ok(!f.watch.pendingAlerts.some(p=>p.category==="yahooAlerts"));
-  y.status="ended";y.verified=true;collectProductAlerts(f.watch,productOverview(f,at),settings,at);assert.equal(f.watch.pendingAlerts.filter(p=>p.category==="yahooAlerts").length,1);assert.match(f.watch.pendingAlerts.find(p=>p.category==="yahooAlerts").message,/売れ残りとは断定/);
+  y.status="ended";y.verified=true;collectProductAlerts(f.watch,productOverview(f,at),settings,at);assert.equal(f.watch.pendingAlerts.filter(p=>p.category==="yahooAlerts").length,1);const message=f.watch.pendingAlerts.find(p=>p.category==="yahooAlerts").message;assert.match(message,/FBAに在庫10個.*再出品してください/);assert.doesNotMatch(message,/落札なし|売れ残り/);
 });
 test("review notification uses saved dates, excludes waiting/closed and deduplicates linked plans",()=>{
   const f=fixture();collectProductAlerts(f.watch,productOverview(f,at),settings,at);assert.equal(f.watch.pendingAlerts.filter(p=>p.category==="reviewAlerts").length,1);collectProductAlerts(f.watch,productOverview(f,at),settings,at);assert.equal(f.watch.pendingAlerts.filter(p=>p.category==="reviewAlerts").length,1);

@@ -80,6 +80,7 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
         const match=request.headers.get("if-match");if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||""))return reply({error:"最新のURL登録画面を開いてください"},428);
         return reply(await productLinks.save(data.command,{expectedRevision:Number(match.slice(1,-1)),sourceRevisions:data.sourceRevisions,actor:owner.userId}));
       }
+      if(overview&&request.method==="GET"&&url.pathname==="/api/product-overview/risk-preview")return reply(await overview.previewRisks());
       if(overview&&request.method==="GET"&&url.pathname==="/api/product-overview")return reply(await overview.view());
       if(overview&&request.method==="POST"&&url.pathname==="/api/product-overview/operations"){
         if(config.readOnly)return reply({error:"現在は閲覧のみです"},403);

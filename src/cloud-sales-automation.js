@@ -1,4 +1,5 @@
 import {salesMailSummary} from "./sales-mail-summary.js";
+import {productAlertsMail} from "./product-alert-mail.js";
 import {randomUUID,createHash} from "node:crypto";
 import {NOTIFICATION_ADDRESS} from "./notification-settings.js";
 
@@ -14,7 +15,7 @@ export function automationView(state,at=new Date().toISOString()) {
     enabledAt:settings.enabledAt || null,recipient:NOTIFICATION_ADDRESS,schedule:"1日1回・午前9時台（日本時間）",job:interrupted?{...job,status:"failed",error:"前回の定期確認が途中で止まりました。次回再開します"}:job};
 }
 
-export function createCloudSalesAutomation({store,sales,transport,monitoring,readInventory=async()=>({rows:[]}),now=()=>new Date().toISOString()}) {
+export function createCloudSalesAutomation({store,sales,transport,monitoring,readInventory=async()=>({rows:[]}),riskExecutionEnabled=false,readAlertStates=async()=>undefined,now=()=>new Date().toISOString()}) {
   async function settings({expectedRevision,enabled,fbaSales,merchantSales,errorAlerts,stockAlerts,yahooAlerts,reviewAlerts}) {
     if([enabled,fbaSales,merchantSales,errorAlerts].some(v=>typeof v!=="boolean"))throw fail("通知の種類と自動確認を選択してください",400);
     await store.update(state=>{
@@ -28,19 +29,22 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       state.salesAutomation={version:1,enabled,fbaSales,merchantSales,errorAlerts,...categories,enabledAt:enabled && !old?.enabled ? now() : old?.enabledAt || null,updatedAt:now()};
     },{expectedRevision});
   }
-  function enqueue(state,{key,subject,text,targets=[],eventIds=[],kind="sales"}) {
+  function enqueue(state,{key,subject,text,targets=[],eventIds=[],kind="sales",notificationMode="daily"}) {
     const outbox=state.mailOutbox ||= [];
     if(outbox.some(record=>record.key===key))return false;
     if(outbox.length>=5000)throw fail("メール記録の保存上限です。履歴を保全して確認してください");
-    outbox.push({id:randomUUID(),key,kind,subject,text,targets,eventIds,status:"pending",attempts:0,createdAt:now(),automation:true});
+    outbox.push({id:randomUUID(),key,kind,subject,text,targets,eventIds,status:"pending",attempts:0,createdAt:now(),automation:true,notificationMode});
     return true;
   }
-  async function drain({testOnly=false}={}) {
+  async function drain({testOnly=false,kinds,notificationMode}={}) {
+    let alertStates;try{alertStates=await readAlertStates();}catch{alertStates={};}
+    const held=new Set();
     const record=await store.update(state=>{
       for(const item of state.mailOutbox || [])if(item.automation && item.status==="sending" && Date.parse(item.lastAttemptAt)+120000<=Date.parse(now())){
         item.status="uncertain";item.error="送信結果が不明です。受信箱を確認してください。自動再送はしません";
       }
-      const item=(state.mailOutbox || []).find(item=>item.automation && (testOnly ? item.kind==="automation_test" : state.salesAutomation?.enabled && item.kind!=="automation_test") &&
+      if(!testOnly&&alertStates)for(const item of state.mailOutbox||[])if(item.kind==='product_alerts'&&['pending','failed'].includes(item.status)&&item.alertIds?.length){const ended=item.alertIds.filter(id=>alertStates[id]===false);if(ended.length){item.status='cancelled';item.cancelledFor='conditions_changed';item.cancelledAlertIds=ended;item.error='警告条件が解消・変更されたため送信を取り消しました';}else if(item.alertIds.some(id=>alertStates[id]!==true))held.add(item.id);}
+      const item=(state.mailOutbox || []).find(item=>item.automation && !held.has(item.id) && (!notificationMode||item.notificationMode===notificationMode) && (!kinds||kinds.includes(item.kind)) && (testOnly ? item.kind==="automation_test" : state.salesAutomation?.enabled && item.kind!=="automation_test") &&
         (item.status==="pending" || !testOnly && item.status==="failed" && item.attempts<3 && Date.parse(item.lastAttemptAt)+3600000<=Date.parse(now())));
       if(!item)return null;
       item.status="sending";item.attempts++;item.attemptId ||= randomUUID();item.lastAttemptAt=now();
@@ -89,17 +93,18 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       for(const event of t.events)if(ids.includes(event.id))event.delivery="queued";
     });
   }
-  async function run() {
+  async function runCycle({mode,send}) {
+    const jobKey=mode==='risk'?'riskAutomationJob':'salesAutomationJob',incidentKey=mode==='risk'?'riskAutomationIncident':'salesAutomationIncident';
     const jobId=randomUUID(),at=now(),started=performance.now();
     const claimed=await store.update(state=>{
       if(!state.salesAutomation?.enabled)return false;
-      const job=state.salesAutomationJob;
-      if(job?.status==="running" && Date.parse(job.leaseUntil)>Date.parse(at))return false;
-      state.salesAutomationJob={status:"running",jobId,startedAt:at,leaseUntil:new Date(Date.parse(at)+290000).toISOString()};return true;
+      if([state.salesAutomationJob,state.riskAutomationJob].some(job=>job?.status==="running"&&Date.parse(job.leaseUntil)>Date.parse(at)))return false;
+      state[jobKey]={status:"running",jobId,startedAt:at,leaseUntil:new Date(Date.parse(at)+290000).toISOString()};return true;
     });
     if(!claimed)return {status:"skipped"};
     let error=null;
     try{
+      if(mode==='daily'){
       await sales.start({});
       for(let pass=0;pass<2;pass++){
         await sales.check({catchUp:true});
@@ -110,35 +115,38 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       const state=await store.read();
       if(Date.parse(state.salesTracking.checkedThrough)<Date.parse(now())-15*60000)throw fail("不足期間の補完中です。次回は保存済みの続きから再開します");
 
+      }
     }catch(e){if(String(e.code || "").startsWith("STORAGE_"))throw e;error="販売確認を完了できません。販売ゼロとは扱いません。管理画面で取得状況を確認してください";}
     let monitoringResult;
     if(monitoring&&performance.now()-started<180000){
-      try{monitoringResult=await monitoring.run({settings:(await store.read()).salesAutomation,enqueueAlerts:queueProductAlerts});}
+      try{monitoringResult=await monitoring.run({settings:{...(await store.read()).salesAutomation,...(mode==='risk'?{reviewAlerts:false}:{})},refreshListings:mode==='risk',enqueueAlerts:send?alerts=>queueProductAlerts(alerts,mode):undefined});}
       catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;monitoringResult={status:"failed",errors:["在庫・出品・期限の監視を完了できません。全商品一覧で確認してください"]};}
     }else if(monitoring)monitoringResult={status:"partial",errors:["実行時間のため在庫・出品監視は次回に再開します"]};
-    if(!error){try{await queueSales();}catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;error="販売メールの集計を完了できません。次回再開します";}}
+    if(!error&&mode==='daily'){try{await queueSales();}catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;error="販売メールの集計を完了できません。次回再開します";}}
     await store.update(state=>{
-      if(state.salesAutomationJob?.jobId!==jobId)throw fail("定期実行の結果を確認してください");
-      state.salesAutomationJob={...state.salesAutomationJob,status:error?"failed":monitoringResult&&monitoringResult.status!=="complete"?"partial":"complete",finishedAt:now(),error,monitoring:monitoringResult};
-      if(error && state.salesAutomation.errorAlerts){
-        state.salesAutomationIncident ||= {id:randomUUID(),startedAt:now()};
-        enqueue(state,{key:`incident:${state.salesAutomationIncident.id}`,kind:"automation_error",subject:"【在庫管理ツール】販売の自動確認が止まっています",text:error+"\nhttps://amazon-yahoo-inventory.vercel.app/"});
-      }else if(!error)state.salesAutomationIncident=null;
+      if(state[jobKey]?.jobId!==jobId)throw fail("定期実行の結果を確認してください");
+      state[jobKey]={...state[jobKey],mode,status:error?"failed":monitoringResult&&monitoringResult.status!=="complete"?"partial":"complete",finishedAt:now(),error,monitoring:monitoringResult};
+      if(error && send && state.salesAutomation.errorAlerts){
+        state[incidentKey] ||= {id:randomUUID(),startedAt:now()};
+        enqueue(state,{key:`incident:${mode==='risk'?'risk:':''}${state[incidentKey].id}`,kind:"automation_error",notificationMode:mode,subject:mode==='risk'?"【在庫管理ツール】リスク確認が止まっています":"【在庫管理ツール】販売の自動確認が止まっています",text:error+"\nhttps://amazon-yahoo-inventory.vercel.app/"});
+      }else if(!error)state[incidentKey]=null;
     });
     // At most 3 pending messages per invocation; SMTP ambiguity is never retried.
-    for(let i=0;i<3;i++){if(performance.now()-started>250000)break;if(!await drain())break;}
+    if(send)for(let i=0;i<3;i++){if(performance.now()-started>250000)break;if(!await drain(mode==='risk'?{kinds:['product_alerts','automation_error'],notificationMode:'risk'}:{}))break;}
     return {status:error?"failed":monitoringResult&&monitoringResult.status!=="complete"?"partial":"complete"};
   }
-  async function queueProductAlerts(alerts){
+  async function queueProductAlerts(alerts,notificationMode="daily"){
     await store.update(state=>{
       if(!state.salesAutomation?.enabled)return;
-      const existing=new Set((state.mailOutbox||[]).flatMap(r=>r.alertIds||[]));
+      const existing=new Set((state.mailOutbox||[]).filter(r=>r.cancelledFor!=='conditions_changed').flatMap(r=>r.alertIds||[]));
       const fresh=alerts.filter(a=>state.salesAutomation[a.category]&&!existing.has(a.id));if(!fresh.length)return;
       const ids=fresh.map(a=>a.id).sort(),key=`product-alerts:${hash(ids.join(","))}`;
-      enqueue(state,{key,kind:"product_alerts",subject:`【在庫管理ツール】在庫・出品・見直しの確認 ${fresh.length}件`,targets:fresh.filter(a=>a.asin).map(a=>({asin:a.asin})),
-        text:["日次確認で対応が必要な項目があります。",...fresh.map(a=>`${a.title}${a.asin?` ／ ${a.asin}`:""}\n確認：${new Date(a.at||now()).toLocaleString("ja-JP",{timeZone:"Asia/Tokyo"})}\n${a.message}`),"全商品一覧：https://amazon-yahoo-inventory.vercel.app/?view=overview","数量・出品・広告は自動変更していません。"].join("\n\n")});
+      enqueue(state,{key,kind:"product_alerts",notificationMode,subject:`【在庫管理ツール】${notificationMode==='risk'?'在庫・出品の警告':'在庫・出品・見直しの確認'} ${fresh.length}件`,targets:fresh.filter(a=>a.asin).map(a=>({asin:a.asin})),
+        text:productAlertsMail(fresh,{mode:notificationMode,at:now()})});
       state.mailOutbox.find(r=>r.key===key).alertIds=ids;
     });
   }
-  return {settings,test,run,drain,queueSales,view:state=>automationView(state,now())};
+  const run=()=>runCycle({mode:'daily',send:true});
+  async function runRisks({send=false}={}){if(typeof send!=='boolean')throw fail('送信の指定を確認してください',400);if(send&&!riskExecutionEnabled)throw fail('日中監視の頻度・運用が未設定のため、送信実行は有効化されていません',409);return runCycle({mode:'risk',send});}
+  return {settings,test,run,runRisks,drain,queueSales,view:state=>automationView(state,now())};
 }

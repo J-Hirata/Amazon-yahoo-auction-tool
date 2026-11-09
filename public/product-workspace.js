@@ -45,6 +45,6 @@ export function mountProductWorkspace(host,p,{actions=true,onReview,readOnly=fal
   else if(w.stocks.length)status.append(element('span',r?.eligible===false?'自社発送用（FBA不可）':'コンテナ・会社の実在庫あり','workspace-reserve-status'));
   if(status.children.length)more.append(status);
   if(r?.due)host.append(element('strong','FBAへ追加納品を検討','workspace-replenishment workspace-alert'));
-  const settings=element('a',undefined,'product-replenishment-link');settings.href=`/?view=overview#settings=${encodeURIComponent(key)}`;settings.target='_blank';settings.rel='noopener noreferrer';settings.title='FBAの補充条件を設定（別タブ）';settings.append(icon(PackagePlus),element('span','補充条件'));more.append(settings);
+  const settings=element('a',undefined,'product-replenishment-link');settings.href=`/?view=overview#settings=${encodeURIComponent(key)}`;settings.target='_blank';settings.rel='noopener noreferrer';settings.title='残数警告と補充条件を設定（別タブ）';settings.append(icon(PackagePlus),element('span','残数警告・補充'));more.append(settings);
   focusWorkspaceProduct();
 }
