@@ -26,6 +26,8 @@ export function findPriceReviewItems(items, now = new Date()) {
 function compareForWork(a, b) {
   const readyDiff = readyRank(a) - readyRank(b);
   if (readyDiff !== 0) return readyDiff;
+  const priority=(Number.isSafeInteger(a.workPriority)?a.workPriority:Infinity)-(Number.isSafeInteger(b.workPriority)?b.workPriority:Infinity);
+  if(priority)return priority;
   return dateValue(a.createdAt) - dateValue(b.createdAt);
 }
 

@@ -1,3 +1,4 @@
+import {reorderDrafts} from './draft-order.js';
 import {registerPageLink, registerPageLinks, updateLinkMemo, runPreview, testDelivery} from "./link-monitor.js";
 import {demoMonitor, advanceDemo} from "./link-monitor-demo.js";
 import {monitorView} from "./link-monitor-view.js";
@@ -32,7 +33,7 @@ export async function jsonBody(request) {
   catch {throw fail("入力データを読み取れません", 400);}
 }
 
-export function createCloudHandler({config, store, draftStore, stock, stockPhotos, stockAmazon, planning, overview, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
+export function createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
@@ -120,11 +121,19 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
         const saved = await draftStore.readSnapshot();
         if (url.pathname === "/api/next-draft") return reply({item: splitDraftQueue(saved.state).active[0] || null});
         if (url.pathname.endsWith(".csv")) return new Response("\ufeff" + buildDraftCsv(splitDraftQueue(saved.state).active), {headers: {...headers, "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=drafts.csv"}});
-        return reply(draftView(saved));
+        return reply(draftCatalog?await draftCatalog.view(saved):draftView(saved));
+      }
+      if(draftStore&&request.method==='POST'&&['/api/drafts/order','/api/drafts/catalog'].includes(url.pathname)){
+        if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
+        const match=request.headers.get('if-match');if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||''))return reply({error:'最新の下書きを読み込んでください'},428);
+        const data=await jsonBody(request),expectedRevision=Number(match.slice(1,-1));
+        if(url.pathname.endsWith('/catalog'))return draftCatalog?reply(await draftCatalog.fill(data.asins,{expectedRevision})):reply({error:'写真の取得は未接続です'},503);
+        await draftStore.update(items=>reorderDrafts(items,data.order),{expectedRevision});
+        const saved=await draftStore.readSnapshot();return reply(draftCatalog?await draftCatalog.view(saved):draftView(saved));
       }
       const draft = url.pathname.match(/^\/api\/items\/([A-Z0-9]{10})\/draft$/);
       if (draftStore && draft && request.method === "GET") {
-        const item = (await draftStore.read()).find((entry) => entry.asin === draft[1]);
+        const item = draftCatalog?await draftCatalog.draftItem(draft[1]):(await draftStore.read()).find((entry) => entry.asin === draft[1]);
         return item ? reply({draft: buildYahooDraft(item)}) : reply({error: "商品が見つかりません"}, 404);
       }
       const draftItem = url.pathname.match(/^\/api\/items\/([A-Z0-9]{10})$/);
@@ -135,7 +144,7 @@ export function createCloudHandler({config, store, draftStore, stock, stockPhoto
         const data = await jsonBody(request);
         const at = new Date().toISOString();
         await draftStore.update((items) => draftItem ? patchDraft(items, draftItem[1], data, at) : addDrafts(items, data.asins, at), {expectedRevision: Number(match.slice(1, -1))});
-        return reply(draftView(await draftStore.readSnapshot()));
+        return reply(draftCatalog?await draftCatalog.view():draftView(await draftStore.readSnapshot()));
       }
       if (request.method === "GET" && url.pathname === apiRoot) return reply(await snapshot());
       if (request.method === "GET" && url.pathname === apiRoot + "/fba-status") return reply(fba ? fba.status(await store.read()) : inactive);

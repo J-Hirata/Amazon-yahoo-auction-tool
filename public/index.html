@@ -1,29 +1,45 @@
-<!doctype html>
-<html lang="ja">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ヤフオク出品下書きツール</title>
-    <link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/catalog-view.css">
-  </head>
-  <body>
-    <main class="shell">
-      <section class="toolbar">
+<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ヤフオク出品下書きツール</title><link rel="stylesheet" href="/styles.css"><link rel="stylesheet" href="/catalog-view.css"><link rel="stylesheet" href="/draft-workbench.css"></head><body>
+<main class="shell draft-workbench">
+<header class="toolbar"><div><p class="draft-eyebrow">出品する商品を、写真と作業順で管理</p><h1>ヤフオク出品下書きツール</h1><p>商品を追加 → 写真・文面を準備 → ヤフオクに保存 → 出品済みを記録</p></div><div class="toolbar-actions"><button id="draftShowAdd" type="button">＋ 商品を追加</button><button id="draftPhotos" class="secondary" type="button">写真・商品名を補完</button><button id="nextDraft" type="button">次の下書き文面</button><button id="refresh" class="secondary" type="button">一覧を更新</button><a class="button-link secondary" href="/api/export/drafts.csv">CSV出力（先頭10件）</a><button id="draftShowHelp" class="secondary" type="button">使い方・PC版</button></div></header>
+<p id="status" class="status" role="status" aria-live="polite"></p>
+<details id="draftAdd" class="draft-add"><summary>ASINから商品を追加</summary><p>ASINを1行に1つずつ入力します。同じASINの登録済み商品は保持します。</p><section class="input-area"><label>ASIN（まとめて入力）<textarea id="asins" rows="3" placeholder="ASINを1行に1つずつ入力" aria-label="ASIN（まとめて入力）"></textarea></label><div class="input-actions"><button id="add" type="button">登録して写真を取得</button><button id="fetchProducts" type="button">Amazon情報取得（PC版）</button></div></section></details>
+<nav id="summary" class="draft-stage-tabs" aria-label="商品の作業状態"></nav>
+<section class="draft-board" aria-labelledby="draftBoardTitle"><div class="draft-board-heading"><div><h2 id="draftBoardTitle">これから出す商品</h2><p id="draftBoardHelp"></p></div><label class="draft-search">商品を探す<input id="draftSearch" type="search" placeholder="商品名・ASINで検索"></label></div><div id="draftDisplay"></div><p id="draftCount" class="meta" role="status"></p><div id="draftRows" class="list"></div></section>
+      <section class="draft-panel" id="draftPanel" hidden>
         <div>
-          <h1>ヤフオク出品下書きツール</h1>
-          <p>Amazonの商品情報を取り込み、Yahoo!オークション下書き前の入力作業を補助します。</p>
+          <h2>Yahoo!オークション下書き</h2>
+          <p id="draftTitle"></p>
         </div>
-        <div class="toolbar-actions">
-          <button id="nextDraft">次の下書き</button>
-          <a class="button-link" href="/amazon-helper.html" target="_blank" rel="noreferrer">Amazon取込補助</a>
-          <a class="button-link" href="/yahoo-helper.html" target="_blank" rel="noreferrer">Yahoo入力補助</a>
-          <a class="button-link" href="/stock-monitor.html">在庫切れ防止確認</a>
-          <a class="button-link" href="/link-monitor.html">商品紐付け・通知</a>
-          <a class="button-link" href="/api/export/drafts.csv">CSV出力</a>
-          <button id="refresh">更新</button>
+        <div class="copy-grid">
+          <label>タイトル
+            <input id="draftName" readonly>
+          </label>
+          <label>価格
+            <input id="draftPrice" readonly>
+          </label>
+          <label>画像URL
+            <textarea id="draftImages" rows="3" readonly></textarea>
+          </label>
+        </div>
+        <textarea id="draftText" rows="12" readonly></textarea>
+        <div class="draft-actions">
+          <button id="extensionSelected" type="button">この商品をヤフオクへ</button>
+          <button id="copyTitle">タイトルをコピー</button>
+          <button id="copyPrice">価格をコピー</button>
+          <button id="copyText">説明をコピー</button>
+          <button id="copyImages">画像URLをコピー</button>
+          <button id="markDraftSaved">下書き保存済み</button>
+          <button id="markListed">出品済み</button>
+          <a id="openYahoo" class="button-link" href="https://auctions.yahoo.co.jp/seller/" target="_blank" rel="noreferrer">Yahooを開く</a>
+          <a class="button-link secondary" href="/yahoo-helper.html" target="_blank" rel="noreferrer">Yahoo入力補助の登録ページ</a>
+          <button id="copyYahooBookmarkletDraft" type="button">ブックマークレットをコピー</button>
+          <button id="closeDraft">閉じる</button>
         </div>
       </section>
 
+
+<dialog id="draftEditDialog" class="draft-edit-dialog" aria-label="商品情報・作業状態を編集"><form id="draftEditForm"><header><div><h2>商品情報・作業状態</h2><p id="draftEditIdentity"></p></div><button type="button" data-edit-close aria-label="編集を閉じる">閉じる</button></header><p class="draft-edit-hint">ASINから取得する写真はAmazonの参考画像です。現物の状態・付属品・写真は出品前に確認してください。</p><label>商品名<input name="title" maxlength="500"></label><div class="draft-edit-grid"><label>Amazon中古の参考価格（円）<input name="usedLowestPrice" type="number" min="1" max="100000000" step="1" placeholder="不明なら空欄"></label><label>作業状態<select name="status"><option value="waiting_for_product_data">情報を補う</option><option value="ready_for_draft">出品準備できた</option><option value="draft_saved">保存済み・出品未記録</option><option value="listed">出品済み（手動記録）</option><option value="sold">売却済み（手動記録）</option><option value="archived">保留</option></select></label></div><label>商品説明・仕様・付属品<textarea name="description" rows="6" maxlength="20000"></textarea></label><label>写真のURL（1行に1つ）<textarea name="imageUrls" rows="3"></textarea></label><p id="draftEditMessage" role="status" aria-live="polite"></p><footer><button type="button" class="secondary" data-edit-close>取消</button><button type="submit" data-ready hidden>保存して準備完了</button><button type="submit">変更を保存</button></footer></form></dialog>
+<details id="draftHelp" class="draft-help"><summary>使い方・PC版との連携</summary><section class="draft-state-guide"><h2>状態の見方</h2><p><strong>出品準備できた：</strong>下書き文面を確認する商品です。写真・価格・現物を確認してヤフオクに進めます。</p><p><strong>情報を補う：</strong>商品名・説明・写真・参考価格などを確認し、「商品情報・作業状態」で準備を進めます。</p><p><strong>保存済み・出品未記録：</strong>Yahoo側の下書き保存を確認して記録した商品です。出品したことを示す状態とは分けています。</p><p>出品済み・売却済みは手動の記録です。ヤフオクの実際の状態を自動確認した結果ではありません。並べ替えは保存され、「次の下書き文面」も準備済み商品の作業順に進みます。</p></section>
       <section class="yahoo-workflow" aria-labelledby="yahooWorkflowTitle">
         <div>
           <h2 id="yahooWorkflowTitle">ヤフオクへ出品する</h2>
@@ -73,74 +89,4 @@
         </div>
       </section>
 
-      <section class="input-area" id="asin-register">
-        <textarea id="asins" rows="6" placeholder="ASINを1行に1つずつ入力"></textarea>
-        <div class="input-actions">
-          <button id="add">ASINを登録</button>
-          <button id="fetchProducts">Amazon情報取得</button>
-        </div>
-      </section>
-
-      <p class="status" id="status"></p>
-
-      <section class="yahoo-launch-banner" id="yahooLaunchBanner" hidden aria-labelledby="yahooLaunchTitle">
-        <div class="yahoo-launch-mark" aria-hidden="true">Amazon <span>→</span> ヤフオク</div>
-        <div class="yahoo-launch-copy">
-          <h2 id="yahooLaunchTitle">情報取得が完了しました。ヤフオクへ進めます</h2>
-          <p><span id="yahooLaunchCount">下書き候補</span>を確認して、ヤフオクの出品フォームを開きます。</p>
-        </div>
-        <a id="yahooLaunchButton" class="yahoo-launch-button" href="https://auctions.yahoo.co.jp/jp/show/submit?category=0" target="_blank" rel="noreferrer">ヤフオク出品ページへ</a>
-      </section>
-
-      <section class="summary" id="summary"></section>
-
-      <section class="draft-panel" id="draftPanel" hidden>
-        <div>
-          <h2>Yahoo!オークション下書き</h2>
-          <p id="draftTitle"></p>
-        </div>
-        <div class="copy-grid">
-          <label>タイトル
-            <input id="draftName" readonly>
-          </label>
-          <label>価格
-            <input id="draftPrice" readonly>
-          </label>
-          <label>画像URL
-            <textarea id="draftImages" rows="3" readonly></textarea>
-          </label>
-        </div>
-        <textarea id="draftText" rows="12" readonly></textarea>
-        <div class="draft-actions">
-          <button id="extensionSelected" type="button">この商品をヤフオクへ</button>
-          <button id="copyTitle">タイトルをコピー</button>
-          <button id="copyPrice">価格をコピー</button>
-          <button id="copyText">説明をコピー</button>
-          <button id="copyImages">画像URLをコピー</button>
-          <button id="markDraftSaved">下書き保存済み</button>
-          <button id="markListed">出品済み</button>
-          <a id="openYahoo" class="button-link" href="https://auctions.yahoo.co.jp/seller/" target="_blank" rel="noreferrer">Yahooを開く</a>
-          <a class="button-link secondary" href="/yahoo-helper.html" target="_blank" rel="noreferrer">Yahoo入力補助の登録ページ</a>
-          <button id="copyYahooBookmarkletDraft" type="button">ブックマークレットをコピー</button>
-          <button id="closeDraft">閉じる</button>
-        </div>
-      </section>
-
-      <section class="columns">
-        <div>
-          <h2>下書き候補</h2>
-          <div id="active" class="list"></div>
-          <section class="history-section" aria-labelledby="historyTitle">
-            <h2 id="historyTitle">ここから登録履歴（直近20件）</h2>
-            <div id="recentHistory" class="list history-list"></div>
-          </section>
-        </div>
-        <div id="waitingColumn">
-          <h2>待機</h2>
-          <div id="waiting" class="list"></div>
-        </div>
-      </section>
-    </main>
-    <script type="module" src="/app.js"></script>
-  </body>
-</html>
+</details></main><script type="module" src="/app.js"></script></body></html>

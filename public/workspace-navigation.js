@@ -35,7 +35,7 @@ export async function stockWorkflowContext({drafts, main, request}) {
   meta.textContent = [product.condition==="new"?"新品":product.condition==="used"?"中古":"状態要確認",product.asin||"ASIN未登録"].join(" ／ ");
   back.href = "/?view=stock#connect="+id;back.target='_blank';back.rel='noopener noreferrer';back.title='別タブで開く';back.textContent = "この在庫の紐付けを確認"; band.append(label,name,meta,back); main.prepend(band);
   if (drafts) {
-    const input = main.querySelector("#asins"); if (input && product.asin) input.value = product.asin;
+    const input = main.querySelector("#asins"); if (input && product.asin) {input.value = product.asin;const add=main.querySelector("#draftAdd");if(add)add.open=true;}
   } else {
     const input = main.querySelector("#pairAmazon");
     if (input && product.asin) {input.value = product.asin; input.defaultValue = product.asin; input.readOnly = true;}

@@ -1,341 +1,70 @@
-import {monitorRequest} from "./monitor-http.js";
-import {createCatalogView} from "./catalog-view.js";
-const state = { items: [], queue: { active: [], waiting: [] }, priceReviews: [], config: null, selectedAsin: null };
-const displayHost=document.createElement("div");document.querySelector(".columns").before(displayHost);
-const catalog=createCatalogView({key:"drafts",host:displayHost,roots:[document.querySelector("#active"),document.querySelector("#waiting"),document.querySelector("#recentHistory")],measureLabels:["出品価格案 高い順","出品価格案 安い順"]});
-async function appFetch(url, options = {}) {
-  const headers = new Headers(options.headers);
-  if (state.capabilities?.cloud && options.method && options.method !== "GET") headers.set("If-Match", `"${state.storage.revision}"`);
-  const response = await monitorRequest(url, {...options, headers});
-  if (!response.ok) {
-    const result = await response.json().catch(() => ({}));
-    const error = new Error(result.error || "操作を完了できませんでした");
-    showTextStatus(error.message); throw error;
-  }
-  return response;
+import {monitorRequest} from './monitor-http.js';
+import {createCatalogView,catalogImage} from './catalog-view.js';
+import {DRAFT_STAGES,draftStage,draftHints,workOrder,boardItems} from './draft-board.js';
+const $=s=>document.querySelector(s),state={items:[],queue:{active:[],waiting:[]},priceReviews:[],selectedAsin:null};
+let busy=false,stage='pending',editorBase,editorValues;
+const editDialog=$('#draftEditDialog'),editForm=$('#draftEditForm');
+const catalog=createCatalogView({key:'drafts',host:$('#draftDisplay'),roots:[$('#draftRows')],defaultMode:'tiles',measureLabels:['出品価格案 高い順','出品価格案 安い順'],onReorder:order=>work(async()=>{await request('/api/drafts/order',{order});await load();showTextStatus('出したい順番を保存しました。「次の下書き文面」にも反映します。');})});
+$('#draftDisplay option[value=original]').textContent='作業順（保存済み）';$('#draftDisplay option[value=manual]').textContent='作業順（並べ替え）';
+async function response(url,options={}){
+ const headers=new Headers(options.headers);if(state.capabilities?.cloud&&options.method&&options.method!=='GET')headers.set('If-Match','"'+state.storage.revision+'"');
+ const r=await monitorRequest(url,{...options,headers});if(!r.ok){const d=await r.json().catch(()=>({}));throw Object.assign(new Error(d.error||'操作を完了できませんでした'),{status:r.status});}return r;
 }
-const yahooBookmarkletCode = "javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:41731/yahoo-fill.js?'+Date.now();document.body.appendChild(s);})();";
-
-document.querySelector("#extensionSelected").addEventListener("click", () => openWithExtension(state.selectedAsin));
-document.querySelector("#extensionNext").addEventListener("click", () => openWithExtension(state.queue.active[0]?.asin));
-document.addEventListener("asin-yahoo-result", (event) => {
-  showTextStatus(event.detail?.ok ? "Yahoo出品ページを開きました。ASIN下書きから商品を確認して「まとめて入力」を押してください。" : event.detail?.error || "出品ページを開けませんでした。");
-});
-
-function openWithExtension(asin) {
-  if (!asin) return showTextStatus("下書き候補の商品を選んでください。");
-  if (document.documentElement.dataset.asinYahooExtension !== "ready") {
-    showTextStatus("Chrome拡張を登録してから管理画面を再読み込みしてください。「Chrome拡張の登録方法」から手順を確認できます。");
-    return;
-  }
-  showTextStatus("選択した商品をYahoo出品ページへ引き継いでいます。");
-  document.dispatchEvent(new CustomEvent("asin-yahoo-open", {detail: {asin}}));
+async function request(url,body,method='POST'){return (await response(url,body===undefined?{}:{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})).json();}
+function showTextStatus(message){$('#status').textContent=message;}
+function controls(){$('#draftRows').inert=busy;for(const button of document.querySelectorAll('.draft-workbench button'))button.disabled=busy||Boolean(state.capabilities?.readOnly&&button.dataset.write!==undefined);for(const id of ['extensionNext','extensionSelected','copyYahooBookmarklet','copyYahooBookmarkletDraft','fetchProducts'])if(state.capabilities?.cloud)$('#'+id).disabled=true;editForm.querySelectorAll('input,select,textarea,button[type=submit]').forEach(n=>n.disabled=busy||Boolean(state.capabilities?.readOnly));if(state.capabilities?.readOnly){for(const id of ['add','draftPhotos','markDraftSaved','markListed'])$('#'+id).disabled=true;for(const b of document.querySelectorAll('.catalog-move,.catalog-drag'))b.disabled=true;}}
+async function work(fn){if(busy)return;busy=true;controls();try{await fn();}catch(error){showTextStatus(error.message);$('#draftEditMessage').textContent=error.message+' 入力内容は残しています。';if(error.status===409){await load();showTextStatus('ほかの下書き編集が保存されました。最新の一覧を表示しました。編集の入力は残しています。内容を確認して再度保存してください。');}}finally{busy=false;controls();}}
+async function load(){Object.assign(state,await request('/api/items'));catalog.setOrder(workOrder(state.items).map(p=>p.asin));render();}
+function render(){
+ const tabs=$('#summary');tabs.replaceChildren();for(const [id,entry] of Object.entries(DRAFT_STAGES)){const button=document.createElement('button');button.type='button';button.dataset.draftStage=id;button.setAttribute('aria-pressed',String(stage===id));const count=boardItems(state.items,id).length;button.textContent=entry.label+' '+count;button.addEventListener('click',()=>{stage=id;render();});tabs.append(button);}
+ const current=DRAFT_STAGES[stage];$('#draftBoardTitle').textContent=current.title;$('#draftBoardHelp').textContent=current.help;
+ const items=boardItems(state.items,stage,$('#draftSearch').value),root=$('#draftRows');root.replaceChildren();
+ $('#draftCount').textContent=items.length+'件表示 ／ 登録全体 '+state.items.length+'件（各商品は1枚ずつ表示）';
+ for(const item of items){const card=document.createElement('article');card.className='item draft-product';card.innerHTML='<div class="draft-list-photo"><img loading="lazy" referrerpolicy="no-referrer" alt="登録写真またはAmazonの商品参考画像"></div><div class="draft-list-copy"><strong></strong><p class="meta"></p><p class="draft-item-hint"></p><div class="draft-list-actions"></div></div>';const img=card.querySelector('img');img.src=catalogImage(item.displayImageUrl||item.imageUrls?.find(catalogImage))||'/catalog-image.svg';img.addEventListener('error',()=>{if(img.getAttribute('src')!=='/catalog-image.svg')img.src='/catalog-image.svg';});card.querySelector('strong').textContent=item.title||item.displayTitle||item.asin;card.querySelector('.meta').textContent=item.asin+' ／ '+statusLabel(item.status)+' ／ 出品価格案 '+yen(item.startPrice);card.querySelector('.draft-item-hint').textContent=hint(item);mountActions(card.querySelector('.draft-list-actions'),item);root.append(card);}
+ if(!items.length){const empty=document.createElement('p');empty.className='empty';empty.textContent='この条件に一致する商品はありません。';root.append(empty);}
+ catalog.update(root,items.map((item,index)=>({node:root.children[index],id:item.asin,title:item.title||item.displayTitle||item.asin,imageUrl:item.displayImageUrl||item.imageUrls?.find(catalogImage),imageLabel:'登録写真またはAmazonの商品参考画像',badges:[statusLabel(item.status),item.asin],metrics:[{label:'出品価格案',value:yen(item.startPrice),kind:'price'}],status:hint(item),registeredAt:item.createdAt,measure:item.startPrice,renderActions:host=>mountActions(host,item,true)})));
+ controls();
 }
-
-document.querySelector("#refresh").addEventListener("click", load);
-document.querySelector("#nextDraft").addEventListener("click", openNextDraft);
-document.querySelector("#closeDraft").addEventListener("click", () => {
-  document.querySelector("#draftPanel").hidden = true;
-});
-document.querySelector("#copyTitle").addEventListener("click", () => copyField("#draftName"));
-document.querySelector("#copyPrice").addEventListener("click", () => copyField("#draftPrice"));
-document.querySelector("#copyText").addEventListener("click", () => copyField("#draftText"));
-document.querySelector("#copyImages").addEventListener("click", () => copyField("#draftImages"));
-document.querySelector("#markDraftSaved").addEventListener("click", () => markSelected("draft_saved"));
-document.querySelector("#markListed").addEventListener("click", () => markSelected("listed"));
-document.querySelector("#copyYahooBookmarklet").addEventListener("click", copyYahooBookmarklet);
-document.querySelector("#copyYahooBookmarkletDraft").addEventListener("click", copyYahooBookmarklet);
-document.querySelector("#add").addEventListener("click", async () => {
-  const asins = document.querySelector("#asins").value;
-  await appFetch("/api/asins", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ asins })
-  });
-  document.querySelector("#asins").value = "";
-  await load();
-});
-document.querySelector("#fetchProducts").addEventListener("click", async () => {
-  const asins = document.querySelector("#asins").value;
-  showTextStatus("Amazon情報を取得しています。少し待ってください。");
-  const res = await appFetch("/api/fetch-product-data", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ asins })
-  });
-  const payload = await res.json();
-  showStatus(payload.results);
-  await load();
-});
-
-document.querySelector("a[href='/api/export/drafts.csv']")?.addEventListener("click", async (event) => {
-  if (!state.capabilities?.cloud) return;
-  event.preventDefault();
-  const response = await appFetch("/api/export/drafts.csv");
-  const url = URL.createObjectURL(await response.blob());
-  const link = document.createElement("a"); link.href = url; link.download = "drafts.csv"; link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 10000);
-});
-await load();
-
-async function load() {
-  const res = await appFetch("/api/items");
-  Object.assign(state, await res.json());
-  render();
+function statusLabel(status){return {waiting_for_product_data:'情報を補う',ready_for_draft:'出品準備できた',draft_saved:'保存済み・出品未記録',listed:'出品済み（手動記録）',sold:'売却済み',archived:'保留',deleted:'除外'}[status]||'情報を補う';}
+function hint(item){const missing=draftHints(item);return draftStage(item)==='saved'?'保存記録：'+formatDate(item.draftSavedAt)+' ／ 出品済みは別に記録':draftStage(item)==='listed'?'出品記録：'+formatDate(item.listedAt):missing.length?'確認する情報：'+missing.join('・'):'写真・価格・現物を確認してから出品';}
+function mountActions(host,item,compact=false){
+ const button=(text,run,write=false)=>{const b=document.createElement('button');b.type='button';b.textContent=text;if(write)b.dataset.write='';b.addEventListener('click',run);host.append(b);};
+ button(draftStage(item)==='needs'?'情報を入力・編集':'文面・作業を開く',()=>draftStage(item)==='needs'?openEditor(item):work(()=>openDraft(item.asin)));
+ const amazon=document.createElement('a');amazon.href='https://www.amazon.co.jp/dp/'+encodeURIComponent(item.asin);amazon.target='_blank';amazon.rel='noopener noreferrer';amazon.textContent='Amazon ↗';host.append(amazon);
+ if(!(item.imageUrls?.length||item.displayImageUrl))button('写真を取得',()=>work(()=>fillPhotos([item.asin])),true);
+ if(draftStage(item)!=='needs')button(compact?'編集・状態':'商品情報・作業状態',()=>openEditor(item));
 }
-
-function showTextStatus(message) {
-  document.querySelector("#status").textContent = message;
+function openEditor(item){editorBase=structuredClone(item);editForm.reset();for(const field of ['title','description','usedLowestPrice','status'])editForm.elements[field].value=item[field]??'';editForm.elements.imageUrls.value=(item.imageUrls||[]).join('\n');editorValues=Object.fromEntries(['title','description','usedLowestPrice','status','imageUrls'].map(k=>[k,editForm.elements[k].value]));editForm.querySelector('[data-ready]').hidden=draftStage(item)!=='needs';$('#draftEditIdentity').textContent=(item.title||item.asin)+' ／ '+item.asin;$('#draftEditMessage').textContent='状態はYahoo側の保存・出品を確認して記録してください。';editDialog.showModal();}
+editForm.addEventListener('submit',event=>{event.preventDefault();work(async()=>{const patch={};if(event.submitter?.dataset.ready!==undefined){if(!editForm.elements.title.value.trim()||!(Number(editForm.elements.usedLowestPrice.value)>0))throw new Error('商品名と参考価格を入力してから準備完了にしてください。');editForm.elements.status.value='ready_for_draft';}for(const [key,value] of Object.entries(editorValues))if(editForm.elements[key].value!==value)patch[key]=editForm.elements[key].value;if(!Object.keys(patch).length){$('#draftEditMessage').textContent='変更はありません。';return;}await patchItem(editorBase.asin,patch);editDialog.close();showTextStatus('商品情報と作業状態を保存しました。');});});
+for(const b of editForm.querySelectorAll('[data-edit-close]'))b.addEventListener('click',()=>editDialog.close());
+$('#draftSearch').addEventListener('input',render);
+$('#draftShowAdd').addEventListener('click',()=>{$('#draftAdd').open=true;$('#asins').focus();});
+$('#draftShowHelp').addEventListener('click',()=>{$('#draftHelp').open=true;$('#draftHelp').scrollIntoView({block:'start',behavior:'smooth'});});
+$('#refresh').addEventListener('click',()=>work(load));
+async function fillPhotos(asins){
+ let success=0,failed=0;for(let start=0;start<asins.length;start+=5){showTextStatus('写真・商品名を補完中… '+Math.min(start+5,asins.length)+' / '+asins.length);const data=await request('/api/drafts/catalog',{asins:asins.slice(start,start+5)});success+=(data.results||[]).filter(r=>r.ok).length;failed+=(data.results||[]).filter(r=>!r.ok).length;Object.assign(state,data);render();}
+ showTextStatus('写真・商品名の確認：補完・入力済み '+success+'件'+(failed?' ／ 取得できなかった '+failed+'件。各カードのAmazonリンクから確認し、編集で入力できます。':'')+'。説明・価格・作業状態は変更していません。');
 }
-
-function showStatus(results = []) {
-  if (!results.length) {
-    showTextStatus("取得対象はありません。");
-    return;
-  }
-  const ok = results.filter((result) => result.ok).length;
-  const failed = results.length - ok;
-  const message = results.find((result) => !result.ok)?.message || results.find((result) => result.message)?.message || "";
-  showTextStatus(`取得完了: 成功 ${ok}件 / 要確認 ${failed}件 ${message}`);
-}
-
-function render() {
-  const { active, waiting } = state.queue;
-  syncYahooLinks();
-  syncYahooLaunchBanner(active);
-  const columns = document.querySelector(".columns");
-  const waitingColumn = document.querySelector("#waitingColumn");
-  const hasWaiting = waiting.length > 0;
-  columns.classList.toggle("no-waiting", !hasWaiting);
-  waitingColumn.hidden = !hasWaiting;
-  document.querySelector("#summary").innerHTML = `
-    <div><strong>${active.length}</strong><span>下書き候補</span></div>
-    <div><strong>${waiting.length}</strong><span>待機・要確認</span></div>
-    <div><strong>${state.priceReviews.length}</strong><span>値下げ確認</span></div>
-    <div><strong>${state.items.length}</strong><span>総登録数</span></div>
-  `;
-  renderList("#active", active, true);
-  renderList("#waiting", waiting, false);
-  renderHistory();
-  if (state.capabilities?.cloud) document.querySelectorAll("[data-action='delete']").forEach((button) => {button.disabled = true; button.title = "履歴を保持するためクラウドの削除は未有効です";});
-}
-
-function syncYahooLaunchBanner(active) {
-  const banner = document.querySelector("#yahooLaunchBanner");
-  const count = document.querySelector("#yahooLaunchCount");
-  if (!banner || !count) return;
-  banner.hidden = active.length === 0;
-  count.textContent = `${active.length}件の下書き候補`;
-}
-
-function renderList(selector, items, compact) {
-  const root = document.querySelector(selector);
-  root.innerHTML = "";
-  if (!items.length) {
-    root.innerHTML = `<p class="empty">対象はありません。</p>`;
-    catalog.update(root,[]);
-    return;
-  }
-  for (const item of items) root.appendChild(card(item, compact));
-  catalog.update(root,items.map((item,index)=>({node:root.children[index],id:item.asin,title:item.title||item.asin,imageUrl:item.imageUrls?.[0],imageLabel:"Amazon商品画像（現物写真ではありません）",badges:[statusLabel(item.status),item.asin],
-    metrics:[{label:"初回案",value:yen(item.startPrice),kind:"price"},{label:"7日後案",value:yen(item.stalePrice),kind:"price"}],status:reviewBadge(item)?"価格の確認あり":"出品下書き",measure:typeof item.startPrice==="number"?item.startPrice:null,registeredAt:item.createdAt})));
-}
-
-function card(item, compact) {
-  const el = document.createElement("article");
-  el.className = `item ${compact ? "compact-item" : ""}`;
-  el.innerHTML = `
-    <div class="item-head">
-      <div>
-        <strong>${escapeHtml(item.title || item.asin)}</strong>
-        <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(item.asin)}" target="_blank" rel="noreferrer">${escapeHtml(item.asin)}</a>
-      </div>
-      <span class="status-pill">${escapeHtml(statusLabel(item.status))}</span>
-    </div>
-    <div class="prices">
-      <span>初回: ${yen(item.startPrice)}</span>
-      <span>7日後: ${yen(item.stalePrice)}</span>
-    </div>
-    <p class="meta">中古最安値: ${yen(item.usedLowestPrice)} / 東京都から発送 / 送料込み / 発送目安 ${item.shipAfterDaysMin}-${item.shipAfterDaysMax}日</p>
-    ${compact ? "" : detailEditor(item)}
-    ${reviewBadge(item)}
-    <div class="actions">
-      <button type="button" data-action="draft">下書き文面</button>
-      <button type="button" data-action="saved">下書き保存済み</button>
-      <button type="button" data-action="delete" class="danger">削除</button>
-      <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(item.asin)}" target="_blank" rel="noreferrer">Amazon</a>
-      <a href="${buildYahooMarketUrl(item)}" target="_blank" rel="noreferrer" title="キーワード: ${escapeAttribute(buildYahooMarketKeyword(item))}">ヤフオク</a>
-    </div>
-  `;
-
-  el.querySelector("[data-action='draft']").addEventListener("click", async () => openDraft(item.asin));
-  el.querySelector("[data-action='saved']").addEventListener("click", async () => patchItem(item.asin, { status: "draft_saved" }));
-  el.querySelector("[data-action='delete']").addEventListener("click", async () => deleteItem(item.asin));
-  el.querySelectorAll("[data-field]").forEach((input) => {
-    input.addEventListener("change", async () => {
-      await patchItem(item.asin, { [input.dataset.field]: input.value });
-    });
-  });
-
-  return el;
-}
-
-function renderHistory() {
-  const root = document.querySelector("#recentHistory");
-  if (!root) return;
-  const items = [...state.items]
-    .filter((item) => item.draftSavedAt)
-    .sort((a, b) => timestamp(b.draftSavedAt) - timestamp(a.draftSavedAt))
-    .slice(0, 20);
-  root.innerHTML = "";
-  if (!items.length) {
-    root.innerHTML = `<p class="empty">Yahooへ貼り付け完了した商品はまだありません。</p>`;
-    catalog.update(root,[]);
-    return;
-  }
-  for (const item of items) root.appendChild(historyCard(item));
-  catalog.update(root,items.map((item,index)=>({node:root.children[index],id:item.asin,title:item.title||item.asin,imageUrl:item.imageUrls?.[0],imageLabel:"Amazon商品画像（現物写真ではありません）",badges:["下書き保存済み",item.asin],metrics:[{label:"初回案",value:yen(item.startPrice),kind:"price"},{label:"7日後案",value:yen(item.stalePrice),kind:"price"}],status:formatDate(item.draftSavedAt),measure:typeof item.startPrice==="number"?item.startPrice:null,registeredAt:item.createdAt})));
-}
-
-function historyCard(item) {
-  const el = document.createElement("article");
-  el.className = "item history-item";
-  el.innerHTML = `
-    <div>
-      <strong>${escapeHtml(item.title || item.asin)}</strong>
-      <p class="meta">${escapeHtml(item.asin)} / 貼り付け完了 / ${formatDate(item.draftSavedAt)}</p>
-    </div>
-    <div class="history-actions">
-      <button type="button" data-action="draft">下書き文面</button>
-      <button type="button" data-action="restore">下書き候補に戻す</button>
-      <a href="https://www.amazon.co.jp/dp/${encodeURIComponent(item.asin)}" target="_blank" rel="noreferrer">Amazon</a>
-    </div>
-  `;
-  el.querySelector("[data-action='draft']").addEventListener("click", async () => openDraft(item.asin));
-  el.querySelector("[data-action='restore']").addEventListener("click", async () => {
-    await patchItem(item.asin, { status: "ready_for_draft", draftSavedAt: null });
-    showTextStatus(`${item.asin} を下書き候補に戻しました。`);
-  });
-  return el;
-}
-
-function timestamp(value) {
-  const time = value ? Date.parse(value) : 0;
-  return Number.isFinite(time) ? time : 0;
-}
-
-function formatDate(value) {
-  const time = timestamp(value);
-  if (!time) return "日時未設定";
-  return new Intl.DateTimeFormat("ja-JP", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit"
-  }).format(new Date(time));
-}
-
-function detailEditor(item) {
-  return `
-    <div class="edit-grid">
-      <label>商品名
-        <input data-field="title" value="${escapeAttribute(item.title || "")}" placeholder="Amazonの商品名">
-      </label>
-      <label>Amazon中古最安値
-        <input data-field="usedLowestPrice" type="number" min="1" value="${escapeAttribute(item.usedLowestPrice ?? "")}" placeholder="例: 3980">
-      </label>
-    </div>
-    <label>仕様・サイズ・重さなど
-      <textarea data-field="description" rows="3" placeholder="ヤフオク説明に使う仕様情報">${escapeHtml(item.description || "")}</textarea>
-    </label>
-    <label>画像URL
-      <textarea data-field="imageUrls" rows="2" placeholder="1行に1URL">${escapeHtml((item.imageUrls || []).join("\n"))}</textarea>
-    </label>
-  `;
-}
-
-function statusLabel(status) {
-  return {
-    waiting_for_product_data: "情報待ち",
-    ready_for_draft: "下書きOK",
-    draft_saved: "下書き保存済み",
-    listed: "出品済み",
-    sold: "売却済み",
-    archived: "除外"
-  }[status] || status;
-}
-
-function reviewBadge(item) {
-  if (!state.priceReviews.some((review) => review.asin === item.asin)) return "";
-  return `<p class="review">7日経過: ${yen(item.stalePrice)}への値下げを確認</p>`;
-}
-
-async function openNextDraft() {
-  const res = await appFetch("/api/next-draft");
-  const { item } = await res.json();
-  if (!item) {
-    showTextStatus("下書き候補はありません。");
-    return;
-  }
-  await openDraft(item.asin);
-}
-
-async function openDraft(asin) {
-  const res = await appFetch(`/api/items/${encodeURIComponent(asin)}/draft`);
-  const { draft } = await res.json();
-  state.selectedAsin = asin;
-  document.querySelector("#draftTitle").textContent = `${draft.asin} / ${yen(draft.price)}`;
-  document.querySelector("#draftName").value = draft.title;
-  document.querySelector("#draftPrice").value = draft.price || "";
-  document.querySelector("#draftImages").value = draft.imageUrls.join("\n");
-  document.querySelector("#draftText").value = draft.description;
-  document.querySelector("#openYahoo").href = state.config?.yahooSellerUrl || "https://auctions.yahoo.co.jp/seller/";
-  document.querySelector("#draftPanel").hidden = false;
-  document.querySelector("#draftName").focus();
-}
-
-function syncYahooLinks() {
-  const yahooUrl = state.config?.yahooSellerUrl || "https://auctions.yahoo.co.jp/seller/";
-  document.querySelector("#openYahooWorkflow").href = yahooUrl;
-  document.querySelector("#openYahoo").href = yahooUrl;
-  const launchButton = document.querySelector("#yahooLaunchButton");
-  if (launchButton) launchButton.href = yahooUrl;
-}
-
-async function markSelected(status) {
-  if (!state.selectedAsin) return;
-  await patchItem(state.selectedAsin, { status });
-  if (status === "listed") await openNextDraft();
-}
-
-async function copyField(selector) {
-  const field = document.querySelector(selector);
-  await navigator.clipboard.writeText(field.value);
-  showTextStatus("コピーしました。");
-}
-
-async function copyYahooBookmarklet() {
-  await navigator.clipboard.writeText(yahooBookmarkletCode);
-  showTextStatus("41731版のYahoo入力補助ブックマークレットをコピーしました。ブックマークバーへ登録してください。");
-}
-
-async function patchItem(asin, patch) {
-  await appFetch(`/api/items/${encodeURIComponent(asin)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch)
-  });
-  await load();
-}
-
-async function deleteItem(asin) {
-  await appFetch(`/api/items/${encodeURIComponent(asin)}`, { method: "DELETE" });
-  await load();
-}
-
-function yen(value) {
-  return value ? `${Number(value).toLocaleString("ja-JP")}円` : "未設定";
-}
+$('#draftPhotos').addEventListener('click',()=>work(async()=>{const targets=boardItems(state.items,stage,$('#draftSearch').value).filter(i=>(!i.title?.trim()||i.title===i.asin)||!(i.imageUrls?.length||i.displayImageUrl)).map(i=>i.asin);if(!targets.length)return showTextStatus('写真・商品名は入力済みです。');await fillPhotos(targets);}));
+$('#add').addEventListener('click',()=>work(async()=>{const entered=$('#asins').value;await request('/api/asins',{asins:entered});if($('#asins').value===entered)$('#asins').value='';await load();const ids=[...new Set(entered.split(/[\s,]+/).filter(Boolean).map(a=>a.toUpperCase()))];if(ids.length)await fillPhotos(ids);stage='pending';render();}));
+$('#fetchProducts').addEventListener('click',()=>work(async()=>{const entered=$('#asins').value;await request('/api/fetch-product-data',{asins:entered});await load();showTextStatus('PC版でAmazon情報を取得しました。');}));
+$('#nextDraft').addEventListener('click',()=>work(openNextDraft));
+$('#closeDraft').addEventListener('click',()=>{$('#draftPanel').hidden=true;});
+for(const [id,field] of [['copyTitle','#draftName'],['copyPrice','#draftPrice'],['copyText','#draftText'],['copyImages','#draftImages']])$('#'+id).addEventListener('click',()=>work(async()=>{await navigator.clipboard.writeText($(field).value);showTextStatus('コピーしました。');}));
+$('#markDraftSaved').addEventListener('click',()=>work(()=>markSelected('draft_saved')));$('#markListed').addEventListener('click',()=>work(()=>markSelected('listed')));
+async function markSelected(status){if(!state.selectedAsin)return;await patchItem(state.selectedAsin,{status});$('#draftPanel').hidden=true;stage=status==='draft_saved'?'saved':'listed';render();showTextStatus('Yahoo側の'+(status==='draft_saved'?'下書き保存':'出品完了')+'を確認済みとして記録しました。');}
+async function patchItem(asin,patch){await request('/api/items/'+encodeURIComponent(asin),patch,'PATCH');await load();}
+async function openNextDraft(){const data=await request('/api/next-draft');if(!data.item)return showTextStatus('準備済みの商品はありません。「情報を補う」から準備を進めてください。');await openDraft(data.item.asin);}
+async function openDraft(asin){const {draft}=await request('/api/items/'+encodeURIComponent(asin)+'/draft');state.selectedAsin=asin;$('#draftTitle').textContent=draft.asin+' ／ 出品価格案 '+yen(draft.price);$('#draftName').value=draft.title;$('#draftPrice').value=draft.price||'';$('#draftImages').value=draft.imageUrls.join('\n');$('#draftText').value=draft.description;$('#openYahoo').href=state.config?.yahooSellerUrl||'https://auctions.yahoo.co.jp/seller/';$('#draftPanel').hidden=false;$('#draftPanel').scrollIntoView({block:'start',behavior:'smooth'});$('#draftName').focus();}
+const bookmarklet="javascript:(()=>{const s=document.createElement('script');s.src='http://localhost:41731/yahoo-fill.js?'+Date.now();document.body.appendChild(s);})();";
+for(const id of ['copyYahooBookmarklet','copyYahooBookmarkletDraft'])$('#'+id).addEventListener('click',()=>work(async()=>{await navigator.clipboard.writeText(bookmarklet);showTextStatus('PC版のYahoo入力補助をコピーしました。');}));
+function openWithExtension(asin){if(!asin)return showTextStatus('準備済みの商品を選んでください。');if(document.documentElement.dataset.asinYahooExtension!=='ready')return showTextStatus('使い方・PC版からChrome拡張の登録方法を確認してください。');document.dispatchEvent(new CustomEvent('asin-yahoo-open',{detail:{asin}}));}
+$('#extensionSelected').addEventListener('click',()=>openWithExtension(state.selectedAsin));$('#extensionNext').addEventListener('click',()=>openWithExtension(state.queue.active[0]?.asin));
+document.addEventListener('asin-yahoo-result',event=>showTextStatus(event.detail?.ok?'Yahooのフォームで内容を確認してください。':event.detail?.error||'出品ページを開けませんでした。'));
+$("a[href='/api/export/drafts.csv']").addEventListener('click',event=>{if(!state.capabilities?.cloud)return;event.preventDefault();work(async()=>{const r=await response('/api/export/drafts.csv'),url=URL.createObjectURL(await r.blob()),link=document.createElement('a');link.href=url;link.download='drafts.csv';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);});});
+const yen=value=>typeof value==='number'&&value>0?value.toLocaleString('ja-JP')+'円':'未設定';
+const formatDate=value=>value&&Number.isFinite(Date.parse(value))?new Date(value).toLocaleString('ja-JP'):'日時未設定';
+await work(load);
 
 function buildYahooMarketUrl(item) {
   const keyword = buildYahooMarketKeyword(item);

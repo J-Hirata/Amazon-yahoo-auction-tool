@@ -1,3 +1,5 @@
+import {reorderDrafts} from './draft-order.js';
+import {addDrafts} from './cloud-drafts.js';
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -36,6 +38,8 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (await handleLinkMonitor(req, res, url)) return;
+    if(req.method==='GET'&&['/draft-board.js','/draft-workbench.css','/catalog-view.js','/catalog-view.css','/tile-size.js','/catalog-list.svg','/catalog-tiles.svg','/catalog-image.svg','/catalog-grip.svg','/catalog-prev.svg','/catalog-next.svg'].includes(url.pathname))return sendFile(res,path.join(publicDir,url.pathname.slice(1)),url.pathname.endsWith('.css')?'text/css; charset=utf-8':url.pathname.endsWith('.svg')?'image/svg+xml':'text/javascript; charset=utf-8');
+    if(req.method==='GET'&&url.pathname==='/catalog-sortable.js')return sendFile(res,path.resolve(__dirname,'../node_modules/sortablejs/modular/sortable.esm.js'),'text/javascript; charset=utf-8');
     const monitorFiles = {
       "/link-monitor.html": ["link-monitor.html", "text/html; charset=utf-8"],
       "/link-monitor.js": ["link-monitor.js", "text/javascript; charset=utf-8"],
@@ -212,11 +216,18 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, { draft: buildYahooDraft(item) });
     }
 
+    if(req.method==='POST'&&url.pathname==='/api/drafts/order'){const body=await readJson(req);await updateItems(items=>{reorderDrafts(items,body.order);return items;});return sendJson(res,{ok:true});}
+    if(req.method==='POST'&&url.pathname==='/api/drafts/catalog'){
+      const {asins}=await readJson(req);if(!Array.isArray(asins)||!asins.length||asins.length>5||new Set(asins).size!==asins.length||asins.some(a=>typeof a!=='string'||!/^[A-Z0-9]{10}$/.test(a)))return sendJson(res,{error:'登録済みのASINを1〜5件指定してください'},400);
+      const current=await loadItems();if(asins.some(a=>!current.some(p=>p.asin===a)))return sendJson(res,{error:'登録済みの商品を選んでください'},400);
+      const results=[];for(const asin of asins){const result=await fetchProductData(asin);results.push(result);}
+      const next=await updateItems(items=>{for(const result of results.filter(r=>r.ok)){const item=items.find(p=>p.asin===result.item.asin);if(!item)continue;if(!item.title?.trim()||item.title===item.asin)item.title=result.item.title||item.title;if(!item.imageUrls?.length&&result.item.imageUrls?.length)item.imageUrls=result.item.imageUrls;}return items;});
+      return sendJson(res,{items:next,queue:splitDraftQueue(next),priceReviews:findPriceReviewItems(next),results:results.map(r=>({asin:r.asin||r.item?.asin,ok:r.ok}))});
+    }
     if (req.method === "POST" && url.pathname === "/api/asins") {
       const body = await readJson(req);
       const asins = normalizeAsins(body.asins || "");
-      const items = await buildItemsFromAsins(asins);
-      const merged = await upsertItems(items);
+      const merged = await updateItems(async items=>{await addDrafts(items,asins.join("\n"),new Date().toISOString());return items;});
       return sendJson(res, { items: merged, queue: splitDraftQueue(merged), priceReviews: findPriceReviewItems(merged) });
     }
 
@@ -282,8 +293,9 @@ const server = http.createServer(async (req, res) => {
       const patch = await readJson(req);
       const next = await updateItems((items) => items.map((item) => {
         if (item.asin !== asin) return item;
-        const usedLowestPrice = patch.usedLowestPrice === "" ? null : Number(patch.usedLowestPrice ?? item.usedLowestPrice);
-        const prices = calculateAuctionPrices(usedLowestPrice, CONFIG);
+        const hasPrice=Object.hasOwn(patch,"usedLowestPrice");
+        const usedLowestPrice = hasPrice ? patch.usedLowestPrice === "" || patch.usedLowestPrice === null ? null : Number(patch.usedLowestPrice) : item.usedLowestPrice;
+        const prices = hasPrice ? calculateAuctionPrices(usedLowestPrice, CONFIG) : {};
         const nextStatus = patch.status ?? item.status;
         const timestamps = {};
         if (nextStatus === "draft_saved" && item.status !== "draft_saved") timestamps.draftSavedAt = new Date().toISOString();

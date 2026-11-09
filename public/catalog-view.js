@@ -36,8 +36,8 @@ const node=(tag,className,text)=>{const n=document.createElement(tag);if(classNa
 const icon=(name)=>{const img=node("img");img.src=`/catalog-${name}.svg`;img.alt="";img.width=18;img.height=18;return img;};
 
 // Presentation preferences only. The original controls and their listeners stay in place.
-export function createCatalogView({key,host,roots,measureLabels=["数量 多い順","数量 少ない順"]}) {
-  let settings;try{settings=presentationSettings(JSON.parse(localStorage.getItem("catalog-view:"+key)||"null"));}catch{settings=presentationSettings();}
+export function createCatalogView({key,host,roots,measureLabels=["数量 多い順","数量 少ない順"],defaultMode="list",onReorder=()=>{}}) {
+  let settings;try{settings=presentationSettings(JSON.parse(localStorage.getItem("catalog-view:"+key)||"null")||{mode:defaultMode});}catch{settings=presentationSettings({mode:defaultMode});}
   const expanded=new Set(), groups=new Map(), sortables=new Map(), bar=node("div","catalog-controls"), segmented=node("div","catalog-modes"),live=node("span","catalog-live");
   live.setAttribute("role","status");live.setAttribute("aria-live","polite");bar.append(live);
   const resize=root=>{const width=root.clientWidth,columns=width>=1120?5:width>=900?4:width>=660?3:2;root.style.setProperty("--catalog-columns",columns);root.classList.toggle("catalog-dense",columns===5);};
@@ -65,7 +65,7 @@ export function createCatalogView({key,host,roots,measureLabels=["数量 多い�
       const sortable=new Sortable(root,{group:{name:`catalog-${key}-${roots.indexOf(root)}`,pull:false,put:false},
         draggable:".catalog-item:not(.catalog-expanded)",handle:".catalog-drag",animation:150,disabled:settings.mode!=="tiles",
         delay:150,delayOnTouchOnly:true,touchStartThreshold:4,ghostClass:"catalog-drag-ghost",fallbackClass:"catalog-drag-fallback",
-        onStart:()=>remember(root),onEnd:()=>{remember(root);apply();if(save())live.textContent="並び順をこのブラウザーに保存しました。";}});
+        onStart:()=>remember(root),onEnd:()=>{remember(root);apply();if(save())live.textContent="並び順を変更しました。";void onReorder(currentIds(root));}});
       sortables.set(root,sortable);
     }catch{sortables.delete(root);live.textContent="ドラッグを読み込めませんでした。前後の矢印で並べ替えできます。";}
   }
@@ -74,7 +74,7 @@ export function createCatalogView({key,host,roots,measureLabels=["数量 多い�
     const to=target==="first"?0:target==="last"?order.length-1:from+target;
     if(to<0||to>=order.length||to===from)return;
     order.splice(to,0,...order.splice(from,1));settings.order=mergeManualOrder(settings.order,order);settings.sort="manual";select.value="manual";
-    apply();if(save())live.textContent=`${to+1}番目に移動し、このブラウザーに保存しました。`;
+    apply();if(save())live.textContent=`${to+1}番目に移動しました。`;void onReorder(currentIds(root));
   }
   function apply(){
     host.closest("main")?.classList.toggle("catalog-tiles-page",settings.mode==="tiles");
@@ -115,9 +115,9 @@ export function createCatalogView({key,host,roots,measureLabels=["数量 多い�
       function expandedState(){const yes=expanded.has(data.id);row.classList.toggle("catalog-expanded",yes);open.setAttribute("aria-expanded",String(yes));open.querySelector("span").textContent=yes?"閉じる":"詳細";}
       open.addEventListener("click",()=>{if(expanded.has(data.id))expanded.delete(data.id);else expanded.add(data.id);expandedState();});
       summary.append(imageBox,title,badges,metrics,state);row.classList.toggle('catalog-with-access',Boolean(data.renderAccess));
-      if(data.renderAccess){const access=node('div','catalog-access');data.renderAccess(access);if(data.identity){const id=node("div","catalog-identity","SKU："+data.identity);id.title=id.textContent;access.prepend(id);}if(data.memo){const memo=node("p","catalog-memo",data.memo);memo.title=data.memo;access.append(memo);}const memberships=access.querySelector('.product-membership');if(memberships){badges.append(memberships);badges.setAttribute('aria-label','状態・用途・登録済みのページ');}summary.append(access);}summary.append(footer);(row.tagName==="TR"?row.firstElementChild:row).prepend(summary);expandedState();
+      if(data.renderAccess){const access=node('div','catalog-access');data.renderAccess(access);if(data.identity){const id=node("div","catalog-identity","SKU："+data.identity);id.title=id.textContent;access.prepend(id);}if(data.memo){const memo=node("p","catalog-memo",data.memo);memo.title=data.memo;access.append(memo);}const memberships=access.querySelector('.product-membership');if(memberships){badges.append(memberships);badges.setAttribute('aria-label','状態・用途・登録済みのページ');}summary.append(access);}if(data.renderActions){const actions=node("div","catalog-card-actions");data.renderActions(actions);summary.append(actions);}summary.append(footer);(row.tagName==="TR"?row.firstElementChild:row).prepend(summary);expandedState();
     }
     apply();
   }
-  apply();return {update,mode:()=>settings.mode};
+  apply();return {update,mode:()=>settings.mode,setOrder:order=>{settings.order=ids(order);apply();save();}};
 }

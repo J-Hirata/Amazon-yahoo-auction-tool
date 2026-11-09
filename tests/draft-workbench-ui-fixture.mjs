@@ -1,0 +1,20 @@
+// Isolated, owner-authenticated UI fixture. All writes stay in memory.
+import http from 'node:http';import {Readable} from 'node:stream';import {build} from 'esbuild';
+import {loadCloudAssets} from '../src/cloud-runtime.js';import {createCloudHandler} from '../src/cloud-handler.js';
+import {readFile} from 'node:fs/promises';
+import {createDraftCatalog} from '../src/draft-catalog.js';
+const at='2026-11-10T04:00:00.000Z';let items=[],revision=0;
+for(let i=1;i<=58;i++){const status=i<=14?'ready_for_draft':i<=26?'waiting_for_product_data':i<=49?'draft_saved':i<=55?'listed':'archived';items.push({asin:'B'+String(i).padStart(9,'0'),title:(status==='waiting_for_product_data'?'':status==='draft_saved'?'下書き保存済み・モニター ':status==='listed'?'出品記録・モニター ':'準備済み・モニター ')+(status==='waiting_for_product_data'?'':String(i).padStart(2,'0')),description:'手入力した説明・付属品を保持します。',imageUrls:[],usedLowestPrice:3000,startPrice:2400,stalePrice:2550,status,createdAt:at,updatedAt:at,...(status==='draft_saved'?{draftSavedAt:at}:{})});}
+if(process.env.DRAFTS_PREVIEW_PATH)items=JSON.parse(await readFile(process.env.DRAFTS_PREVIEW_PATH,'utf8'));
+const previewOnly=Boolean(process.env.DRAFTS_PREVIEW_PATH);
+const store={read:async()=>structuredClone(items),readSnapshot:async()=>({state:structuredClone(items),revision}),update:async(fn,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==revision)throw Object.assign(new Error('別の編集が保存されました'),{status:409});const copy=structuredClone(items),r=await fn(copy);items=copy;revision++;return r;}};
+const draftCatalog=createDraftCatalog({store,readOnly:previewOnly,readCatalog:async asin=>({asin,title:'ASINから補完したモニター '+asin,imageUrl:'https://m.media-amazon.com/images/I/test.jpg'}),now:()=>at});
+const assets=await loadCloudAssets(),nav=await build({stdin:{contents:"export{workspaceNavigation}from'./public/workspace-navigation.js';export{cockpitHeader}from'./public/cockpit-brand.js';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'browser',logLevel:'silent'});
+assets.set('/__fixture/nav.js',{type:'text/javascript',body:nav.outputFiles[0].contents});
+let handler,base;
+const server=http.createServer(async(req,res)=>{try{
+ if(req.url==='/'||req.url==='/?view=drafts'){res.setHeader('Content-Type','text/html;charset=utf-8');res.end(`<!doctype html><html lang="ja"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>下書き作業場・隔離テスト</title>${['styles','cloud-login','catalog-view','draft-workbench'].map(n=>'<link rel="stylesheet" href="/'+n+'.css">').join('')}<div id="cloudApp">${assets.get('/cloud-drafts-view.html').body}</div><script type="module">import{workspaceNavigation,cockpitHeader}from'/__fixture/nav.js';let mode=document.createElement('span'),logout=document.createElement('button');mode.textContent="${previewOnly?'登録済み商品の読み取り見本・保存なし':'テスト用商品・外部保存なし'}";logout.disabled=true;logout.textContent='ログアウト';document.querySelector('#cloudApp').prepend(cockpitHeader({navigation:workspaceNavigation({drafts:true,physicalStock:true,salesPlanning:true,productOverview:true}),mode,logout}));document.querySelector('main').classList.add('cockpit-content');await import('/app.js');</script></html>`);return;}
+ if(req.url==='/__fixture/state'){res.setHeader('Content-Type','application/json');res.end(JSON.stringify({items,revision}));return;}
+ const r=await handler(new Request(new URL(req.url,base),{method:req.method,headers:req.headers,...(['GET','HEAD'].includes(req.method)?{}:{body:Readable.toWeb(req),duplex:'half'})}));res.writeHead(r.status,Object.fromEntries(r.headers));res.end(Buffer.from(await r.arrayBuffer()));
+ }catch(e){res.writeHead(500);res.end('fixture failure');}});
+server.listen(0,'127.0.0.1',()=>{base='http://127.0.0.1:'+server.address().port;handler=createCloudHandler({config:{origin:base,authUrl:'https://fixture.invalid',readOnly:previewOnly},draftStore:store,draftCatalog,assets,verifyOwner:async()=>({status:200,userId:'fixture-owner'})});console.log(JSON.stringify({url:base,externalWrites:0}));});

@@ -1,5 +1,7 @@
 ﻿# 販売コックピット
 
+2026-11-10：ヤフオク下書きの写真カード・状態別一覧・作業順保存・写真/商品名補完を公開準備中。現在地は[docs/status.md](docs/status.md)、操作と制限は[docs/draft-workbench.md](docs/draft-workbench.md)を参照。
+
 2026-11-10：再出品の自動引継ぎと、全商品一覧の小型タイル・複数チェック絞り込みを追加し、本番反映済み（026333d / dpl_27hze4ng7ugNV4UwqTexyMbpLKWH・READY）。再出品は出品通知と旧/新ページを照合し、一致が一意のときだけ既存の紐付けを引き継ぐ。詳細な検証・公開結果は[docs/status.md](docs/status.md)冒頭。
 
 2026-11-10：本人の明示依頼で、本UIと以前の未公開修正を本番反映済み。公開URL https://amazon-yahoo-inventory.vercel.app/ 、コードa82abcc、配備dpl_6C6McmEt5xQeSHAZJtMe3GenAXQV / READY。350件の試験、配備物検査、公開URLと登録データ保全を確認。[確認結果と残件](docs/status.md)。以下の未反映記録はその時点の履歴。
