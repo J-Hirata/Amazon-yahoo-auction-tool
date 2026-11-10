@@ -1,5 +1,7 @@
 # 現在地
 
+2026-11-11：写真仕分けナビへの共通ヘッダーリンクを追加。456テストとcloud資産ビルド成功。今回の範囲は相互ナビのみで、写真受領・下書き作成・業務数量・メール・Cron・PC版を変更しない。仕様docs/photo-navi-integration-20261111.md、公開記録output/photo-navi-links-20261111/release.json。
+
 2026-11-11 03:48 JST、本人が「中古・良い」を指定したため、iiyama E2483HS-B3をSKU 20220716B075D23YM3へ保存。Amazonから03:46に再取得し、在庫カード・販売監視ともFBA2個を確認。手入力補正はnullのまま、source=amazon。コンテナ9個/自宅会社未確認、他商品、計画、下書き、通知設定・送信記録の保持を比較検証。証跡output/cockpit-fixes-20261111/sku-after-summary.json。
 
 2026-11-11 02:41 JST、場所別数量・FBA未確認理由と再取得・下書き5件選択出品/直接アーカイブを本番へ反映。最終コードeddbd35、配備dpl_Bas4Ja3FPrdJ4Yz5My6RHLkVJM7c（production READY）、公開先 https://amazon-yahoo-inventory.vercel.app/ 。453テスト、配備物9項目、公開7資産の完全一致、未認証API401を確認。詳細docs/cockpit-editing-20261111.md、報告output/cockpit-fixes-20261111/report.md。
