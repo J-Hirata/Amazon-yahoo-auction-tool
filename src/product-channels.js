@@ -1,4 +1,5 @@
 import {ownListingSnapshot,count} from './product-availability.js';
+import {merchantAssociation,merchantSnapshot,ownedListingSnapshot} from './merchant-relations.js';
 const family=v=>/^new/i.test(v||"")?"new":/^used/i.test(v||"")?"used":"unknown";
 export function productChannels(row,monitor,watch,at,extra){
   const snapshot=ownListingSnapshot(row,monitor,watch,extra);
@@ -12,6 +13,15 @@ export function productChannels(row,monitor,watch,at,extra){
     const channel=(kind)=>{const offers=matches.filter(p=>p.fulfillment.some(f=>kind==="fba"?f.channel.startsWith("AMAZON"):f.channel==="DEFAULT")),active=offers.filter(p=>p.statuses.includes("BUYABLE")),counts=kind==='merchant'&&offers.length===1?offers[0].fulfillment.filter(f=>f.channel==='DEFAULT'):[];return{state:active.length?"active":offers.length?"inactive":"absent",label:active.length?"出品中":offers.length?"販売停止・販売不可":"該当出品なし",skus:offers.map(p=>p.sellerSku),checkedAt:snapshot.checkedAt,quantity:counts.length===1?count(counts[0].quantity):null};};
     fba=channel("fba");merchant=channel("merchant");
   }else if(snapshot?.checkedAt){fba={...unknown,checkedAt:snapshot.checkedAt,label:fresh?"SKU・状態未照合":age>26*3600000?"情報が古い・未確認":"未確認"};merchant={...fba};}
+  const association=merchantAssociation(row,monitor);
+  if(association.conflict)merchant={...unknown,label:'自社発送の紐付けSKUが不一致'};
+  else if(association.sellerSku){
+    const s=merchantSnapshot(row.asin,monitor,watch,extra),age=Date.parse(at)-Date.parse(s?.checkedAt);
+    if(ownedListingSnapshot(s,monitor)&&age>=-60000&&age<=26*3600000){
+      const offers=s.rows.filter(p=>p.asin===row.asin&&p.sellerSku===association.sellerSku&&p.fulfillment.some(f=>f.channel==='DEFAULT')&&(!knownCondition||family(p.condition)===row.condition)),q=offers.length===1?offers[0].fulfillment.filter(f=>f.channel==='DEFAULT'):[];
+      merchant={state:offers.some(p=>p.statuses.includes('BUYABLE'))?'active':offers.length?'inactive':'absent',label:offers.some(p=>p.statuses.includes('BUYABLE'))?'出品中':offers.length?'販売停止・販売不可':'紐付けSKUの出品なし',skus:[association.sellerSku],checkedAt:s.checkedAt,quantity:q.length===1?count(q[0].quantity):null};
+    }else merchant={...unknown,skus:[association.sellerSku],label:'紐付け済み・出品情報の再取得が必要',checkedAt:s?.checkedAt||null};
+  }
   const yahoo=row.yahoo||[],active=yahoo.filter(y=>y.verified&&y.status==="active"&&Date.parse(at)-Date.parse(y.checkedAt)>=-60000&&Date.parse(at)-Date.parse(y.checkedAt)<=26*3600000),allEnded=yahoo.length&&yahoo.every(y=>y.verified&&y.status==="ended"&&Date.parse(at)-Date.parse(y.checkedAt)>=-60000&&Date.parse(at)-Date.parse(y.checkedAt)<=26*3600000);
   const channels={fba,merchant,yahoo:{state:active.length?"active":allEnded?"ended":yahoo.length?"unknown":"unlinked",label:active.length?"出品中":allEnded?"終了":yahoo.length?"未確認":"紐付けなし"},mercari:{state:row.rule.manualListingStatus==="mercari"?"active":"unknown",label:row.rule.manualListingStatus==="mercari"?"出品中（手動確認）":"未確認（未接続）",checkedAt:row.rule.manualListingAt||null}};
   const hasActive=Object.values(channels).some(c=>c.state==="active");

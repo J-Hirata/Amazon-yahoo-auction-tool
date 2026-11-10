@@ -7,6 +7,7 @@ import {productOverview,emptyProductWatch} from './product-overview.js';
 import {conditionFamily,resolvedLinkSku,resolvedLinkCondition} from './product-workspace.js';
 import {associateDraft,relationIssue} from './product-relations.js';
 import {stockImageUrl} from './stock-images.js';
+import {merchantAssociation,merchantCatalog,saveMerchantAssociation} from './merchant-relations.js';
 
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const uuid=v=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v||'');
@@ -29,7 +30,7 @@ export function workspaceDescriptor(docs,key,row,at=new Date().toISOString()){
  const p=stock||(s.kind==='draft'?{...local,title:(local.title||row.title).slice(0,200),memo:local.workspaceProduct?.memo||'',setContents:local.workspaceProduct?.setContents||''}:local);
  const picture=p=>stockImageUrl(p.imageUrl)||(docs['draft-items']?.state||[]).filter(d=>d.asin===p.asin).flatMap(d=>d.imageUrls||[]).find(stockImageUrl)||(docs['link-monitor'].state.amazonInventory?.items||[]).filter(i=>i.asin===p.asin).map(i=>i.listingInfo?.catalogImageUrl).find(stockImageUrl)||'';
  const product={title:p.title||row.title,asin:p.asin||row.asin,sellerSku:p.sellerSku||row.availability?.sku||row.sellerSku||'',condition:stock?stock.condition:[p.condition,row.availability?.condition,row.amazonCondition,row.fba?.condition,row.condition].map(family).find(c=>c!=='unknown')||'unknown',setContents:p.setContents||row.setContents||'',memo:stock?.memo??((s.kind==='plan'?s.item.note:s.kind==='draft'?s.item.workspaceProduct?.memo:s.item.userMemo)||''),imageUrl:picture(p)||row.imageUrl||'',unit:p.unit||'個',fbaEligibility:p.fbaEligibility||'unknown',catalogTask:p.catalogTask||'none',reviewDate:p.reviewDate||'',useChannels:p.useChannels||[]};
- return {product,stockId:stock?.id||'',ambiguousStock:row.stockIds.length>1,
+ return {product,stockId:stock?.id||'',ambiguousStock:row.stockIds.length>1,merchant:merchantAssociation(row,docs['link-monitor'].state),merchantChoices:merchantCatalog(docs,at),
 
   counts:stock?Object.fromEntries(stockTotals(docs['physical-stock'].state,stock.id).locations.map(l=>[l.locationId,l.usable])):{container:null,home:null},
   candidates:docs['physical-stock'].state.products.filter(c=>c.id!==stock?.id).map(c=>({...c,imageUrl:picture(c),locations:stockTotals(docs['physical-stock'].state,c.id).locations,issue:relationIssue(product,c)})),linkIds:[...row.linkIds],
@@ -135,7 +136,8 @@ export async function applyProductWorkspaceEdit(docs,command,{actor,at=new Date(
  }
 
  const target=stock||product,receipt={id:command.operationId,digest,actor,at,key:command.key,kind:'workspace',stockId:stock?.id||null};
- if(reg.merchant)summary.push('Amazon自社発送の用途に登録');
+ const merchantRow=rows(docs,at).find(r=>r.sourceKeys.includes(command.key)),merchantSummary=saveMerchantAssociation(docs,command,merchantRow,{actor,at});
+ if(merchantSummary)summary.push(merchantSummary);else if(reg.merchant&&!Object.hasOwn(command,'merchantSellerSku'))summary.push('Amazon自社発送の用途のみ登録（出品SKUの紐付けは未設定）');
  await applyStockWorkspace(docs,{operationId:command.operationId,kind:'edit',workspace},target,receipt,{actor,at,summary,key:stock?'stock:'+stock.id:command.key});
  receipt.registrationSummary=summary;receipts.push(receipt);monitor.productLinkReceipts=receipts;monitor.logs.push({kind:'product_workspace_saved',at,actor,key:command.key});
  return receipt;

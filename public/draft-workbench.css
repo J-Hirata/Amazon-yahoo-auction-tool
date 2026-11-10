@@ -11,3 +11,13 @@
 #draftArchiveDialog,#draftRecordDialog{padding:22px}#draftRecordDialog header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}#draftRecordDialog h2,#draftArchiveDialog h2{font-size:19px;margin:0 0 8px}#draftRecordIdentity{font-size:12px;line-height:1.7;overflow-wrap:anywhere}
 
 .draft-workbench .catalog-grid[data-tile-size] .catalog-badges{max-height:none;flex-shrink:0;min-height:22px;align-items:flex-start}.draft-edit-dialog header>button{flex-shrink:0;white-space:nowrap}
+.draft-edit-dialog{overflow:hidden;box-sizing:border-box;max-height:90dvh;}
+.draft-edit-dialog #draftEditForm{display:flex;flex-direction:column;max-height:calc(90dvh - 2px);padding:0;min-height:0;}
+.draft-edit-dialog #draftEditForm>header,.draft-edit-dialog #draftEditForm>footer{flex:none;padding:12px 18px;margin:0;border-bottom:1px solid #dce5df;}
+.draft-edit-dialog #draftEditForm>footer{flex-wrap:wrap;border-bottom:0;border-top:1px solid #dce5df;}
+.draft-editor-scroll{padding:0 18px 18px;overflow:auto;overscroll-behavior:contain;min-height:0;}
+.draft-edit-photos{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0;}
+.draft-edit-photos img{width:76px;height:76px;object-fit:contain;border:1px solid #d8e2dc;border-radius:5px;}
+.draft-edit-history{border-top:1px solid #dce5df;margin-top:16px;font-size:12px;}
+.draft-edit-history h3{font-size:14px;}.draft-edit-history ol{padding-left:20px;}.draft-edit-history li{padding:4px 0;overflow-wrap:anywhere;}
+@media(max-width:480px){.draft-editor-scroll{padding:0 12px 12px;}.draft-edit-dialog #draftEditForm>header,.draft-edit-dialog #draftEditForm>footer{padding:10px 12px;}}

@@ -15,7 +15,7 @@ export function choiceIssue(source,target){
  return '';
 }
 export function productChoices(products,source,query,selected=[]){
- return products.filter(p=>matchesProduct(p,query)).map(p=>({...p,issue:choiceIssue(source,p)})).sort((a,b)=>
+ return products.filter(p=>matchesProduct(p,query)).map(p=>({...p,issue:choiceIssue(source,p)||p.unavailableReason||''})).sort((a,b)=>
   Number(selected.includes(b.id))-Number(selected.includes(a.id))||Number(Boolean(a.issue))-Number(Boolean(b.issue))||Number(b.asin===source.asin)-Number(a.asin===source.asin)||a.title.localeCompare(b.title,'ja'));
 }
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};

@@ -24,6 +24,7 @@ import {createStockPhotoRefresh} from "./cloud-stock-photos.js";
 import {createStockAmazonRefresh,readOwnAmazonListings} from "./stock-amazon-listings.js";
 import {readPlanningCatalog} from "./planning-catalog.js";
 import {resolveSalesSources} from "./sales-sources.js";
+import {withMerchantSalesSources} from './merchant-relations.js';
 import {createCloudSalesAutomation} from "./cloud-sales-automation.js";
 import {createProductOverview,validateProductWatch} from "./product-overview.js";
 import {createProductMonitoring} from "./product-monitoring.js";
@@ -69,11 +70,12 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
   const readTargets=async()=>{
-    const [monitor,physical,plans,watch]=await Promise.all([store.read(),stockStore?.read(),planningStore?.read(),watchStore?.read()]);
-    const sources=monitor.links.filter(l=>l.verified&&!l.observationConflict).map(l=>{const p=monitor.catalog.find(p=>p.id===l.catalogId),y=monitor.listings.find(y=>y.listingId===l.listingId);return{sourceId:`link:${l.id}`,linkId:l.id,asin:l.asin || p?.asin,sellerSku:l.amazonSellerSku||(l.matchBy==="asin"?"":p?.sellerSku),title:y?.title || p?.title,condition:l.matchBy==="asin"?"unknown":/^new/i.test(p?.condition || "")?"new":/^used/i.test(p?.condition || "")?"used":"unknown"};});
+    const [monitor,physical,plans,watch,drafts]=await Promise.all([store.read(),stockStore?.read(),planningStore?.read(),watchStore?.read(),draftStore?.read()]);
+    let sources=monitor.links.filter(l=>l.verified&&!l.observationConflict).map(l=>{const p=monitor.catalog.find(p=>p.id===l.catalogId),y=monitor.listings.find(y=>y.listingId===l.listingId);return{sourceId:`link:${l.id}`,linkId:l.id,asin:l.asin || p?.asin,sellerSku:l.amazonSellerSku||(l.matchBy==="asin"?"":p?.sellerSku),title:y?.title || p?.title,condition:l.matchBy==="asin"?"unknown":/^new/i.test(p?.condition || "")?"new":/^used/i.test(p?.condition || "")?"used":"unknown"};});
     for(const p of physical?.products || [])if(p.asin)sources.push({sourceId:`stock:${p.id}`,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
     for(const p of plans?.plans || [])if(p.asin)sources.push({sourceId:`plan:${p.id}`,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
     for(const p of watch?.rules || [])if(p.key.startsWith("watch:")&&p.asin)sources.push({sourceId:p.key,asin:p.asin,sellerSku:p.sellerSku,title:p.title,condition:p.condition});
+    sources=withMerchantSalesSources(sources,monitor,drafts||[]);
     const asins=[...new Set(sources.map(s=>s.asin).filter(a=>/^[A-Z0-9]{10}$/.test(a)))];
     if(!asins.length)throw new Error("追跡するASINを登録してください");
     const amazon=cloudAmazonConfig(env),rows=[];
@@ -85,7 +87,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const transport=env.ASIN_GMAIL_USER ? createCloudMailTransport(cloudMailConfig(env)) : undefined;
   const mail = transport ? createCloudMail({store,transport}) : undefined;
   const monitoring=overview&&env.ASIN_AMAZON_CLIENT_ID?createProductMonitoring({overview,watchStore,config:cloudAmazonConfig(env),readListings:readOwnAmazonListings,followRelistings:env.ASIN_GMAIL_USER?createYahooRelisting({store,readMails:createYahooMailReader(cloudMailConfig(env)),readListing:fetchYahooListing}):undefined}):undefined;
-  const productLinks=overview?createProductLinkEditor({transaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning,"product-watch":validateProductWatch,"draft-items":validateDraftItems}}),overview,refresh:monitoring?()=>monitoring.run({refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}}):undefined}):undefined;
+  const productLinks=overview?createProductLinkEditor({transaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning,"product-watch":validateProductWatch,"draft-items":validateDraftItems}}),overview,readMerchantListings:env.ASIN_AMAZON_CLIENT_ID?readOwnAmazonListings:undefined,amazonConfig:env.ASIN_AMAZON_CLIENT_ID?cloudAmazonConfig(env):undefined,refresh:monitoring?()=>monitoring.run({refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}}):undefined}):undefined;
   const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring,readAlertStates:monitoring?.alertStates,readInventory:overview?()=>overview.view():undefined}) : undefined;
   const handler = createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     productLinks,verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});

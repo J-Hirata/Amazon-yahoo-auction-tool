@@ -7,7 +7,7 @@ function targetsFor(state, config) {
   if (state.salesTargets) {
     const s=state.salesTargets;
     if(s.accountKey!==config.accountKey || s.sellerId!==config.sellerId || s.marketplaceId!==config.marketplaceId || state.amazonAccountKey!==config.accountKey || state.amazonSellerId!==config.sellerId) throw failure("販売追跡のAmazonアカウントが異なります");
-    return s.targets.filter(t=>{const link=state.links.find(l=>l.id===t.linkId||t.sourceId===`link:${l.id}`);return !link?.amazonSellerSku||link.amazonSellerSku===t.sellerSku;});
+    return s.targets.filter(t=>{const link=state.links.find(l=>l.id===t.linkId||t.sourceId===`link:${l.id}`);return !link?.amazonSellerSku||link.amazonSellerSku===t.sellerSku||(state.merchantLinks||[]).some(r=>r.key===t.sourceId&&r.asin===t.asin&&r.sellerSku===t.sellerSku&&r.accountKey===config.accountKey&&r.sellerId===config.sellerId);});
   }
   const inventory = state.amazonInventory;
   if (state.amazonAccountKey !== config.accountKey || state.amazonSellerId !== config.sellerId || inventory?.status !== "complete" || inventory.complete !== true) throw failure("先に自社FBA在庫を確認してください。対象SKUが確定するまで注文を取得しません");

@@ -144,6 +144,10 @@
 .product-workspace-dialog form>footer{flex-wrap:wrap;gap:8px;}
 .workspace-editor-scroll{overflow:auto;overscroll-behavior:contain;padding:0 20px 16px;min-height:0;}
 .workspace-editor-scroll>[data-edit-fields]{display:grid;gap:16px;}
+.product-workspace-dialog [data-yahoo-registered]{display:grid;gap:4px;font-size:12px;overflow-wrap:anywhere;}
+.product-workspace-dialog [data-stock-registered],.product-workspace-dialog [data-plan-registered]{font-size:12px;margin:6px 0 12px;color:#3d6451;}
+.product-workspace-dialog [data-merchant-refresh]{font-size:12px;padding:6px 9px;min-height:32px;}
+.product-workspace-dialog [data-merchant-help]{font-size:12px;margin:6px 0;color:#4e6459;}
 .product-workspace-dialog [data-stock-picker],.product-workspace-dialog [data-plan-picker],.product-workspace-dialog [data-link-picker]{display:grid;gap:6px;margin:8px 0;}
 .workspace-choice-list{display:grid;gap:6px;max-height:240px;overflow:auto;overscroll-behavior:contain;}
 .product-workspace-dialog .workspace-existing-link{display:flex;margin:0;cursor:pointer;}
