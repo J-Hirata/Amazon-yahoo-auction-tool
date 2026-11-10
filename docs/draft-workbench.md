@@ -55,4 +55,8 @@
 
 ## 配備記録
 
-修正コードを検証後、同じ販売コックピットの本番へ反映する。配備ID・コードSHA・公開検査・保存データ照合は反映完了時に追記する。
+- コードd5e05958c14c2e46baff5fe4c14ac2d50a7f5c25、配備dpl_63xSUKUGcsJWQfZLwvqQFqvXucWz、READY / production。同じ固定URL https://amazon-yahoo-inventory.vercel.app/ に反映済み。Gitのmainへpush済み。
+- 425テスト合格。配備物9検査/1040ファイル、公開12アセットhash一致、業務API6経路の匿名拒否とCron HEADの匿名拒否（401）を確認。対象配備の直近5分errorログ0。
+- 公開直前/直後の業務5文書がhash/revisionともに一致、下書き59件を保持。実データ読み取りはDB READ ONLY、書き込み0。実商品のアーカイブは代行していない。
+- 画面証跡：output/draft-history-restored-20261110.png（登録済み商品の読み取り見本）、output/draft-history-record-20261110.png（旧入力・登録日時）。隔離画面の3サイズで横はみ出しなし。PC拡張の新規インストールや実Yahooフォーム上の操作検証は今回行わない。
+- 検査結果：output/draft-release-public-checks-20261110.json、draft-release-preservation-20261110.json、draft-workflow-all-tests.log、draft-workflow-package-check.json。業務スナップショット・証跡画像はGit・配備物へ含めない。
