@@ -36,3 +36,8 @@ test('unknown draft SKU cannot bridge incompatible known stock and listing SKUs,
 test('existing stock choices show same-ASIN cached reference photos without modifying saved products',async()=>{
  const f=fixture(),photo='https://m.media-amazon.com/images/I/reference.jpg';await f.transaction.update(d=>{d['draft-items'].state[0].imageUrls=[photo];});const old=f.read(),entry=(await f.editor.list()).entries['link:'+f.linkId];assert.ok(entry.editor.candidates.every(c=>c.imageUrl===photo));assert.deepEqual(f.read(),old);
 });
+test('opening a related plan and saving only its registrations preserves its original product fields as well as dates and policy',async()=>{
+ const f=fixture();await f.editor.save(f.command('link:'+f.linkId,{stockId:f.stockId,planId:f.planId,registration:{stock:true,merchant:false,yahoo:true,draft:true,planning:true,yahooUrl:''}}),f.options());const before=f.read()['sales-planning'].state.plans[0];
+ await f.editor.save(f.command('plan:'+f.planId,{registration:{stock:true,merchant:false,yahoo:true,draft:true,planning:true,yahooUrl:''}}),f.options());const after=f.read()['sales-planning'].state.plans[0];
+ for(const k of ['title','asin','sellerSku','condition','setContents','imageUrl','note','availableOn','reviewOn','decisions','source','createdAt'])assert.deepEqual(after[k],before[k]);
+});

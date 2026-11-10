@@ -98,7 +98,7 @@ export async function applyProductWorkspaceEdit(docs,command,{actor,at=new Date(
   if(product.sellerSku)s.item.amazonSellerSku=product.sellerSku;
  }
  if(s.kind==='plan'){
-  const plan={...s.item,...Object.fromEntries(['title','asin','sellerSku','condition','setContents','imageUrl'].map(k=>[k,product[k]])),linkedLinkIds:linkIds};
+  const plan={...s.item,...Object.fromEntries(['title','asin','sellerSku','condition','setContents','imageUrl'].filter(k=>Object.hasOwn(command.product,k)).map(k=>[k,product[k]])),linkedLinkIds:linkIds};
   if(Object.hasOwn(command.product,'memo'))plan.note=product.memo;
   if(stock)plan.workspaceStockId=stock.id;
   const source={...product,...plan.source};
