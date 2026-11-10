@@ -1,7 +1,8 @@
 import {createHash} from 'node:crypto';
 import {applyStockCommand,stockTotals} from './physical-stock.js';
 import {saveIncoming} from './fba-incoming.js';
-import {productOverview,emptyProductWatch,ruleFields} from './product-overview.js';
+import {productOverview,emptyProductWatch} from './product-overview.js';
+import {saveSharedLowStock} from './product-low-stock.js';
 const fail=m=>Object.assign(new Error(m),{status:400});
 const own=(v,k)=>Object.hasOwn(v,k);
 const number=n=>Number.isSafeInteger(n)&&n>=0&&n<=1000000;
@@ -9,7 +10,7 @@ function childId(id,key){const h=createHash('sha256').update(id+key).digest('hex
 export function workspaceDocuments(w){
  if(w===undefined)return [];
  if(!w||typeof w!=='object'||Array.isArray(w)||Object.keys(w).some(k=>!['counts','manualFbaQuantity','alarmThreshold','incoming'].includes(k)))throw fail('商品編集の入力内容を確認してください');
- return [...(own(w,'manualFbaQuantity')||w.incoming?.length?['link-monitor']:[]),...(own(w,'alarmThreshold')?['product-watch']:[])];
+ return [...(own(w,'manualFbaQuantity')||w.incoming?.length?['link-monitor']:[]),...(own(w,'alarmThreshold')?['product-watch','link-monitor','sales-planning']:[])];
 }
 export async function applyStockWorkspace(docs,command,p,receipt,{actor,at,summary,key='stock:'+p.id}){
  const w=command.workspace;if(!w)return;workspaceDocuments(w);
@@ -22,8 +23,9 @@ export async function applyStockWorkspace(docs,command,p,receipt,{actor,at,summa
  }
  if(own(w,'alarmThreshold')){
   const q=w.alarmThreshold;if(q!==null&&!number(q))throw fail('FBAアラームの個数を確認してください');const watch=docs['product-watch'].state;
-  const old=watch.rules.find(r=>r.key===key),rule=ruleFields({...{key,tags:[],replenishEnabled:false,threshold:10,minimumSales7:0,coverageDays:0,reviewDays:10,startedOn:'',note:''},...old,lowStock:{source:q===null?'':'fba',threshold:q}},at);
-  if(old)Object.assign(old,rule);else watch.rules.push(rule);summary.push('FBA残数アラーム：'+(q===null?'解除':q+'個以下'));
+  const row=productOverview({monitor:docs['link-monitor'].state,physical:docs['physical-stock'].state,planning:docs['sales-planning'].state,watch,drafts:[]},at).find(r=>r.sourceKeys.includes(key));
+  if(!row)throw fail('通知設定の対象商品を確認してください');
+  saveSharedLowStock(watch,row,{source:q===null?'':'fba',threshold:q},{actor,at,operationId:command.operationId});summary.push('FBAの通知残数：'+(q===null?'残数指定を解除':q+'個以下')+'（紐付け済みの各ページで共通）');
  }
  if(w.incoming!==undefined){
   if(!p.asin||!Array.isArray(w.incoming)||w.incoming.length>50)throw fail('ASINとFBA納品予定を確認してください');

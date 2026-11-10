@@ -7,6 +7,8 @@ import {emptySalesPlanning,applyPlanningCommand,validateSalesPlanning} from '../
 import {emptyProductWatch,validateProductWatch,productOverview} from '../src/product-overview.js';
 import {validateMonitorState,validateDraftItems} from '../src/storage-validation.js';
 import {createProductLinkEditor} from '../src/product-link-editor.js';
+import {createProductOverview} from '../src/product-overview.js';
+import {collectProductAlerts} from '../src/product-alerts.js';
 const at='2026-11-10T04:00:00.000Z',actor='workspace-test',asin='B000TEST01';
 function fixture(){
  let docs={'link-monitor':{state:emptyMonitor(),revision:0},'physical-stock':{state:emptyPhysicalStock(),revision:0},'sales-planning':{state:emptySalesPlanning(),revision:0},'product-watch':{state:emptyProductWatch(),revision:0},'draft-items':{state:[],revision:0}};
@@ -64,4 +66,53 @@ test('editing only a note from a linked product preserves an existing baseline a
  const key='link:'+link.id,r={stock:true,merchant:false,yahoo:true,planning:true,yahooUrl:''};await f.editor.save(cmd(key,{registration:r,workspace:{manualFbaQuantity:97,counts:{container:150}}}),options(f.read()));
  const before=f.read();await f.editor.save(cmd(key,{registration:r,product:{memo:'メモの修正'}}),options(before));const after=f.read();
  assert.deepEqual(after['link-monitor'].state.inventoryReviews,before['link-monitor'].state.inventoryReviews);assert.deepEqual(after['physical-stock'].state.balances,before['physical-stock'].state.balances);
+});
+
+async function alarmFixture(){
+ const f=fixture(),c=cmd('plan:'+f.planId,{workspace:{counts:{container:50,home:2},manualFbaQuantity:97},registration:{stock:true,merchant:false,yahoo:true,planning:true,yahooUrl:'https://auctions.yahoo.co.jp/jp/auction/h1248825083'}});
+ await f.editor.save(c,options(f.read()));const d=f.read(),stockId=d['physical-stock'].state.products[0].id,linkId=d['link-monitor'].state.links[0].id;
+ return {...f,stockId,linkId,keys:['stock:'+stockId,'link:'+linkId,'plan:'+f.planId],reg:c.registration};
+}
+const alarmRule=(key,n)=>({key,tags:[],replenishEnabled:false,threshold:10,minimumSales7:0,coverageDays:0,reviewDays:10,startedOn:'',note:'保存済みのメモ',...(n===undefined?{}:{lowStock:{source:'fba',threshold:n}})});
+test('a general stock rule never hides the linked FBA threshold and all three editors read the same value',async()=>{
+ const f=await alarmFixture();await f.transaction.update(d=>{d['product-watch'].state.rules.push({...alarmRule(f.keys[0]),tags:['heavy']},alarmRule(f.keys[1],8));});
+ const before=f.read(),entries=(await f.editor.list()).entries;for(const key of f.keys)assert.equal(entries[key].live.alarmThreshold,8);
+ await f.editor.save(cmd(f.keys[2],{registration:f.reg,workspace:{alarmThreshold:4}}),options(before));const after=f.read();
+ for(const key of f.keys)assert.equal((await f.editor.list()).entries[key].live.alarmThreshold,4);
+ assert.deepEqual(after['product-watch'].state.rules[0].tags,['heavy']);assert.equal(after['product-watch'].state.rules[0].note,'保存済みのメモ');
+ assert.deepEqual(after['physical-stock'].state.balances,before['physical-stock'].state.balances);assert.deepEqual(after['link-monitor'].state.inventoryReviews,before['link-monitor'].state.inventoryReviews);
+ assert.equal(after['product-watch'].state.lowStockHistory.length,2);
+});
+test('conflicting saved thresholds are visible in every editor and neither guessed alerts nor zero-stock fallback are sent',async()=>{
+ const f=await alarmFixture();await f.transaction.update(d=>{for(const [i,k]of f.keys.entries())d['product-watch'].state.rules.push(alarmRule(k,[4,8,2][i]));});
+ const entries=(await f.editor.list()).entries;for(const k of f.keys){assert.equal(entries[k].live.alarmThreshold,null);assert.equal(entries[k].live.sharedLowStock.conflict,true);}
+ const d=f.read(),r=productOverview({monitor:d['link-monitor'].state,physical:d['physical-stock'].state,planning:d['sales-planning'].state,watch:d['product-watch'].state},at).find(r=>r.sourceKeys.includes(f.keys[0]));
+ const mock={...r,fba:{status:'complete',quantity:0,sellerSku:'SKU',checkedAt:at}};assert.equal(collectProductAlerts(emptyProductWatch(),[mock],{stockAlerts:true},at).filter(a=>/low-stock:|fba-zero:/.test(a.key)).length,0);
+ await f.editor.save(cmd(f.keys[2],{registration:f.reg,product:{memo:'メモだけ'}}),options(d));assert.deepEqual(f.read()['product-watch'],d['product-watch']);
+ const before=f.read(),c=cmd(f.keys[1],{registration:f.reg,workspace:{alarmThreshold:5}});await f.editor.save(c,options(before));
+ for(const k of f.keys){const e=(await f.editor.list()).entries[k];assert.equal(e.live.alarmThreshold,5);assert.equal(e.live.sharedLowStock.conflict,false);}
+ const after=f.read();assert.equal(after['product-watch'].state.lowStockHistory.length,3);await f.editor.save(c,options(before));assert.deepEqual(f.read(),after);
+});
+test('clearing the shared threshold leaves no old linked threshold to reappear and preserves an unlinked same-ASIN stock setting',async()=>{
+ const f=await alarmFixture(),other=randomUUID();await f.transaction.update(d=>{
+  for(const k of f.keys)d['product-watch'].state.rules.push(alarmRule(k,8));
+  applyStockCommand(d['physical-stock'].state,{operationId:randomUUID(),kind:'create',productId:other,product:{title:'同ASINだが未連携の現物',asin,sellerSku:'OTHER',condition:'used',unit:'個'},initialCounts:{container:3,home:0}},{actor,at});
+  d['product-watch'].state.rules.push(alarmRule('stock:'+other,99));
+ });
+ await f.editor.save(cmd(f.keys[0],{registration:f.reg,workspace:{alarmThreshold:null}}),options(f.read()));const d=f.read();
+ for(const k of f.keys){const e=(await f.editor.list()).entries[k];assert.equal(e.live.alarmThreshold,null);assert.equal(e.live.sharedLowStock.conflict,false);}
+ assert.equal(d['product-watch'].state.rules.find(r=>r.key==='stock:'+other).lowStock.threshold,99);
+ assert.equal(d['link-monitor'].state.inventoryReviews[0].manualFbaQuantity,97);
+});
+test('overview edits use the same threshold and an unrelated note edit cannot overwrite it; transaction replay is stable',async()=>{
+ const f=await alarmFixture();await f.transaction.update(d=>{for(const k of f.keys)d['product-watch'].state.rules.push(alarmRule(k,8));});
+ const read=k=>({read:async()=>f.read()[k].state,readSnapshot:async()=>f.read()[k]});
+ const overview=createProductOverview({monitorStore:read('link-monitor'),stockStore:read('physical-stock'),planningStore:read('sales-planning'),draftStore:read('draft-items'),watchStore:read('product-watch'),ruleTransaction:f.transaction,now:()=>at});
+ let view=await overview.view(),r=view.rows.find(r=>r.sourceKeys.includes(f.keys[0]));
+ await overview.commit({operationId:randomUUID(),rule:{...r.rule,note:'監視メモの修正',lowStock:{source:'',threshold:null}},lowStockUpdate:false},{expectedRevision:view.revision,actor});
+ for(const k of f.keys)assert.equal((await f.editor.list()).entries[k].live.alarmThreshold,8);
+ view=await overview.view();r=view.rows.find(r=>r.sourceKeys.includes(f.keys[0]));const c={operationId:randomUUID(),rule:{...r.rule,lowStock:{source:'fba',threshold:9}},lowStockUpdate:true};
+ await overview.commit(c,{expectedRevision:view.revision,actor});const after=f.read();for(const k of f.keys)assert.equal((await f.editor.list()).entries[k].live.alarmThreshold,9);
+ await overview.commit(c,{expectedRevision:view.revision,actor});assert.deepEqual(f.read(),after);
+ await assert.rejects(()=>overview.commit({...c,operationId:randomUUID()},{expectedRevision:view.revision,actor}),{status:409});assert.deepEqual(f.read(),after);
 });

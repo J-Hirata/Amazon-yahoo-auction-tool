@@ -23,6 +23,7 @@ export function riskQuantity(row,source,at){
   return result;
 }
 export function stockRisk(row,at){
+  if(row.sharedLowStock?.conflict)return {source:'fba',label:'通知残数の設定が不一致',quantity:null,unit:'個',sku:'',checkedAt:null,status:'conflict',basis:'商品編集で共通の数を選んでください',configured:true,conflict:true,threshold:null,low:null,signature:JSON.stringify(['conflict',row.key])};
   const setting=row.rule.lowStock||{source:'',threshold:null},configured=Boolean(setting.source&&setting.threshold!==null),quantity=riskQuantity(row,setting.source,at);
   return {...quantity,configured,threshold:setting.threshold,low:configured&&quantity.quantity!==null?quantity.quantity<=setting.threshold:null,signature:JSON.stringify([row.asin,row.condition||'',row.stockIds||[],setting.source,setting.threshold])};
 }
