@@ -92,7 +92,7 @@ test('monitoring reconciles condition-cancelled batches, requeues active members
  await f.watchStore.update(w=>{w.pendingAlerts=[{id:'gone',key:'low-stock:removed',eventKey:'product:gone',queuedAt:at,category:'stockAlerts'},{id:'active',key,eventKey:'product:active',queuedAt:at,category:'stockAlerts'}];w.signals={'low-stock:removed':{active:false,known:true},[key]:{active:true,known:true}};});
  await f.monitorStore.update(s=>s.mailOutbox.push({status:'cancelled',cancelledFor:'conditions_changed',alertIds:['gone','active'],cancelledAlertIds:['gone']}));
  let dispatched=[];const m=createProductMonitoring({overview:f.overview,watchStore:f.watchStore,config:{accountKey:'fixture',sellerId:'OWN'},now:f.now,readInventory:async()=>({complete:true,status:'complete',accountKey:'fixture',sellerId:'OWN',asins:[asin],checkedAt:at,items:[]})});
- await m.run({settings,enqueueAlerts:async alerts=>{dispatched=alerts.map(a=>a.id);}});const w=await f.watchStore.read();assert.ok(w.pendingAlerts[0].dismissedAt);assert.deepEqual(dispatched,['active']);assert.ok(w.pendingAlerts[1].queuedAt);assert.equal((await m.alertStates()).active,true);
+ await m.run({settings,enqueueAlerts:async alerts=>{dispatched=alerts.map(a=>a.id);return {acceptedAlertIds:dispatched};}});const w=await f.watchStore.read();assert.ok(w.pendingAlerts[0].dismissedAt);assert.deepEqual(dispatched,['active']);assert.ok(w.pendingAlerts[1].queuedAt);assert.equal((await m.alertStates()).active,true);
 });
 
 test('conflicting product references never turn recorded stock into a relisting recommendation',()=>{

@@ -16,15 +16,15 @@ export function automationView(state,at=new Date().toISOString()) {
     enabledAt:settings.enabledAt || null,recipient:NOTIFICATION_ADDRESS,schedule:"1日1回・午前9時台（日本時間）",job:interrupted?{...job,status:"failed",error:"前回の定期確認が途中で止まりました。次回再開します"}:job};
 }
 
-export function createCloudSalesAutomation({store,sales,transport,monitoring,readInventory=async()=>({rows:[]}),riskExecutionEnabled=false,readAlertStates=async()=>undefined,now=()=>new Date().toISOString()}) {
+export function createCloudSalesAutomation({store,sales,transport,monitoring,readInventory=async()=>({rows:[]}),riskExecutionEnabled=false,readAlertStates=async()=>undefined,readAlertContext,now=()=>new Date().toISOString()}) {
   async function settings({expectedRevision,enabled,fbaSales,merchantSales,errorAlerts,stockAlerts,yahooAlerts,reviewAlerts}) {
     if([enabled,fbaSales,merchantSales,errorAlerts].some(v=>typeof v!=="boolean"))throw fail("通知の種類と自動確認を選択してください",400);
     await store.update(state=>{
       if(enabled && state.cloudMail?.status!=="verified")throw fail("先にGmail接続を確認してください");
       const old=state.salesAutomation;
       const categories={};for(const [key,value] of Object.entries({stockAlerts,yahooAlerts,reviewAlerts})){if(value!==undefined&&typeof value!=="boolean")throw fail("通知の種類を選択してください",400);categories[key]=value??old?.[key]??false;}
-      if(!enabled || old && (old.fbaSales!==fbaSales || old.merchantSales!==merchantSales || Object.keys(categories).some(k=>Boolean(old[k])!==categories[k])))for(const record of state.mailOutbox || [])if(record.automation && record.kind!=="automation_test" && ["pending","failed"].includes(record.status)){
-        record.status="cancelled";
+      if(!enabled || old && (old.fbaSales!==fbaSales || old.merchantSales!==merchantSales || old.errorAlerts!==errorAlerts || Object.keys(categories).some(k=>Boolean(old[k])!==categories[k])))for(const record of state.mailOutbox || [])if(record.automation && record.kind!=="automation_test" && ["pending","failed"].includes(record.status)){
+        record.status="cancelled";record.cancelledFor='settings_changed';record.cancelledAt=now();
         for(const event of state.salesTracking?.events || [])if(record.eventIds.includes(event.id))event.delivery=enabled?"preview":"muted";
       }
       state.salesAutomation={version:1,enabled,fbaSales,merchantSales,errorAlerts,...categories,enabledAt:enabled && !old?.enabled ? now() : old?.enabledAt || null,updatedAt:now()};
@@ -32,13 +32,21 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
   }
   function enqueue(state,{key,subject,text,targets=[],eventIds=[],kind="sales",notificationMode="daily"}) {
     const outbox=state.mailOutbox ||= [];
-    if(outbox.some(record=>record.key===key))return false;
+    const existing=outbox.find(record=>record.key===key);
+    if(existing){
+      if(existing.status!=='cancelled')return existing;
+      if(existing.attempts>=3)return null;
+      (existing.requeueHistory||=[]).push({at:now(),cancelledFor:existing.cancelledFor||'settings_changed',subject:existing.subject,text:existing.text,finishedAt:existing.finishedAt||null});
+      Object.assign(existing,{subject,text,targets,eventIds,kind,notificationMode,status:existing.attempts?'failed':'pending',requeuedAt:now()});
+      for(const field of ['cancelledFor','cancelledAt','cancelledAlertIds','error','finishedAt'])delete existing[field];
+      return existing;
+    }
     if(outbox.length>=5000)throw fail("メール記録の保存上限です。履歴を保全して確認してください");
     outbox.push({id:randomUUID(),key,kind,subject,text,targets,eventIds,status:"pending",attempts:0,createdAt:now(),automation:true,notificationMode});
-    return true;
+    return outbox.at(-1);
   }
   async function drain({testOnly=false,kinds,notificationMode}={}) {
-    let alertStates;try{alertStates=await readAlertStates();}catch{alertStates={};}
+    let alertStates,context;try{context=readAlertContext?await readAlertContext():undefined;alertStates=context?.states??await readAlertStates();}catch{alertStates={};}
     const held=new Set();
     const record=await store.update(state=>{
       for(const item of state.mailOutbox || [])if(item.automation && item.status==="sending" && Date.parse(item.lastAttemptAt)+120000<=Date.parse(now())){
@@ -48,6 +56,14 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       const item=(state.mailOutbox || []).find(item=>item.automation && !held.has(item.id) && (!notificationMode||item.notificationMode===notificationMode) && (!kinds||kinds.includes(item.kind)) && (testOnly ? item.kind==="automation_test" : state.salesAutomation?.enabled && item.kind!=="automation_test") &&
         (item.status==="pending" || !testOnly && item.status==="failed" && item.attempts<3 && Date.parse(item.lastAttemptAt)+3600000<=Date.parse(now())));
       if(!item)return null;
+      if(item.kind==='automation_error'&&!state.salesAutomation.errorAlerts){item.status='cancelled';item.cancelledFor='settings_changed';item.cancelledAt=now();return null;}
+      if(item.kind==='product_alerts'&&context?.alerts){
+        const refreshed=item.alertIds.map(id=>context.alerts.find(a=>a.id===id));
+        if(refreshed.some(a=>!a))return null;
+        const text=productAlertsMail(refreshed,{mode:item.notificationMode||'daily',at:now()});
+        if(item.text!==text){(item.contentHistory||=[]).push({text:item.text,at:item.contentCheckedAt||item.createdAt,attempts:item.attempts});item.text=text;}
+        item.contentCheckedAt=now();
+      }
       item.status="sending";item.attempts++;item.attemptId ||= randomUUID();item.lastAttemptAt=now();
       return structuredClone(item);
     });
@@ -90,8 +106,8 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       }
       if(!events.length)return;
       const ids=events.map(e=>e.id).sort(),summary=salesMailSummary({state,events,inventory,at:now()});
-      enqueue(state,{key:`sales:${hash(ids.join(","))}`,subject:"【在庫管理ツール】Amazonの販売・訂正のお知らせ",eventIds:ids,targets:summary.targets,text:summary.text});
-      for(const event of t.events)if(ids.includes(event.id))event.delivery="queued";
+      const record=enqueue(state,{key:`sales:${hash(ids.join(","))}`,subject:"【在庫管理ツール】Amazonの販売・訂正のお知らせ",eventIds:ids,targets:summary.targets,text:summary.text});
+      if(record)for(const event of t.events)if(ids.includes(event.id))event.delivery=['pending','sending'].includes(record.status)?'queued':record.status;
     });
   }
   async function runCycle({mode,send}) {
@@ -113,30 +129,32 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
     if(monitoring&&performance.now()-started<180000){
       try{monitoringResult=await monitoring.run({settings:{...(await store.read()).salesAutomation,...(mode==='risk'?{reviewAlerts:false}:{})},refreshListings:mode==='risk',enqueueAlerts:send?alerts=>queueProductAlerts(alerts,mode):undefined});}
       catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;monitoringResult={status:"failed",errors:["在庫・出品・期限の監視を完了できません。全商品一覧で確認してください"]};}
-    }else if(monitoring)monitoringResult={status:"partial",errors:["実行時間のため在庫・出品監視は次回に再開します"]};
+    }else if(monitoring)monitoringResult={status:"partial",reason:'deadline',errors:["実行時間のため在庫・出品監視は次回に再開します"]};
     if(!error&&mode==='daily'&&salesProgress?.status==='complete'){try{await queueSales();}catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;error="販売メールの集計を完了できません。次回再開します";}}
     const status=error?'failed':salesProgress?.status==='partial'||monitoringResult&&monitoringResult.status!=='complete'?'partial':'complete';
+    const notificationError=error||(monitoringResult?.status==='failed'||monitoringResult?.reason==='deadline'?monitoringResult.errors?.join('\n')||'在庫・出品の確認を完了できませんでした':null);
     await store.update(state=>{
       if(state[jobKey]?.jobId!==jobId)throw fail("定期実行の結果を確認してください");
-      state[jobKey]={...state[jobKey],mode,status,finishedAt:now(),error,monitoring:monitoringResult,...(salesProgress?{sales:salesProgress,note:salesProgress.note||null}:{})};
-      if(error && send && state.salesAutomation.errorAlerts){
+      state[jobKey]={...state[jobKey],mode,status,finishedAt:now(),error:notificationError,monitoring:monitoringResult,...(salesProgress?{sales:salesProgress,note:salesProgress.note||null}:{})};
+      if(notificationError && send && state.salesAutomation.errorAlerts){
         state[incidentKey] ||= {id:randomUUID(),startedAt:now()};
-        enqueue(state,{key:`incident:${mode==='risk'?'risk:':''}${state[incidentKey].id}`,kind:"automation_error",notificationMode:mode,subject:mode==='risk'?"【在庫管理ツール】リスク確認が止まっています":"【在庫管理ツール】販売の自動確認が止まっています",text:error+"\nhttps://amazon-yahoo-inventory.vercel.app/"});
-      }else if(!error)state[incidentKey]=null;
+        enqueue(state,{key:`incident:${mode==='risk'?'risk:':''}${state[incidentKey].id}`,kind:"automation_error",notificationMode:mode,subject:mode==='risk'?"【在庫管理ツール】リスク確認が止まっています":"【在庫管理ツール】販売・在庫の自動確認に未完了があります",text:notificationError+"\nhttps://amazon-yahoo-inventory.vercel.app/"});
+      }else if(!notificationError)state[incidentKey]=null;
     });
     // At most 3 pending messages per invocation; SMTP ambiguity is never retried.
     if(send)for(let i=0;i<3;i++){if(performance.now()-started>250000)break;if(!await drain(mode==='risk'?{kinds:['product_alerts','automation_error'],notificationMode:'risk'}:{}))break;}
     return {status};
   }
   async function queueProductAlerts(alerts,notificationMode="daily"){
-    await store.update(state=>{
-      if(!state.salesAutomation?.enabled)return;
-      const existing=new Set((state.mailOutbox||[]).filter(r=>r.cancelledFor!=='conditions_changed').flatMap(r=>r.alertIds||[]));
-      const fresh=alerts.filter(a=>state.salesAutomation[a.category]&&!existing.has(a.id));if(!fresh.length)return;
+    return store.update(state=>{
+      if(!state.salesAutomation?.enabled)return {acceptedAlertIds:[]};
+      const existing=new Set((state.mailOutbox||[]).filter(r=>r.status!=='cancelled').flatMap(r=>r.alertIds||[]));
+      const eligible=alerts.filter(a=>state.salesAutomation[a.category]),accepted=eligible.filter(a=>existing.has(a.id)).map(a=>a.id),fresh=eligible.filter(a=>!existing.has(a.id));if(!fresh.length)return {acceptedAlertIds:accepted};
       const ids=fresh.map(a=>a.id).sort(),key=`product-alerts:${hash(ids.join(","))}`;
-      enqueue(state,{key,kind:"product_alerts",notificationMode,subject:`【在庫管理ツール】${notificationMode==='risk'?'在庫・出品の警告':'在庫・出品・見直しの確認'} ${fresh.length}件`,targets:fresh.filter(a=>a.asin).map(a=>({asin:a.asin})),
+      const record=enqueue(state,{key,kind:"product_alerts",notificationMode,subject:`【在庫管理ツール】${notificationMode==='risk'?'在庫・出品の警告':'在庫・出品・見直しの確認'} ${fresh.length}件`,targets:fresh.filter(a=>a.asin).map(a=>({asin:a.asin})),
         text:productAlertsMail(fresh,{mode:notificationMode,at:now()})});
-      state.mailOutbox.find(r=>r.key===key).alertIds=ids;
+      if(record){record.alertIds=ids;accepted.push(...ids);}
+      return {acceptedAlertIds:accepted};
     });
   }
   const run=()=>runCycle({mode:'daily',send:true});

@@ -5,6 +5,7 @@ import {fetchYahooListing} from "./yahoo-observation.js";
 import {productOverview} from "./product-overview.js";
 import {recordReplenishmentBaselines} from './replenishment.js';
 import {collectYahooQuantityAlerts} from './yahoo-quantity-alerts.js';
+import {productAlertContext} from './product-alert-context.js';
 
 export {collectProductAlerts} from "./product-alerts.js";
 import {collectProductAlerts} from "./product-alerts.js";
@@ -55,20 +56,21 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
     if(inventoryOnly)return {status:errors.length?'partial':'complete',errors,pendingAlerts:0};
     const current=await overview.inputs();
     const pending=await watchStore.update(state=>{
-      for(const record of current.monitor.mailOutbox||[])if(record.status==='cancelled'&&record.cancelledFor==='conditions_changed')for(const p of state.pendingAlerts||[])if(record.alertIds?.includes(p.id)&&p.queuedAt){delete p.queuedAt;if(record.cancelledAlertIds?.includes(p.id))p.dismissedAt=now();}
+      for(const record of current.monitor.mailOutbox||[])if(record.status==='cancelled')for(const p of state.pendingAlerts||[])if(record.alertIds?.includes(p.id)&&p.queuedAt){delete p.queuedAt;if(record.cancelledFor==='conditions_changed'&&record.cancelledAlertIds?.includes(p.id))p.dismissedAt=now();}
       recordIncomingReflections(state,productOverview({...current,watch:state},now()));
       recordReplenishmentBaselines(state,productOverview({...current,watch:state},now()),now());
       const rows=productOverview({...current,watch:state},now());
       const standard=collectProductAlerts(state,rows,settings,now()).filter(p=>!p.key?.startsWith('yahoo-quantity:'));
       const pending=[...standard,...collectYahooQuantityAlerts(state,rows,settings,now(),previous)];
       if(errors.length&&settings.errorAlerts){
-        if(!state.signals.fetchError?.active){const eventId=randomUUID();state.pendingAlerts.push({id:eventId,eventKey:`product:fetch-error:${eventId}`,category:"errorAlerts",title:"在庫・出品の取得状況",message:errors.join("\n"),at:now()});state.signals.fetchError={active:true};}
+        if(!state.signals.fetchError?.active){const eventId=randomUUID();state.pendingAlerts.push({id:eventId,eventKey:`product:fetch-error:${eventId}`,category:"errorAlerts",title:"在庫・出品の取得状況",message:errors.join("\n"),at:now()});state.signals.fetchError={active:true,alertId:eventId};}
       }else if(!errors.length){state.signals.fetchError={active:false};for(const p of state.pendingAlerts)if(p.eventKey.startsWith("product:fetch-error:")&&!p.queuedAt)p.dismissedAt=now();}
       return structuredClone(state.pendingAlerts.filter(p=>settings[p.category]&&!p.queuedAt&&!p.dismissedAt));
     });
-    if(pending.length&&enqueueAlerts){await enqueueAlerts(pending);await watchStore.update(state=>{for(const p of state.pendingAlerts)if(pending.some(v=>v.id===p.id))p.queuedAt=now();});}
+    if(pending.length&&enqueueAlerts){const result=await enqueueAlerts(pending),accepted=new Set(result?.acceptedAlertIds||[]);await watchStore.update(state=>{for(const p of state.pendingAlerts)if(accepted.has(p.id))p.queuedAt=now();});}
     return {status:errors.length?"partial":"complete",errors,pendingAlerts:pending.length};
   }
   async function alertStates(){const state=await watchStore.read();return Object.fromEntries((state.pendingAlerts||[]).map(p=>{const signal=p.key?state.signals[p.key]:p.eventKey?.startsWith('product:fetch-error:')?state.signals.fetchError:null;return [p.id,p.dismissedAt?false:signal?.known===false?null:typeof signal?.active==='boolean'?signal.active:null];}));}
-  return {run,alertStates};
+  async function deliveryContext(){return productAlertContext(await overview.inputs(),now());}
+  return {run,alertStates,deliveryContext};
 }

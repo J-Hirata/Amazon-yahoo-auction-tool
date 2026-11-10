@@ -106,7 +106,7 @@ test("pending product alerts survive a mail-store failure and replay the same al
   const {overview,watchStore,f}=service(),config={accountKey:"fixture",sellerId:"OWN"};let ids;
   const monitoring=createProductMonitoring({overview,watchStore,config,now:()=>at,readInventory:async()=>f.watch.observations.fba,readYahoo:async()=>({listingId:"d1000000001",seller:"owner",references:[],observation:{verified:true,status:"ended",checkedAt:at}})});
   await assert.rejects(monitoring.run({settings,enqueueAlerts:async alerts=>{ids=alerts.map(a=>a.id);throw new Error("mail storage failed");}}));
-  let repeated;await monitoring.run({settings,enqueueAlerts:async alerts=>{repeated=alerts.map(a=>a.id);}});assert.deepEqual(repeated,ids);assert.ok((await watchStore.read()).pendingAlerts.every(a=>a.queuedAt));
+  let repeated;await monitoring.run({settings,enqueueAlerts:async alerts=>{repeated=alerts.map(a=>a.id);return {acceptedAlertIds:repeated};}});assert.deepEqual(repeated,ids);assert.ok((await watchStore.read()).pendingAlerts.every(a=>a.queuedAt));
 });
 test("overview API requires owner, same origin, revision and write permission",async()=>{
   const {overview,monitorStore}=service(),origin="https://fixture.example";

@@ -156,3 +156,21 @@ test("order page cap shortens next query without moving the cursor",async()=>{
   const sales=createCloudSales({...f,config,readOrders:async()=>{throw Object.assign(new Error("page cap"),{code:"SALES_PAGE_LIMIT"});}});
   await sales.check();const state=await f.store.read();assert.equal(state.salesTracking.checkedThrough,at);assert.ok(state.salesTracking.windowMs<7200000);assert.equal(state.salesTracking.sync.status,"failed");
 });
+
+test('changing stock notification settings cannot strand an already queued sales notification',async()=>{
+ const f=fixture(),e=await enable(f,{stockAlerts:true});f.time(later);await f.store.update(s=>s.salesTracking.events.push(event('stable-sale')));await e.queueSales();const id=(await f.store.read()).mailOutbox[0].id;
+ await e.settings({expectedRevision:f.revision(),enabled:true,fbaSales:true,merchantSales:true,errorAlerts:true,stockAlerts:false});await e.queueSales();await e.drain();await e.queueSales();await e.drain();
+ const s=await f.store.read();assert.equal(f.calls(),1);assert.equal(s.mailOutbox.length,1);assert.equal(s.mailOutbox[0].id,id);assert.equal(s.mailOutbox[0].requeueHistory.length,1);assert.equal(s.salesTracking.events[0].delivery,'smtp_accepted');
+});
+test('a settings-cancelled stock alert is accepted again after re-enable without duplicating accepted mail',async()=>{
+ const f=fixture();await enable(f,{stockAlerts:true});f.time(later);const alert={id:'stable-stock',category:'stockAlerts',title:'残数',asin:'B000TEST01',message:'残り2個'};
+ const e=createCloudSalesAutomation({...f,monitoring:{run:async({enqueueAlerts})=>{await enqueueAlerts([alert]);return {status:'complete'};}}});
+ // Queue without using SMTP, as can happen when the execution stops after commit.
+ await assert.rejects(createCloudSalesAutomation({...f,monitoring:{run:async({enqueueAlerts})=>{await enqueueAlerts([alert]);throw Object.assign(new Error('interrupted'),{code:'STORAGE_STOP'});}}}).run());
+ await e.settings({expectedRevision:f.revision(),enabled:true,fbaSales:true,merchantSales:true,errorAlerts:true,stockAlerts:false});await e.settings({expectedRevision:f.revision(),enabled:true,fbaSales:true,merchantSales:true,errorAlerts:true,stockAlerts:true});await f.store.update(s=>delete s.salesAutomationJob);
+ await e.run();await e.run();assert.equal(f.calls(),1);assert.equal((await f.store.read()).mailOutbox.length,1);assert.deepEqual((await f.store.read()).mailOutbox[0].alertIds,['stable-stock']);
+});
+test('a monitoring crash cannot produce a silent successful daily run and sends one bounded incident',async()=>{
+ const f=fixture();await enable(f,{stockAlerts:true});f.time(later);const e=createCloudSalesAutomation({...f,monitoring:{run:async()=>{throw new Error('private upstream detail');}}});
+ await e.run();await e.run();assert.equal(f.calls(),1);const s=await f.store.read();assert.equal(s.salesAutomationJob.status,'partial');assert.match(s.salesAutomationJob.error,/在庫・出品/);assert.doesNotMatch(JSON.stringify(s),/private upstream detail/);
+});

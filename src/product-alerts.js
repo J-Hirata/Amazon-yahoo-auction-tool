@@ -4,16 +4,17 @@ import {planningToday} from "./sales-planning.js";
 import {stockRisk,quantityEvidence} from "./stock-risk.js";
 import {yahooEndMessage} from "./product-alert-mail.js";
 
-export function collectProductAlerts(state,rows,settings,at){
+export function collectProductAlerts(state,rows,settings,at,{onObserve}={}){
   const signals=state.signals ||= {},pending=state.pendingAlerts ||= [],observed=new Set(),decisions=new Map();
   function observe(key,value,category,row,message,mailFormat){
+    onObserve?.({key,value,category,row,message,mailFormat});
     observed.add(key);decisions.set(key,value);
     if(!settings[category])return;
     if(value===null){if(signals[key])signals[key].known=false;return;}
     if(signals[key])signals[key].known=true;
     if(value&&/^(action-|review-)/.test(key)&&pending.some(p=>p.key===key&&p.queuedAt))return;
     const previous=signals[key];
-    if(value&&!previous?.active){const id=randomUUID();pending.push({id,key,category,at,title:row.title||"取得状況",asin:row.asin||"",message,...(mailFormat?{mailFormat}:{}),eventKey:`product:${key}:${id}`});signals[key]={active:true,known:true,at};}
+    if(value&&!previous?.active){const id=randomUUID();pending.push({id,key,category,at,title:row.title||"取得状況",asin:row.asin||"",message,...(mailFormat?{mailFormat}:{}),eventKey:`product:${key}:${id}`});signals[key]={active:true,known:true,at,alertId:id};}
     else if(!value){signals[key]={active:false,known:true,at};for(const p of pending)if(p.key===key&&!p.queuedAt)p.dismissedAt=at;}
   }
   const fbaKeys=new Set(),yahooKeys=new Set(),planKeys=new Set(),riskKeys=new Set();
