@@ -26,4 +26,4 @@
 
 ## 最終公開
 
-コードeddbd35、production READY dpl_Bas4Ja3FPrdJ4Yz5My6RHLkVJM7c。公開7資産のバイト一致、未認証GET/POST 401を確認。配備前後の5文書の内容不変、Amazonのみの再取得でproduct-watch以外の4文書不変、その後の最終配備でも5文書不変を確認。拡張ZIPのSHA-256は2405fc053f90c07bcab246b9f5824eb11352d366dacd046543b0de28b61a1278。実Yahooへの入力・保存/出品は、PCの拡張更新後に確認する。iiyamaは本人のSKU選択回答待ち。
+コードeddbd35、production READY dpl_Bas4Ja3FPrdJ4Yz5My6RHLkVJM7c。公開7資産のバイト一致、未認証GET/POST 401を確認。配備前後の5文書の内容不変、Amazonのみの再取得でproduct-watch以外の4文書不変、その後の最終配備でも5文書不変を確認。拡張ZIPのSHA-256は2405fc053f90c07bcab246b9f5824eb11352d366dacd046543b0de28b61a1278。実Yahooへの入力・保存/出品は、PCの拡張更新後に確認する。iiyamaは11/11 03:48に本人指定の中古・良いSKU 20220716B075D23YM3を保存し、Amazon再取得2個の在庫/販売監視への共通表示を確認。手入力補正は空欄のまま。場所別実数・他商品・計画・下書き・通知は保持。証跡output/cockpit-fixes-20261111/sku-after-summary.json。
