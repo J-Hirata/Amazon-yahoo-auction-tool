@@ -204,7 +204,7 @@ function renderMail() {
       $("#monitorSettingLabel").textContent=`自動確認：${automation.enabled?"1日1回":"オフ"}`;
       if(!salesAutomationDirty)for(const [id,key] of [["salesAutoEnabled","enabled"],["salesAutoFba","fbaSales"],["salesAutoMerchant","merchantSales"],["salesAutoErrors","errorAlerts"],["salesAutoStock","stockAlerts"],["salesAutoYahoo","yahooAlerts"],["salesAutoReview","reviewAlerts"]])$("#"+id).checked=automation[key];
       $("#salesAutomationFields").disabled=Boolean(saved.config.capabilities?.readOnly);
-      $("#salesAutomationStatus").textContent=`${automation.enabled?automation.schedule:"自動確認はオフ"} ／ 最終実行：${date(automation.job.startedAt)} ／ ${{not_run:"まだ実行していません",running:"確認中",complete:"完了",partial:"一部未確認・全商品一覧を確認",failed:"要確認"}[automation.job.status] || automation.job.status}${automation.job.error?` ／ ${automation.job.error}`:""}`;
+      $("#salesAutomationStatus").textContent=`${automation.enabled?automation.schedule:"自動確認はオフ"} ／ 最終実行：${date(automation.job.startedAt)} ／ ${{not_run:"まだ実行していません",running:"確認中",complete:"完了",partial:"一部未確認・全商品一覧を確認",failed:"要確認"}[automation.job.status] || automation.job.status}${automation.job.error?` ／ ${automation.job.error}`:automation.job.note?` ／ ${automation.job.note}`:""}${automation.job.sales?.checkedThrough?` ／ 販売確認済み：${date(automation.job.sales.checkedThrough)}`:""}`;
       $("#salesAutomationRun").disabled=!automation.enabled;
     }
   }
@@ -229,7 +229,7 @@ $("#salesAutomationTest")?.addEventListener("click",()=>action(async()=>{
 }));
 $("#salesAutomationRun")?.addEventListener("click",()=>action(async()=>{
   status("登録商品の自社SKUと注文を確認しています。数分かかる場合があります。");
-  try{saved=await api("/automation/run",{});render();status(saved.salesAutomation.job.status==="complete"?"販売の確認が完了しました。新しい販売があれば通知します。":saved.salesAutomation.job.error,saved.salesAutomation.job.status!=="complete");}
+  try{saved=await api("/automation/run",{});render();status(saved.salesAutomation.job.status==="complete"?"販売の確認が完了しました。新しい販売があれば通知します。":saved.salesAutomation.job.error||saved.salesAutomation.job.note||"一部の確認が残っています。全商品一覧で取得状況を確認してください。",saved.salesAutomation.job.status!=="complete");}
   catch(error){saved=await api();render();throw error;}
 }));
 $("#productRefresh").addEventListener("click", () => action(async () => {

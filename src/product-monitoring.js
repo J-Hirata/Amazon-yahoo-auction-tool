@@ -4,6 +4,7 @@ import {readFbaInventory} from "./amazon-fba-reader.js";
 import {fetchYahooListing} from "./yahoo-observation.js";
 import {productOverview} from "./product-overview.js";
 import {recordReplenishmentBaselines} from './replenishment.js';
+import {collectYahooQuantityAlerts} from './yahoo-quantity-alerts.js';
 
 export {collectProductAlerts} from "./product-alerts.js";
 import {collectProductAlerts} from "./product-alerts.js";
@@ -54,7 +55,9 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
       for(const record of current.monitor.mailOutbox||[])if(record.status==='cancelled'&&record.cancelledFor==='conditions_changed')for(const p of state.pendingAlerts||[])if(record.alertIds?.includes(p.id)&&p.queuedAt){delete p.queuedAt;if(record.cancelledAlertIds?.includes(p.id))p.dismissedAt=now();}
       recordIncomingReflections(state,productOverview({...current,watch:state},now()));
       recordReplenishmentBaselines(state,productOverview({...current,watch:state},now()),now());
-      const rows=productOverview({...current,watch:state},now()),pending=collectProductAlerts(state,rows,settings,now());
+      const rows=productOverview({...current,watch:state},now());
+      const standard=collectProductAlerts(state,rows,settings,now()).filter(p=>!p.key?.startsWith('yahoo-quantity:'));
+      const pending=[...standard,...collectYahooQuantityAlerts(state,rows,settings,now(),previous)];
       if(errors.length&&settings.errorAlerts){
         if(!state.signals.fetchError?.active){const eventId=randomUUID();state.pendingAlerts.push({id:eventId,eventKey:`product:fetch-error:${eventId}`,category:"errorAlerts",title:"在庫・出品の取得状況",message:errors.join("\n"),at:now()});state.signals.fetchError={active:true};}
       }else if(!errors.length){state.signals.fetchError={active:false};for(const p of state.pendingAlerts)if(p.eventKey.startsWith("product:fetch-error:")&&!p.queuedAt)p.dismissedAt=now();}

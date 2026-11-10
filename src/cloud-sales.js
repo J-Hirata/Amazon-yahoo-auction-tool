@@ -41,8 +41,9 @@ export function createCloudSales({store, config, readTargets, readOrders = readA
         else {
           // Re-read the existing observation period when a missed merchant SKU is added.
           // Order versions prevent double counting. Notification start is a separate boundary.
-          tracking.trackers.push({...target,startedAt:tracking.startedAt});
-          if(tracking.checkedThrough)tracking.checkedThrough=tracking.startedAt;
+          const known=tracking.trackers.find(t=>t.asin===target.asin&&t.sellerSku===target.sellerSku);
+          tracking.trackers.push({...target,startedAt:known?.startedAt||tracking.startedAt});
+          if(!known&&tracking.checkedThrough)tracking.checkedThrough=tracking.startedAt;
         }
       }
       state.logs.push({at, kind: "sales_tracking_started", message: "販売追跡の開始時刻を保存しました。注文取得・メール送信・在庫変更は行っていません"});
@@ -81,7 +82,7 @@ export function createCloudSales({store, config, readTargets, readOrders = readA
         if (state.salesTracking?.sync?.jobId !== jobId) return;
         const limited=error.code==="SALES_PAGE_LIMIT";
         if(limited)state.salesTracking.windowMs=Math.max(600000,Math.floor((Date.parse(claim.before)-Date.parse(claim.after))/2));
-        state.salesTracking.sync = {...state.salesTracking.sync, status: "failed", error: limited ? "注文数が多いため次回は取得期間を短くして再開します。未完了期間は維持しています" : `注文を確認できません${http ? `（HTTP ${http}）` : ""}。権限・対象・取得上限を確認してください。販売ゼロとは扱いません`};
+        state.salesTracking.sync = {...state.salesTracking.sync, status: "failed", errorCode:limited?'SALES_PAGE_LIMIT':'SALES_FETCH_FAILED', error: limited ? "注文数が多いため次回は取得期間を短くして再開します。未完了期間は維持しています" : `注文を確認できません${http ? `（HTTP ${http}）` : ""}。権限・対象・取得上限を確認してください。販売ゼロとは扱いません`};
       });
     }
   }

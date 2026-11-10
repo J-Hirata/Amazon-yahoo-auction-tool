@@ -2,6 +2,7 @@ import {salesMailSummary} from "./sales-mail-summary.js";
 import {productAlertsMail} from "./product-alert-mail.js";
 import {randomUUID,createHash} from "node:crypto";
 import {NOTIFICATION_ADDRESS} from "./notification-settings.js";
+import {catchUpSales} from './sales-catchup.js';
 
 const fail=(message,status=409)=>Object.assign(new Error(message),{status});
 const hash=value=>createHash("sha256").update(value).digest("hex");
@@ -102,19 +103,10 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       state[jobKey]={status:"running",jobId,startedAt:at,leaseUntil:new Date(Date.parse(at)+290000).toISOString()};return true;
     });
     if(!claimed)return {status:"skipped"};
-    let error=null;
+    let error=null,salesProgress;
     try{
       if(mode==='daily'){
-      await sales.start({});
-      for(let pass=0;pass<2;pass++){
-        await sales.check({catchUp:true});
-        const t=(await store.read()).salesTracking;
-        if(t.sync.status!=="complete")throw fail(t.sync.error);
-        if(Date.parse(t.checkedThrough)>=Date.parse(now())-15*60000)break;
-      }
-      const state=await store.read();
-      if(Date.parse(state.salesTracking.checkedThrough)<Date.parse(now())-15*60000)throw fail("不足期間の補完中です。次回は保存済みの続きから再開します");
-
+      salesProgress=await catchUpSales({sales,readState:()=>store.read(),now});
       }
     }catch(e){if(String(e.code || "").startsWith("STORAGE_"))throw e;error="販売確認を完了できません。販売ゼロとは扱いません。管理画面で取得状況を確認してください";}
     let monitoringResult;
@@ -122,10 +114,11 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       try{monitoringResult=await monitoring.run({settings:{...(await store.read()).salesAutomation,...(mode==='risk'?{reviewAlerts:false}:{})},refreshListings:mode==='risk',enqueueAlerts:send?alerts=>queueProductAlerts(alerts,mode):undefined});}
       catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;monitoringResult={status:"failed",errors:["在庫・出品・期限の監視を完了できません。全商品一覧で確認してください"]};}
     }else if(monitoring)monitoringResult={status:"partial",errors:["実行時間のため在庫・出品監視は次回に再開します"]};
-    if(!error&&mode==='daily'){try{await queueSales();}catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;error="販売メールの集計を完了できません。次回再開します";}}
+    if(!error&&mode==='daily'&&salesProgress?.status==='complete'){try{await queueSales();}catch(e){if(String(e.code||"").startsWith("STORAGE_"))throw e;error="販売メールの集計を完了できません。次回再開します";}}
+    const status=error?'failed':salesProgress?.status==='partial'||monitoringResult&&monitoringResult.status!=='complete'?'partial':'complete';
     await store.update(state=>{
       if(state[jobKey]?.jobId!==jobId)throw fail("定期実行の結果を確認してください");
-      state[jobKey]={...state[jobKey],mode,status:error?"failed":monitoringResult&&monitoringResult.status!=="complete"?"partial":"complete",finishedAt:now(),error,monitoring:monitoringResult};
+      state[jobKey]={...state[jobKey],mode,status,finishedAt:now(),error,monitoring:monitoringResult,...(salesProgress?{sales:salesProgress,note:salesProgress.note||null}:{})};
       if(error && send && state.salesAutomation.errorAlerts){
         state[incidentKey] ||= {id:randomUUID(),startedAt:now()};
         enqueue(state,{key:`incident:${mode==='risk'?'risk:':''}${state[incidentKey].id}`,kind:"automation_error",notificationMode:mode,subject:mode==='risk'?"【在庫管理ツール】リスク確認が止まっています":"【在庫管理ツール】販売の自動確認が止まっています",text:error+"\nhttps://amazon-yahoo-inventory.vercel.app/"});
@@ -133,7 +126,7 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
     });
     // At most 3 pending messages per invocation; SMTP ambiguity is never retried.
     if(send)for(let i=0;i<3;i++){if(performance.now()-started>250000)break;if(!await drain(mode==='risk'?{kinds:['product_alerts','automation_error'],notificationMode:'risk'}:{}))break;}
-    return {status:error?"failed":monitoringResult&&monitoringResult.status!=="complete"?"partial":"complete"};
+    return {status};
   }
   async function queueProductAlerts(alerts,notificationMode="daily"){
     await store.update(state=>{
