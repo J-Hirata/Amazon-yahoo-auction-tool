@@ -6,6 +6,7 @@ import {applyStockWorkspace} from './stock-workspace.js';
 import {productOverview,emptyProductWatch} from './product-overview.js';
 import {conditionFamily,resolvedLinkSku,resolvedLinkCondition} from './product-workspace.js';
 import {associateDraft,relationIssue} from './product-relations.js';
+import {stockImageUrl} from './stock-images.js';
 
 const fail=(message,status=400)=>Object.assign(new Error(message),{status});
 const uuid=v=>/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v||'');
@@ -26,11 +27,12 @@ export function workspaceDescriptor(docs,key,row,at=new Date().toISOString()){
  const stock=row.stockIds.length===1?docs['physical-stock'].state.products.find(p=>p.id===row.stockIds[0]):null;
  const local={...s.item,...s.item.workspaceProduct};
  const p=stock||(s.kind==='draft'?{...local,title:(local.title||row.title).slice(0,200),memo:local.workspaceProduct?.memo||'',setContents:local.workspaceProduct?.setContents||''}:local);
- const product={title:p.title||row.title,asin:p.asin||row.asin,sellerSku:p.sellerSku||row.availability?.sku||row.sellerSku||'',condition:stock?stock.condition:[p.condition,row.availability?.condition,row.amazonCondition,row.fba?.condition,row.condition].map(family).find(c=>c!=='unknown')||'unknown',setContents:p.setContents||row.setContents||'',memo:stock?.memo??((s.kind==='plan'?s.item.note:s.kind==='draft'?s.item.workspaceProduct?.memo:s.item.userMemo)||''),imageUrl:p.imageUrl||row.imageUrl||'',unit:p.unit||'個',fbaEligibility:p.fbaEligibility||'unknown',catalogTask:p.catalogTask||'none',reviewDate:p.reviewDate||'',useChannels:p.useChannels||[]};
+ const picture=p=>stockImageUrl(p.imageUrl)||(docs['draft-items']?.state||[]).filter(d=>d.asin===p.asin).flatMap(d=>d.imageUrls||[]).find(stockImageUrl)||(docs['link-monitor'].state.amazonInventory?.items||[]).filter(i=>i.asin===p.asin).map(i=>i.listingInfo?.catalogImageUrl).find(stockImageUrl)||'';
+ const product={title:p.title||row.title,asin:p.asin||row.asin,sellerSku:p.sellerSku||row.availability?.sku||row.sellerSku||'',condition:stock?stock.condition:[p.condition,row.availability?.condition,row.amazonCondition,row.fba?.condition,row.condition].map(family).find(c=>c!=='unknown')||'unknown',setContents:p.setContents||row.setContents||'',memo:stock?.memo??((s.kind==='plan'?s.item.note:s.kind==='draft'?s.item.workspaceProduct?.memo:s.item.userMemo)||''),imageUrl:picture(p)||row.imageUrl||'',unit:p.unit||'個',fbaEligibility:p.fbaEligibility||'unknown',catalogTask:p.catalogTask||'none',reviewDate:p.reviewDate||'',useChannels:p.useChannels||[]};
  return {product,stockId:stock?.id||'',ambiguousStock:row.stockIds.length>1,
 
   counts:stock?Object.fromEntries(stockTotals(docs['physical-stock'].state,stock.id).locations.map(l=>[l.locationId,l.usable])):{container:null,home:null},
-  candidates:docs['physical-stock'].state.products.filter(c=>c.asin===row.asin&&c.id!==stock?.id).map(c=>({...c,locations:stockTotals(docs['physical-stock'].state,c.id).locations,issue:relationIssue(product,c)})),linkIds:[...row.linkIds],
+  candidates:docs['physical-stock'].state.products.filter(c=>c.asin===row.asin&&c.id!==stock?.id).map(c=>({...c,imageUrl:picture(c),locations:stockTotals(docs['physical-stock'].state,c.id).locations,issue:relationIssue(product,c)})),linkIds:[...row.linkIds],
   planCandidates:docs['sales-planning'].state.plans.filter(c=>c.asin===row.asin&&c.status!=='closed'&&!row.plans.some(p=>p.id===c.id)).map(c=>({id:c.id,title:c.title,imageUrl:c.imageUrl,issue:relationIssue(product,c)})),
   drafts:(docs['draft-items']?.state||[]).filter(d=>d.asin===row.asin).map(d=>({asin:d.asin,status:d.status,associated:row.sourceKeys.includes('draft:'+d.asin)})),
   plans:row.plans.map(p=>({id:p.id,status:p.status,title:p.title})),

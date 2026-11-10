@@ -33,3 +33,6 @@ test('unknown draft SKU cannot bridge incompatible known stock and listing SKUs,
  const f=fixture(),old=f.read(),other=old['physical-stock'].state.products[1].id;
  for(const c of[f.command('draft:'+asin,{stockId:other,linkIds:[f.linkId],registration:{stock:true,merchant:false,yahoo:true,draft:true,planning:false,yahooUrl:''}}),f.command('stock:'+other,{registration:{stock:true,merchant:false,yahoo:true,draft:false,planning:false,yahooUrl:'https://auctions.yahoo.co.jp/jp/auction/h1248825083'}})]){await assert.rejects(()=>f.editor.save(c,f.options()),/紐付け先/);assert.deepEqual(f.read(),old);}
 });
+test('existing stock choices show same-ASIN cached reference photos without modifying saved products',async()=>{
+ const f=fixture(),photo='https://m.media-amazon.com/images/I/reference.jpg';await f.transaction.update(d=>{d['draft-items'].state[0].imageUrls=[photo];});const old=f.read(),entry=(await f.editor.list()).entries['link:'+f.linkId];assert.ok(entry.editor.candidates.every(c=>c.imageUrl===photo));assert.deepEqual(f.read(),old);
+});
