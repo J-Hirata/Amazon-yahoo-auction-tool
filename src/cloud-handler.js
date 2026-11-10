@@ -2,7 +2,7 @@ import {reorderDrafts} from './draft-order.js';
 import {registerPageLink, registerPageLinks, updateLinkMemo, runPreview, testDelivery} from "./link-monitor.js";
 import {demoMonitor, advanceDemo} from "./link-monitor-demo.js";
 import {monitorView} from "./link-monitor-view.js";
-import {draftView, patchDraft, addDrafts, buildYahooDraft, buildDraftCsv} from "./cloud-drafts.js";
+import {draftView, patchDraft, addDrafts, batchDraftAction, buildYahooDraft, buildDraftCsv} from "./cloud-drafts.js";
 import {splitDraftQueue} from "./queue.js";
 import {salesHistoryView} from "./sales-history.js";
 import {stockCsv} from "./cloud-stock.js";
@@ -123,12 +123,12 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
         if (url.pathname.endsWith(".csv")) return new Response("\ufeff" + buildDraftCsv(splitDraftQueue(saved.state).active), {headers: {...headers, "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=drafts.csv"}});
         return reply(draftCatalog?await draftCatalog.view(saved):draftView(saved));
       }
-      if(draftStore&&request.method==='POST'&&['/api/drafts/order','/api/drafts/catalog'].includes(url.pathname)){
+      if(draftStore&&request.method==='POST'&&['/api/drafts/order','/api/drafts/catalog','/api/drafts/actions'].includes(url.pathname)){
         if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
         const match=request.headers.get('if-match');if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||''))return reply({error:'最新の下書きを読み込んでください'},428);
         const data=await jsonBody(request),expectedRevision=Number(match.slice(1,-1));
         if(url.pathname.endsWith('/catalog'))return draftCatalog?reply(await draftCatalog.fill(data.asins,{expectedRevision})):reply({error:'写真の取得は未接続です'},503);
-        await draftStore.update(items=>reorderDrafts(items,data.order),{expectedRevision});
+        await draftStore.update(items=>url.pathname.endsWith('/actions')?batchDraftAction(items,data,new Date().toISOString()):reorderDrafts(items,data.order),{expectedRevision});
         const saved=await draftStore.readSnapshot();return reply(draftCatalog?await draftCatalog.view(saved):draftView(saved));
       }
       const draft = url.pathname.match(/^\/api\/items\/([A-Z0-9]{10})\/draft$/);

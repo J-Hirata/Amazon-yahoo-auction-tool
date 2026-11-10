@@ -11,5 +11,8 @@ test('local draft UI assets, non-destructive duplicate entry and saved priority 
   await send('/api/items/'+ids[0],{title:'手入力名',description:'手入力説明',usedLowestPrice:5000,status:'ready_for_draft'},'PATCH');
   const first=(await (await fetch(base+'/api/items')).json()).items[0];await send('/api/asins',{asins:ids[0]});const after=(await (await fetch(base+'/api/items')).json()).items.find(i=>i.asin===ids[0]);assert.deepEqual(after,first);
   await send('/api/items/'+ids[1],{status:'ready_for_draft'},'PATCH');await send('/api/drafts/order',{order:[ids[1],ids[0]]});assert.equal((await (await fetch(base+'/api/next-draft')).json()).item.asin,ids[1]);
+  await send('/api/items/'+ids[0],{status:'draft_saved',saveConfirmed:true},'PATCH');const saved=(await (await fetch(base+'/api/items')).json()).items.find(i=>i.asin===ids[0]);assert.equal(saved.startPrice,first.startPrice);assert.equal(saved.stalePrice,first.stalePrice);
+  await send('/api/drafts/actions',{asins:[ids[0]],action:'archive'});assert.equal((await (await fetch(base+'/api/items')).json()).items.find(i=>i.asin===ids[0]).status,'archived');
+  await send('/api/drafts/actions',{asins:[ids[0]],action:'restore'});const restored=(await (await fetch(base+'/api/items')).json()).items.find(i=>i.asin===ids[0]);assert.equal(restored.status,'draft_saved');assert.equal(restored.draftSavedAt,saved.draftSavedAt);assert.equal(restored.description,'手入力説明');
  }finally{if(child.exitCode===null){child.kill();await new Promise(resolve=>child.once('exit',resolve));}}
 });

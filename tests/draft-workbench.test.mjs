@@ -11,9 +11,9 @@ function memory(initial){let state=structuredClone(initial),revision=0;return {r
 test('the board shows all ready products beyond the old ten-slot queue and each saved product once beyond twenty history entries',()=>{
  const ready=Array.from({length:25},(_,i)=>item('R'+String(i).padStart(9,'0'))),saved=Array.from({length:25},(_,i)=>({...item('S'+String(i).padStart(9,'0'),'draft_saved'),draftSavedAt:at}));
  const all=[...ready,...saved,item('N000000001','waiting_for_product_data'),item('L000000001','listed')];
- assert.equal(splitDraftQueue(all).active.length,10);assert.equal(boardItems(all,'ready').length,25);assert.equal(boardItems(all,'saved').length,25);
- const pending=boardItems(all);assert.equal(pending.length,51);assert.equal(new Set(pending.map(p=>p.asin)).size,51);
- assert.equal(draftStage(saved[0]),'saved');assert.deepEqual(draftHints({...saved[0],title:'手入力タイトル',displayImageUrl:photo}),[]);
+ assert.equal(splitDraftQueue(all).active.length,10);assert.equal(boardItems(all,'ready').length,25);assert.equal(boardItems(all,'input').length,25);assert.equal(boardItems(all,'saved').length,0);
+ const pending=boardItems(all);assert.equal(pending.length,26);assert.equal(new Set(pending.map(p=>p.asin)).size,26);assert.ok(pending.every(i=>i.status!=='draft_saved'));
+ assert.equal(draftStage(saved[0]),'input');assert.deepEqual(draftHints({...saved[0],title:'手入力タイトル',displayImageUrl:photo}),[]);
 });
 test('saved work order controls the next draft; filtered reorder keeps hidden positions and never edits product content or dates',()=>{
  const items=['A000000001','B000000001','C000000001','D000000001'].map(id=>item(id)),before=structuredClone(items);

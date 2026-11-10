@@ -1,6 +1,6 @@
 import { CONFIG } from "./config.js";
 
-const HIDDEN_STATUSES = new Set(["draft_saved", "listed", "sold", "archived", "deleted"]);
+const HIDDEN_STATUSES = new Set(["input_done", "draft_saved", "listed", "sold", "archived", "deleted"]);
 
 export function splitDraftQueue(items) {
   const visible = items

@@ -4,6 +4,7 @@ import {calculateAuctionPrices} from "./pricing.js";
 import {buildItemsFromAsins} from "./amazon.js";
 import {buildYahooDraft} from "./draft.js";
 import {buildDraftCsv} from "./csv.js";
+import {changeDraftStatus} from './draft-workflow.js';
 
 export {buildYahooDraft, buildDraftCsv};
 export function draftView({state, revision}) {
@@ -19,7 +20,7 @@ export async function addDrafts(state, value, at) {
 export function patchDraft(state, asin, patch, at) {
   const item = state.find((entry) => entry.asin === asin);
   if (!item) throw new Error("商品が見つかりません");
-  const allowed = new Set(["title", "description", "imageUrls", "usedLowestPrice", "status", "draftSavedAt"]);
+  const allowed = new Set(["title", "description", "imageUrls", "usedLowestPrice", "status", "draftSavedAt", "restore", "saveConfirmed"]);
   if (!patch || Object.keys(patch).some((key) => !allowed.has(key))) throw new Error("変更する項目を確認してください");
   const next = {...item};
   for (const [key, limit] of [["title", 500], ["description", 20000]]) if (key in patch) {
@@ -40,17 +41,17 @@ export function patchDraft(state, asin, patch, at) {
     next.usedLowestPrice = price;
     Object.assign(next, calculateAuctionPrices(price, CONFIG));
   }
-  if ("status" in patch) {
-    if (!["ready_for_draft", "waiting_for_product_data", "draft_saved", "listed", "sold", "archived"].includes(patch.status)) throw new Error("商品の作業状態を確認してください");
-    next.status = patch.status;
-    if (patch.status !== item.status) {
-      if (patch.status === "draft_saved") next.draftSavedAt = at;
-      if (patch.status === "listed") next.listedAt = at;
-      if (patch.status === "sold") next.soldAt = at;
-      if (patch.status === "ready_for_draft" && item.status === "draft_saved") next.draftSavedAt = null;
-    }
-  }
+  changeDraftStatus(next,item,patch,at);
   if ("draftSavedAt" in patch && !(patch.draftSavedAt === null && patch.status === "ready_for_draft")) throw new Error("保存完了時刻の直接変更はできません");
+  if(JSON.stringify(next)===JSON.stringify(item))return;
   next.updatedAt = at;
   Object.assign(item, next);
+}
+
+export function batchDraftAction(state,{asins,action},at){
+  if(!['archive','restore'].includes(action)||!Array.isArray(asins)||!asins.length||asins.length>200||asins.some(a=>typeof a!=='string'||!/^[A-Z0-9]{10}$/.test(a))||new Set(asins).size!==asins.length)throw new Error('対象商品と操作を確認してください（1〜200件）');
+  if(asins.some(asin=>!state.some(i=>i.asin===asin)))throw new Error('商品が見つかりません。一覧を更新してください');
+  const copy=structuredClone(state);
+  for(const asin of asins)patchDraft(copy,asin,action==='restore'?{restore:true}:{status:'archived'},at);
+  state.splice(0,state.length,...copy);
 }

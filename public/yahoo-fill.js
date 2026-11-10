@@ -96,9 +96,9 @@
       ${button("商品候補の一番上を選択", "productCandidate")}
       ${button("フォームを空にして入力", "clearAndFill")}
       ${button("カテゴリ選択後に下書き保存", "saveYahooDraft")}
-      ${button("Yahoo下書き保存後に次へ", "finishNext")}
-      ${button("完了済みにして空にし、次へ", "doneNext")}
-      ${button("管理画面だけ下書き保存済みにする", "saved")}
+      ${button("入力を記録・空にして次へ", "finishNext")}
+      ${button("入力済みとして次へ", "doneNext")}
+      ${button("Yahoo保存完了を確認して記録", "saved")}
       ${utilityLinks()}
       <details>
         <summary style="cursor:pointer">内容を確認</summary>
@@ -117,7 +117,7 @@
         return;
       }
       await fillWholeDraft(draft);
-      await archiveAfterInput(draft);
+      await recordInputCompletion(draft);
     });
     body.querySelector("[data-action='description']").addEventListener("click", () => fillField("description", draft.description));
     body.querySelector("[data-action='images']").addEventListener("click", async () => {
@@ -147,7 +147,7 @@
     body.querySelector("[data-action='clearAndFill']").addEventListener("click", async () => {
       const cleared = clearListingForm();
       await fillWholeDraft(draft);
-      await archiveAfterInput(draft);
+      await recordInputCompletion(draft);
       status.textContent += ` / 入力前に${cleared}項目を空にしました。画像枠だけは残っていないか目視確認してください`;
     });
     body.querySelector("[data-action='saveYahooDraft']").addEventListener("click", async () => {
@@ -162,25 +162,25 @@
         status.textContent = "Yahoo側の下書き保存ボタンが見つかりません";
         return;
       }
-      await markLocalDraftSaved(draft.asin);
+      await markLocalInputDone(draft.asin);
       focusElement(control);
       control.click();
-      status.textContent = "Yahooの下書き保存を押し、管理画面も保存済みにしました";
+      status.textContent = "Yahooの下書き保存ボタンを押しました。保存完了をYahoo側で確認し、管理画面で記録してください";
     });
     body.querySelector("[data-action='saved']").addEventListener("click", async () => {
       await markLocalDraftSaved(draft.asin);
       status.textContent = "管理画面を下書き保存済みにしました";
     });
     body.querySelector("[data-action='finishNext']").addEventListener("click", async () => {
-      await markLocalDraftSaved(draft.asin);
+      await markLocalInputDone(draft.asin);
       const cleared = clearListingForm();
-      status.textContent = `この商品を完了にして、フォームを${cleared}項目空にしました。次の商品を読み込みます`;
+      status.textContent = `この商品を入力済みとして記録し、フォームを${cleared}項目空にしました。次の商品を読み込みます`;
       await loadDraft(draftIndex);
     });
     body.querySelector("[data-action='doneNext']").addEventListener("click", async () => {
-      await markLocalDraftSaved(draft.asin);
+      await markLocalInputDone(draft.asin);
       const cleared = clearListingForm();
-      status.textContent = `この商品を完了済みにし、フォームを${cleared}項目空にしました。次の商品を読み込みます`;
+      status.textContent = `この商品を入力済みとして記録し、フォームを${cleared}項目空にしました。次の商品を読み込みます`;
       await loadDraft(draftIndex);
     });
   }
@@ -233,9 +233,9 @@
     status.textContent = `${filled}項目入力、画像${imageCount}枚、設定${optionCount}項目。カテゴリはYahoo側で選んでください`;
   }
 
-  async function archiveAfterInput(draft) {
-    await markLocalDraftSaved(draft.asin);
-    status.textContent += " / この商品は入力済みとして完了側へ移しました";
+  async function recordInputCompletion(draft) {
+    await markLocalInputDone(draft.asin);
+    status.textContent += " / 入力済みとして記録しました。Yahoo側の保存・出品完了はまだ記録していません";
   }
 
   function hasResidualListingData(draft) {
@@ -688,12 +688,20 @@
     element.focus?.();
   }
 
-  async function markLocalDraftSaved(asin) {
-    await fetch(`${baseUrl}/api/items/${encodeURIComponent(asin)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "draft_saved" })
+  async function markLocalInputDone(asin) {
+    await recordLocalWorkStatus(asin, "input_done");
+  }
+
+  async function recordLocalWorkStatus(asin, workStatus) {
+    const response = await fetch(`${baseUrl}/api/items/${encodeURIComponent(asin)}`, {
+      method: "PATCH", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({status: workStatus, ...(workStatus === "draft_saved" ? {saveConfirmed: true} : {})})
     });
+    if (!response.ok) {status.textContent = "管理画面への作業記録を保存できませんでした。入力内容は残しています。"; throw new Error("作業記録の保存に失敗しました");}
+  }
+
+  async function markLocalDraftSaved(asin) {
+    await recordLocalWorkStatus(asin, "draft_saved");
   }
 
   function uniqueImages(urls) {

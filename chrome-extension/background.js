@@ -55,7 +55,8 @@ async function handle(message, sender) {
     const image = method === "GET" && typeof path === "string" && path.startsWith("/api/image-proxy?url=");
     const save = method === "PATCH" && /^\/api\/items\/[A-Z0-9]{10}$/.test(path);
     if (!read && !image && !save) throw new Error("許可されていない操作です");
-    const options = save ? {method, headers: {"Content-Type": "application/json"}, body: JSON.stringify({status: "draft_saved"})} : {};
+    if (save && (!message.body || Object.keys(message.body).some(key => !["status", "saveConfirmed"].includes(key)) || !["input_done", "draft_saved"].includes(message.body.status) || (message.body.status === "draft_saved" ? message.body.saveConfirmed !== true : message.body.saveConfirmed !== undefined))) throw new Error("入力済み・保存確認の記録だけを送信できます");
+    const options = save ? {method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(message.body)} : {};
     if (image) {
       const source = new URL(new URL(path, BASE).searchParams.get("url"));
       if (source.protocol !== "https:" || !/\.(media-amazon\.com|ssl-images-amazon\.com|images-amazon\.com)$/.test(source.hostname)) throw new Error("Amazon画像URLを確認してください");

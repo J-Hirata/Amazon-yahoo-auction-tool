@@ -61,11 +61,14 @@ test("reject other ports, arbitrary endpoints, non-Amazon image URLs and invalid
   assert.equal(h.requests.length, 0);
 });
 
-test("only the draft-saved status can be sent through the write bridge", async () => {
+test("the write bridge keeps input completion separate from confirmed draft saving and rejects other edits", async () => {
   const h = harness();
-  const result = await h.send({type: "api", method: "PATCH", path: "/api/items/B000000001", body: {status: "sold", price: 1}});
-  assert.equal(result.ok, true);
-  assert.deepEqual(JSON.parse(h.requests[0].options.body), {status: "draft_saved"});
+  for(const body of [{status:"sold",price:1},{status:"listed"},{status:"draft_saved",title:"overwrite"},{}])assert.equal((await h.send({type:"api",method:"PATCH",path:"/api/items/B000000001",body})).ok,false);
+  assert.equal(h.requests.length,0);
+  for(const workStatus of ['input_done','draft_saved']){
+    assert.equal((await h.send({type:'api',method:'PATCH',path:'/api/items/B000000001',body:{status:workStatus,...(workStatus==='draft_saved'?{saveConfirmed:true}:{})}})).ok,true);
+    assert.deepEqual(JSON.parse(h.requests.at(-1).options.body),{status:workStatus,...(workStatus==='draft_saved'?{saveConfirmed:true}:{})});
+  }
 });
 
 test("offline server produces an actionable message", async () => {
@@ -74,4 +77,14 @@ test("offline server produces an actionable message", async () => {
   const result = await h.send({type: "api", path: "/api/items"});
   assert.equal(result.ok, false);
   assert.match(result.error, /起動ボタン/);
+});
+
+test('the content bridge forwards the input status body to the guarded background bridge unchanged',async()=>{
+ const h=harness(),source=await readFile(new URL('../chrome-extension/yahoo.js',import.meta.url),'utf8'),context={URL,chrome:{runtime:{sendMessage:message=>h.send(message)}},document:{createElement(){throw new Error('stop before mounting test UI');}}};
+ assert.throws(()=>vm.runInNewContext(source,context),/stop before mounting test UI/);
+ const bridge=context.asinYahooExtension;
+ for(const workStatus of ['input_done','draft_saved']){
+  const response=await bridge.fetch('http://localhost:41731/api/items/B000000001',{method:'PATCH',body:JSON.stringify({status:workStatus,...(workStatus==='draft_saved'?{saveConfirmed:true}:{})})});assert.equal(response.ok,true);assert.deepEqual(JSON.parse(h.requests.at(-1).options.body),{status:workStatus,...(workStatus==='draft_saved'?{saveConfirmed:true}:{})});
+ }
+ await assert.rejects(()=>bridge.fetch('http://localhost:41731/api/items/B000000001',{method:'PATCH',body:JSON.stringify({status:'sold'})}));assert.equal(h.requests.length,2);
 });

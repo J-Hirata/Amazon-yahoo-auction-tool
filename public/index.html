@@ -4,7 +4,7 @@
 <p id="status" class="status" role="status" aria-live="polite"></p>
 <details id="draftAdd" class="draft-add"><summary>ASINから商品を追加</summary><p>ASINを1行に1つずつ入力します。同じASINの登録済み商品は保持します。</p><section class="input-area"><label>ASIN（まとめて入力）<textarea id="asins" rows="3" placeholder="ASINを1行に1つずつ入力" aria-label="ASIN（まとめて入力）"></textarea></label><div class="input-actions"><button id="add" type="button">登録して写真を取得</button><button id="fetchProducts" type="button">Amazon情報取得（PC版）</button></div></section></details>
 <nav id="summary" class="draft-stage-tabs" aria-label="商品の作業状態"></nav>
-<section class="draft-board" aria-labelledby="draftBoardTitle"><div class="draft-board-heading"><div><h2 id="draftBoardTitle">これから出す商品</h2><p id="draftBoardHelp"></p></div><label class="draft-search">商品を探す<input id="draftSearch" type="search" placeholder="商品名・ASINで検索"></label></div><div id="draftDisplay"></div><p id="draftCount" class="meta" role="status"></p><div id="draftRows" class="list"></div></section>
+<section class="draft-board" aria-labelledby="draftBoardTitle"><div class="draft-board-heading"><div><h2 id="draftBoardTitle">下書き作成待ち</h2><p id="draftBoardHelp"></p></div><label class="draft-search">商品を探す<input id="draftSearch" type="search" placeholder="商品名・ASINで検索"></label></div><div id="draftDisplay"></div><div class="draft-selection" id="draftSelection"><label id="draftPreparationLabel">準備状況<select id="draftPreparation"><option value="pending">すべて</option><option value="ready">準備完了</option><option value="needs">情報を補う</option></select></label><label><input id="draftSelectAll" type="checkbox"> 表示中の商品を選択</label><span id="draftSelectedCount">0件選択</span><button id="draftArchiveSelected" class="secondary" type="button" data-write>選択をアーカイブ</button><button id="draftRestoreSelected" class="secondary" type="button" data-write hidden>選択を元の状態へ戻す</button><button id="draftClearSelection" class="secondary" type="button">選択解除</button></div><p id="draftCount" class="meta" role="status"></p><div id="draftRows" class="list"></div><ol id="draftHistoryRows" class="draft-history-list" hidden></ol></section>
       <section class="draft-panel" id="draftPanel" hidden>
         <div>
           <h2>Yahoo!オークション下書き</h2>
@@ -28,8 +28,8 @@
           <button id="copyPrice">価格をコピー</button>
           <button id="copyText">説明をコピー</button>
           <button id="copyImages">画像URLをコピー</button>
-          <button id="markDraftSaved">下書き保存済み</button>
-          <button id="markListed">出品済み</button>
+          <button id="markDraftSaved">Yahoo保存を確認・記録</button>
+          <button id="markListed">Yahoo出品を確認・記録</button>
           <a id="openYahoo" class="button-link" href="https://auctions.yahoo.co.jp/seller/" target="_blank" rel="noreferrer">Yahooを開く</a>
           <a class="button-link secondary" href="/yahoo-helper.html" target="_blank" rel="noreferrer">Yahoo入力補助の登録ページ</a>
           <button id="copyYahooBookmarkletDraft" type="button">ブックマークレットをコピー</button>
@@ -38,8 +38,8 @@
       </section>
 
 
-<dialog id="draftEditDialog" class="draft-edit-dialog" aria-label="商品情報・作業状態を編集"><form id="draftEditForm"><header><div><h2>商品情報・作業状態</h2><p id="draftEditIdentity"></p></div><button type="button" data-edit-close aria-label="編集を閉じる">閉じる</button></header><p class="draft-edit-hint">ASINから取得する写真はAmazonの参考画像です。現物の状態・付属品・写真は出品前に確認してください。</p><label>商品名<input name="title" maxlength="500"></label><div class="draft-edit-grid"><label>Amazon中古の参考価格（円）<input name="usedLowestPrice" type="number" min="1" max="100000000" step="1" placeholder="不明なら空欄"></label><label>作業状態<select name="status"><option value="waiting_for_product_data">情報を補う</option><option value="ready_for_draft">出品準備できた</option><option value="draft_saved">保存済み・出品未記録</option><option value="listed">出品済み（手動記録）</option><option value="sold">売却済み（手動記録）</option><option value="archived">保留</option></select></label></div><label>商品説明・仕様・付属品<textarea name="description" rows="6" maxlength="20000"></textarea></label><label>写真のURL（1行に1つ）<textarea name="imageUrls" rows="3"></textarea></label><p id="draftEditMessage" role="status" aria-live="polite"></p><footer><button type="button" class="secondary" data-edit-close>取消</button><button type="submit" data-ready hidden>保存して準備完了</button><button type="submit">変更を保存</button></footer></form></dialog>
-<details id="draftHelp" class="draft-help"><summary>使い方・PC版との連携</summary><section class="draft-state-guide"><h2>状態の見方</h2><p><strong>出品準備できた：</strong>下書き文面を確認する商品です。写真・価格・現物を確認してヤフオクに進めます。</p><p><strong>情報を補う：</strong>商品名・説明・写真・参考価格などを確認し、「商品情報・作業状態」で準備を進めます。</p><p><strong>保存済み・出品未記録：</strong>Yahoo側の下書き保存を確認して記録した商品です。出品したことを示す状態とは分けています。</p><p>出品済み・売却済みは手動の記録です。ヤフオクの実際の状態を自動確認した結果ではありません。並べ替えは保存され、「次の下書き文面」も準備済み商品の作業順に進みます。</p></section>
+<dialog id="draftEditDialog" class="draft-edit-dialog" aria-label="商品情報・作業状態を編集"><form id="draftEditForm"><header><div><h2>商品情報・作業状態</h2><p id="draftEditIdentity"></p></div><button type="button" data-edit-close aria-label="編集を閉じる">閉じる</button></header><p class="draft-edit-hint">ASINから取得する写真はAmazonの参考画像です。現物の状態・付属品・写真は出品前に確認してください。</p><label>商品名<input name="title" maxlength="500"></label><div class="draft-edit-grid"><label>Amazon中古の参考価格（円）<input name="usedLowestPrice" type="number" min="1" max="100000000" step="1" placeholder="不明なら空欄"></label><label>作業状態<select name="status"><option value="waiting_for_product_data">情報を補う</option><option value="ready_for_draft">出品準備できた</option><option value="input_done">入力済み・保存を確認</option><option value="legacy_input" disabled>旧・貼り付け完了（保存未照合）</option><option value="draft_saved">Yahooの下書き保存を確認済み</option><option value="listed">出品済み（手動記録）</option><option value="sold">売却済み（手動記録）</option><option value="archived">アーカイブ</option></select></label></div><label>商品説明・仕様・付属品<textarea name="description" rows="6" maxlength="20000"></textarea></label><label>写真のURL（1行に1つ）<textarea name="imageUrls" rows="3"></textarea></label><p id="draftEditMessage" role="status" aria-live="polite"></p><footer><button type="button" class="secondary" data-edit-close>取消</button><button type="submit" data-ready hidden>保存して準備完了</button><button type="submit">変更を保存</button></footer></form></dialog>
+<details id="draftHelp" class="draft-help"><summary>使い方・PC版との連携</summary><section class="draft-state-guide"><h2>状態の見方</h2><p><strong>出品準備できた：</strong>下書き文面を確認する商品です。写真・価格・現物を確認してヤフオクに進めます。</p><p><strong>情報を補う：</strong>商品名・説明・写真・参考価格などを確認し、「商品情報・作業状態」で準備を進めます。</p><p><strong>入力済み・保存確認：</strong>旧「貼り付け完了」を含みます。Yahoo側の保存完了とは別です。</p><p><strong>下書き保存済み：</strong>Yahoo側の下書き保存を確認して記録した商品です。出品したことを示す状態とは分けています。</p><p>出品済み・売却済みは手動の記録です。ヤフオクの実際の状態を自動確認した結果ではありません。並べ替えは保存され、「次の下書き文面」も準備済み商品の作業順に進みます。</p></section>
       <section class="yahoo-workflow" aria-labelledby="yahooWorkflowTitle">
         <div>
           <h2 id="yahooWorkflowTitle">ヤフオクへ出品する</h2>
@@ -89,4 +89,7 @@
         </div>
       </section>
 
-</details></main><script type="module" src="/app.js"></script></body></html>
+</details>
+<dialog id="draftArchiveDialog" class="draft-edit-dialog" aria-label="アーカイブする商品を確認"><h2 id="draftArchiveTitle">アーカイブする商品を確認</h2><p id="draftArchiveHelp"></p><ul id="draftArchiveItems" class="draft-review-items"></ul><p id="draftArchiveMessage" role="status"></p><footer><button id="draftArchiveCancel" class="secondary" type="button">取消</button><button id="draftArchiveConfirm" type="button" data-write>アーカイブする</button></footer></dialog>
+<dialog id="draftRecordDialog" class="draft-edit-dialog" aria-label="商品の履歴と整理"><header><div><h2>商品の履歴と整理</h2><p id="draftRecordIdentity"></p></div><button id="draftRecordClose" type="button">閉じる</button></header><ol id="draftRecordEvents" class="draft-history-list"></ol><div id="draftRecordActions" class="draft-record-actions"></div></dialog>
+</main><script type="module" src="/app.js"></script></body></html>

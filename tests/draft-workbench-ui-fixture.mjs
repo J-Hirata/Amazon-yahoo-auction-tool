@@ -8,7 +8,7 @@ for(let i=1;i<=58;i++){const status=i<=14?'ready_for_draft':i<=26?'waiting_for_p
 if(process.env.DRAFTS_PREVIEW_PATH)items=JSON.parse(await readFile(process.env.DRAFTS_PREVIEW_PATH,'utf8'));
 const previewOnly=Boolean(process.env.DRAFTS_PREVIEW_PATH);
 const store={read:async()=>structuredClone(items),readSnapshot:async()=>({state:structuredClone(items),revision}),update:async(fn,{expectedRevision}={})=>{if(expectedRevision!==undefined&&expectedRevision!==revision)throw Object.assign(new Error('別の編集が保存されました'),{status:409});const copy=structuredClone(items),r=await fn(copy);items=copy;revision++;return r;}};
-const draftCatalog=createDraftCatalog({store,readOnly:previewOnly,readCatalog:async asin=>({asin,title:'ASINから補完したモニター '+asin,imageUrl:'https://m.media-amazon.com/images/I/test.jpg'}),now:()=>at});
+const draftCatalog=createDraftCatalog({store,readOnly:previewOnly,...(previewOnly?{monitorStore:{read:async()=>({amazonInventory:{items:items.map(i=>({asin:i.asin,listingInfo:{title:i.displayTitle,catalogImageUrl:i.displayImageUrl}}))}})}}:{}),readCatalog:async asin=>({asin,title:'ASINから補完したモニター '+asin,imageUrl:'https://m.media-amazon.com/images/I/test.jpg'}),now:()=>at});
 const assets=await loadCloudAssets(),nav=await build({stdin:{contents:"export{workspaceNavigation}from'./public/workspace-navigation.js';export{cockpitHeader}from'./public/cockpit-brand.js';",resolveDir:process.cwd()},bundle:true,write:false,format:'esm',platform:'browser',logLevel:'silent'});
 assets.set('/__fixture/nav.js',{type:'text/javascript',body:nav.outputFiles[0].contents});
 let handler,base;

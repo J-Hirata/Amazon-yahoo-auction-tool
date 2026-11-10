@@ -1,5 +1,5 @@
 import {reorderDrafts} from './draft-order.js';
-import {addDrafts} from './cloud-drafts.js';
+import {addDrafts,patchDraft,batchDraftAction} from './cloud-drafts.js';
 import http from "node:http";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -217,6 +217,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if(req.method==='POST'&&url.pathname==='/api/drafts/order'){const body=await readJson(req);await updateItems(items=>{reorderDrafts(items,body.order);return items;});return sendJson(res,{ok:true});}
+    if(req.method==='POST'&&url.pathname==='/api/drafts/actions'){const body=await readJson(req);await updateItems(items=>{batchDraftAction(items,body,new Date().toISOString());});return sendJson(res,{ok:true});}
     if(req.method==='POST'&&url.pathname==='/api/drafts/catalog'){
       const {asins}=await readJson(req);if(!Array.isArray(asins)||!asins.length||asins.length>5||new Set(asins).size!==asins.length||asins.some(a=>typeof a!=='string'||!/^[A-Z0-9]{10}$/.test(a)))return sendJson(res,{error:'登録済みのASINを1〜5件指定してください'},400);
       const current=await loadItems();if(asins.some(a=>!current.some(p=>p.asin===a)))return sendJson(res,{error:'登録済みの商品を選んでください'},400);
@@ -291,28 +292,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "PATCH" && url.pathname.startsWith("/api/items/")) {
       const asin = decodeURIComponent(url.pathname.replace("/api/items/", ""));
       const patch = await readJson(req);
-      const next = await updateItems((items) => items.map((item) => {
-        if (item.asin !== asin) return item;
-        const hasPrice=Object.hasOwn(patch,"usedLowestPrice");
-        const usedLowestPrice = hasPrice ? patch.usedLowestPrice === "" || patch.usedLowestPrice === null ? null : Number(patch.usedLowestPrice) : item.usedLowestPrice;
-        const prices = hasPrice ? calculateAuctionPrices(usedLowestPrice, CONFIG) : {};
-        const nextStatus = patch.status ?? item.status;
-        const timestamps = {};
-        if (nextStatus === "draft_saved" && item.status !== "draft_saved") timestamps.draftSavedAt = new Date().toISOString();
-        if (nextStatus === "ready_for_draft" && item.status === "draft_saved") timestamps.draftSavedAt = null;
-        if (nextStatus === "listed" && item.status !== "listed") timestamps.listedAt = new Date().toISOString();
-        if (nextStatus === "sold" && item.status !== "sold") timestamps.soldAt = new Date().toISOString();
-        return {
-          ...item,
-          ...patch,
-          ...timestamps,
-          imageUrls: normalizeLines(patch.imageUrls ?? item.imageUrls),
-          usedLowestPrice,
-          startPrice: prices.startPrice,
-          stalePrice: prices.stalePrice,
-          updatedAt: new Date().toISOString()
-        };
-      }));
+      const next = await updateItems((items) => {patchDraft(items,asin,patch,new Date().toISOString());});
       return sendJson(res, { items: next, queue: splitDraftQueue(next), priceReviews: findPriceReviewItems(next) });
     }
 

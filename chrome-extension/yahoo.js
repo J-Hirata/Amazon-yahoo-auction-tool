@@ -5,7 +5,7 @@
     async fetch(url, options = {}) {
       const target = new URL(url);
       if (target.origin !== "http://localhost:41731") throw new Error("接続先が違います");
-      const result = await chrome.runtime.sendMessage({type: "api", path: target.pathname + target.search, method: options.method || "GET"});
+      const result = await chrome.runtime.sendMessage({type: "api", path: target.pathname + target.search, method: options.method || "GET", ...(options.body ? {body: JSON.parse(options.body)} : {})});
       if (!result?.ok) throw new Error(result?.error || "拡張機能を再読み込みしてください");
       return {
         ok: true,
