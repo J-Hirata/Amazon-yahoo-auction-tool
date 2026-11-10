@@ -7,6 +7,7 @@ const selected=new Set(),archiveDialog=$('#draftArchiveDialog'),recordDialog=$('
 const visibleItems=()=>boardItems(state.items,stage==='pending'?$('#draftPreparation').value:stage,$('#draftSearch').value);
 const editDialog=$('#draftEditDialog'),editForm=$('#draftEditForm');
 const catalog=createCatalogView({key:'drafts',host:$('#draftDisplay'),roots:[$('#draftRows')],defaultMode:'tiles',measureLabels:['出品価格案 高い順','出品価格案 安い順'],onReorder:order=>work(async()=>{await request('/api/drafts/order',{order});await load();showTextStatus('出したい順番を保存しました。「次の下書き文面」にも反映します。');})});
+let sharedEditor;const productEditor={async open(key){if(!state.capabilities?.cloud)return showTextStatus('共通の商品紐付けは販売コックピットのブラウザー版で利用できます。');if(!sharedEditor){const {createProductWorkspaceEditor}=await import('./product-workspace-editor.js');sharedEditor=createProductWorkspaceEditor({readOnly:()=>Boolean(state.capabilities?.readOnly),onChanged:load});}await sharedEditor.open(key);}};
 $('#draftDisplay option[value=original]').textContent='作業順（保存済み）';$('#draftDisplay option[value=manual]').textContent='作業順（並べ替え）';
 async function response(url,options={}){
  const headers=new Headers(options.headers);if(state.capabilities?.cloud&&options.method&&options.method!=='GET')headers.set('If-Match','"'+state.storage.revision+'"');
@@ -38,6 +39,7 @@ function mountActions(host,item,compact=false){
  const amazon=document.createElement('a');amazon.href='https://www.amazon.co.jp/dp/'+encodeURIComponent(item.asin);amazon.target='_blank';amazon.rel='noopener noreferrer';amazon.textContent='Amazon ↗';host.append(amazon);
  if(!(item.imageUrls?.length||item.displayImageUrl))button('写真を取得',()=>work(()=>fillPhotos([item.asin])),true);
  if(draftStage(item)!=='needs')button(compact?'編集・状態':'商品情報・作業状態',()=>openEditor(item));
+ button('商品情報・販路編集',()=>productEditor.open('draft:'+item.asin));
  button('履歴・整理',()=>openRecord(item));
 }
 function openEditor(item){editorBase=structuredClone(item);editForm.reset();for(const field of ['title','description','usedLowestPrice','status'])editForm.elements[field].value=item[field]??'';if(item.status==='draft_saved'&&!item.draftSaveConfirmedAt)editForm.elements.status.value='legacy_input';editForm.elements.imageUrls.value=(item.imageUrls||[]).join('\n');editorValues=Object.fromEntries(['title','description','usedLowestPrice','status','imageUrls'].map(k=>[k,editForm.elements[k].value]));editForm.querySelector('[data-ready]').hidden=draftStage(item)!=='needs';$('#draftEditIdentity').textContent=(item.title||item.asin)+' ／ '+item.asin;$('#draftEditMessage').textContent='状態はYahoo側の保存・出品を確認して記録してください。';editDialog.showModal();}
@@ -117,6 +119,7 @@ $("a[href='/api/export/drafts.csv']").addEventListener('click',event=>{if(!state
 const yen=value=>typeof value==='number'&&value>0?value.toLocaleString('ja-JP')+'円':'未設定';
 const formatDate=value=>value&&Number.isFinite(Date.parse(value))?new Date(value).toLocaleString('ja-JP'):'日時未設定';
 await work(load);
+const draftAsin=new URLSearchParams(location.hash.slice(1)).get('asin');if(draftAsin){$('#draftSearch').value=draftAsin;const item=state.items.find(i=>i.asin===draftAsin);if(item){const s=draftStage(item);stage=['ready','needs'].includes(s)?'pending':s;}render();}
 
 function buildYahooMarketUrl(item) {
   const keyword = buildYahooMarketKeyword(item);

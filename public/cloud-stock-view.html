@@ -24,9 +24,9 @@
     <fieldset id="stockConcurrentFields" class="stock-concurrent-fields"><legend>この商品をほかの販路・販売監視にも登録</legend>
       <label><input type="checkbox" checked disabled>コンテナ・自社在庫に登録する</label>
       <label><input type="checkbox" name="alsoMerchant">Amazon自社発送にも使う</label>
-      <label><input type="checkbox" name="alsoYahoo"><span data-yahoo-use-label>ヤフオク併売を準備する</span></label>
-      <label class="stock-yahoo-url" hidden><span data-yahoo-url-label>出品済みならヤフオクURL（任意）</span><input name="concurrentYahooUrl" type="url" maxlength="2048" placeholder="https://auctions.yahoo.co.jp/jp/auction/…"><small>URLなしなら下書き候補へ追加します。ASINが必要です。</small></label>
-      <label><input type="checkbox" name="alsoPlanning">販売監視・見直しにも登録する</label>
+      <label><input type="checkbox" name="alsoYahoo"><span data-yahoo-use-label>出品済みの商品を紐付ける</span></label>
+      <label class="stock-yahoo-url" hidden><span data-yahoo-url-label>出品済みならヤフオクURL（任意）</span><input name="concurrentYahooUrl" type="url" maxlength="2048" placeholder="https://auctions.yahoo.co.jp/jp/auction/…"><small>既存の出品を選ぶかURLを入力してください。下書きは別のチェックで選べます。</small></label>
+      <label><input type="checkbox" name="alsoDraft">ヤフオク出品下書きを用意する</label><label><input type="checkbox" name="alsoPlanning">販売監視・見直しにも登録する</label>
       <small>複数選択できます。実際の出品操作は各販路で行ってください。</small>
     </fieldset>
     <label>状態・付属品・セット内容 <span class="stock-optional">任意</span><input name="setContents" maxlength="300" placeholder="例：スタンドなし、電源コード付き"></label>

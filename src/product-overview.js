@@ -94,7 +94,13 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
     if(!row.sourceKeys.includes(`plan:${p.id}`))row.sourceKeys.push(`plan:${p.id}`);if(!row.sources.includes("plan"))row.sources.push("plan");row.plans.push({...p,schedule:planningSchedule(p,at),actionSchedules:actionSchedules(p,at)});if(!row.imageUrl)row.imageUrl=p.imageUrl||"";
     for(const id of p.linkedLinkIds||[]){const link=monitor.links.find(l=>l.id===id),listing=monitor.listings.find(l=>l.listingId===link?.listingId);if(link&&(link.asin||monitor.catalog.find(c=>c.id===link.catalogId)?.asin)===p.asin&&!row.linkIds.includes(id)){if(linkSku(link)&&row.sellerSku&&linkSku(link)!==row.sellerSku){row.referenceIssue=true;continue;}row.linkIds.push(id);(row.yahoo||=[]).push({listingId:link.listingId,title:listing?.title||"",unitsPerListing:link.unitsPerListing||1,...observation(link.listingId)});}}
   }
-  for(const p of drafts)add(`draft:${p.asin}`,{asin:p.asin,title:p.title||p.asin,condition:"unknown",imageUrl:p.imageUrls?.[0]||""});
+  for(const p of drafts){
+    const ref=p.workspaceStockId?byKey.get('stock:'+p.workspaceStockId):p.workspacePlanId?rows.find(r=>r.plans.some(x=>x.id===p.workspacePlanId)):null;
+    const links=(p.linkedLinkIds||[]).map(id=>linkRows.get(id)).filter(Boolean),target=ref||links[0];
+    const meta=p.workspaceProduct||{},compatible=target&&target.asin===p.asin&&(!meta.sellerSku||!target.sellerSku||meta.sellerSku===target.sellerSku)&&(meta.condition==='unknown'||!meta.condition||target.condition==='unknown'||meta.condition===target.condition)&&(!meta.setContents||!target.setContents||meta.setContents===target.setContents)&&links.every(r=>r===target);
+    const r=compatible?target:add(`draft:${p.asin}`,{...meta,asin:p.asin,title:p.title||p.asin,condition:meta.condition||'unknown',imageUrl:p.imageUrls?.[0]||'',referenceIssue:Boolean(target)});
+    if(!r.sourceKeys.includes('draft:'+p.asin))r.sourceKeys.push('draft:'+p.asin);if(!r.sources.includes('draft'))r.sources.push('draft');(r.drafts||=[]).push({asin:p.asin,status:p.status});
+  }
   for(const rule of watch.rules.filter(r=>r.key.startsWith("watch:")))add(rule.key,{asin:rule.asin,title:rule.title,condition:rule.condition,sellerSku:rule.sellerSku,imageUrl:rule.imageUrl});
   for(const row of rows){
     row.imageUrl=stockImageUrl(row.imageUrl)||"";

@@ -35,7 +35,7 @@ test('one confirmation atomically registers physical inventory, draft preparatio
 });
 test('an existing draft remains byte-identical including saved status and handwritten fields',async()=>{
  const f=fixture();await f.transaction.update(async d=>{await addDrafts(d['draft-items'].state,asin,at);Object.assign(d['draft-items'].state[0],{title:'手入力タイトル',description:'手書き説明',status:'draft_saved',draftSavedAt:at});});
- const old=f.read()['draft-items'];await save(f,command());assert.deepEqual(f.read()['draft-items'],old);
+ const old=f.read()['draft-items'];await save(f,command());const current=f.read()['draft-items'].state[0];for(const key of Object.keys(old.state[0]))assert.deepEqual(current[key],old.state[0][key]);assert.ok(current.workspaceStockId);
 });
 test('a changed registration destination rejects the whole save without partial stock creation',async()=>{
  const f=fixture(),c=command(),p=await f.stock.preview(c,{expectedRevision:0,actor});

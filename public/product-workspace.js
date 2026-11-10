@@ -21,6 +21,7 @@ export function mountProductWorkspace(host,p,{actions=true,onReview,readOnly=fal
   const membership=(link,label,kind)=>{const tag=link.cloneNode(true);tag.className='product-membership-tag membership-'+kind;tag.querySelector('span').textContent=label;tag.title=label+'：登録済み'+(kind==='planning'?'（別タブで開く）':'');tags.append(tag);};
   const action=link=>{primary??=link;return link;};
   const firstLink=w.links[0],firstStock=w.stocks[0],plans=w.plans.filter(p=>p.status!=='closed'),source=/^(link|stock):/.test(key)?key:w.sourceKeys.find(k=>/^(stock|link):/.test(k));
+  if(w.drafts?.length)membership(add('drafts','ヤフオク出品下書き',PackagePlus,'/?view=drafts#asin='+encodeURIComponent(w.drafts[0].asin)),'ヤフオク出品下書き','drafts');
   if(firstLink)membership(add('links',w.links.length>1?`紐付け ${w.links.length}件`:'紐付け',Link2,itemHref('',`link:${firstLink.id}`)),'商品紐付け'+(w.links.length>1?' '+w.links.length+'件':''),'links');
   else if(firstStock)action(add('links',w.linkCandidates?.length?'出品をつなぐ':'紐付けを登録',Link2,`/#stock=${firstStock.id}&edit=1`));
   if(firstStock)membership(add('stock','実在庫',Warehouse,itemHref('stock',`stock:${firstStock.id}`)),'コンテナ・自社在庫','stock');

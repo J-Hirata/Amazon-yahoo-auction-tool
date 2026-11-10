@@ -31,7 +31,7 @@ export function productWorkspace(row,{physical,monitor,watch,at}){
     const mismatch=Boolean(sku&&p.sellerSku&&sku!==p.sellerSku||!compatibleCondition(family,stockCondition(p.condition)));
     return {id:p.id,title:p.title,sellerSku:p.sellerSku,condition:p.condition,unit:p.unit,locations:stockTotals(physical,p.id).locations,mismatch};
   });
-  return {key:row.key,sourceKeys:row.sourceKeys,stocks:stocks.map(p=>({id:p.id,title:p.title,sellerSku:p.sellerSku,unit:p.unit})),stockCandidates,
+  return {drafts:row.drafts||[],key:row.key,sourceKeys:row.sourceKeys,stocks:stocks.map(p=>({id:p.id,title:p.title,sellerSku:p.sellerSku,unit:p.unit})),stockCandidates,
     links:row.linkIds.map(id=>monitor.links.find(l=>l.id===id)).filter(Boolean).map(l=>({id:l.id,listingId:l.listingId})),
     linkCandidates:monitor.links.filter(l=>l.verified&&!l.observationConflict&&!row.linkIds.includes(l.id)&&(l.asin||monitor.catalog.find(p=>p.id===l.catalogId)?.asin)===row.asin&&(!sku||!resolvedLinkSku(l,monitor,watch,at)||sku===resolvedLinkSku(l,monitor,watch,at))&&compatibleCondition(stockCondition(row.condition),stockCondition(resolvedLinkCondition(l,monitor,watch,at)))).map(l=>({id:l.id,listingId:l.listingId})),
     plans:row.plans.map(p=>({id:p.id,title:p.title,status:p.status,stage:p.schedule.stage,dueOn:p.schedule.dueOn})),replenishment:row.replenishmentInfo};

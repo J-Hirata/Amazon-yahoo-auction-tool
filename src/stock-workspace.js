@@ -23,7 +23,7 @@ export async function applyStockWorkspace(docs,command,p,receipt,{actor,at,summa
  }
  if(own(w,'alarmThreshold')){
   const q=w.alarmThreshold;if(q!==null&&!number(q))throw fail('FBAアラームの個数を確認してください');const watch=docs['product-watch'].state;
-  const row=productOverview({monitor:docs['link-monitor'].state,physical:docs['physical-stock'].state,planning:docs['sales-planning'].state,watch,drafts:[]},at).find(r=>r.sourceKeys.includes(key));
+  const row=productOverview({monitor:docs['link-monitor'].state,physical:docs['physical-stock'].state,planning:docs['sales-planning'].state,watch,drafts:docs['draft-items']?.state||[]},at).find(r=>r.sourceKeys.includes(key));
   if(!row)throw fail('通知設定の対象商品を確認してください');
   saveSharedLowStock(watch,row,{source:q===null?'':'fba',threshold:q},{actor,at,operationId:command.operationId});summary.push('FBAの通知残数：'+(q===null?'残数指定を解除':q+'個以下')+'（紐付け済みの各ページで共通）');
  }
@@ -31,7 +31,7 @@ export async function applyStockWorkspace(docs,command,p,receipt,{actor,at,summa
   if(!p.asin||!Array.isArray(w.incoming)||w.incoming.length>50)throw fail('ASINとFBA納品予定を確認してください');
   const seen=new Set();for(const [index,x]of w.incoming.entries()){
    if(!x||x.id&&seen.has(x.id))throw fail('同じ納品予定を二重に変更できません');if(x.id)seen.add(x.id);
-   const row=productOverview({monitor:m,physical:docs['physical-stock'].state,planning:docs['sales-planning'].state,watch:docs['product-watch']?.state||emptyProductWatch(),drafts:[]},at).find(r=>r.sourceKeys.includes(key));
+   const row=productOverview({monitor:m,physical:docs['physical-stock'].state,planning:docs['sales-planning'].state,watch:docs['product-watch']?.state||emptyProductWatch(),drafts:docs['draft-items']?.state||[]},at).find(r=>r.sourceKeys.includes(key));
    const op={operationId:childId(command.operationId,':incoming:'+index),kind:x.complete?'incoming-close':'incoming',incomingId:x.id,...(x.complete?{}:{incoming:{sellerSku:x.sellerSku??p.sellerSku??'',quantity:x.quantity,stage:x.stage,expectedOn:x.expectedOn,reference:x.reference}})};
    saveIncoming(m,row,op,{actor,at});summary.push(x.complete?'FBA納品予定：到着確認済み':`FBA納品予定：${x.quantity}個・${x.stage==='packing'?'梱包中':'発送中'}・${x.expectedOn||'日付未設定'}`);
   }
