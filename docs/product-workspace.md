@@ -153,3 +153,5 @@ Amazon自社発送は以前のuseChannelsによる用途だけの印と区別す
 検証：446テスト合格。自社発送候補の所有者/DEFAULT条件、別FBA SKUとの併存、全4ページの共通参照、未選択/別状態/不正SKU/古い情報の全体ロールバック、観測取得のASIN範囲と世代照合、既存参照の保全、販売対象の追加と重複排除、別アカウント参照の除外、匿名/Origin/閲覧専用/API世代の拒否を検査。隔離した実画面でAmazon取得→メモ保持→SKU選択→保存、在庫→出品選択、下書き→監視選択、監視から4登録先と自社発送の再表示を確認。FBA SKU1/8個・コンテナ50/自社2・元の監視日付/方針・下書き文面/価格/旧日時を保持した。新しい自社発送SKUの実注文受信は次の通常実行で確認する。本番の代理紐付け・メール送信・Cron実行はしていない。
 
 実DB127登録元と候補生成をREAD ONLYで検査、欠落0・書込0。保存済み自社発送候補9件を確認。Amazon実APIへの新しい取得ボタンの操作は隔離環境の輸送モックで確認し、本番で実商品を選択保存していない。画面はoutput/context-merchant-selection-20261110.png、output/context-draft-direct-edit-20261110.png。公開結果はdocs/status.md冒頭。
+
+公開結果：コード4d70da2447edbecf883e5169e9b64b8e4be3f8e9 / 配備dpl_DonDN1KGK6gRdStTZ9NGZ3yQfjC3 / READY / production。固定URL/ソースSHAを照合、公開15アセットhash一致、匿名業務10経路とCron HEAD401。配備物9検査/1042ファイル、公開前後の業務5文書hash/revision一致、63下書き保持。対象配備直近5分errorログ0（Drainsは再確認なし）。本番の実商品紐付け・Amazon取得ボタン・数量変更・実メール/Cron GETは実行していない。証跡はoutput/context-deployment-inspect.json、context-public-checks-20261110.json、context-production-preservation.json、context-ui-acceptance-20261110.json。
