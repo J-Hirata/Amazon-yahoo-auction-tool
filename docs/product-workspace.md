@@ -128,3 +128,5 @@
 検証：438テスト合格。隔離した実画面で4ページからの検索、複数単語、別ASIN/SKUの理由、検索後の選択保持、ASINなし監視からの選択補完、外側/Esc/下部ボタン取消、確認・保存中の取消防止、保存後の4登録先を確認。取消・プレビューだけでは5文書が一致し、確認保存でも数量・方針・日付・生の下書き・登録件数を保持。通常幅1265pxと390px/320pxで上下の操作部が表示され、狭い画面で編集本文の横はみ出し0。実DB127登録元の編集情報と在庫/監視全候補の生成もREAD ONLYで欠落0・書込0。画像はoutput/workspace-picker-usability-20261110.png（テスト用データ）、記録はoutput/picker-existing-data-check-20261110.json。
 
 範囲外・継続事項：新規商品登録や旧URL単独編集の別フォームは従来の動作。PC専用版の自動同期・入力補助のクラウド接続、実メールの次回自然受信、過去の未関連データの本人による関連確認は継続。今回の更新で本番商品や数量を代理登録しない。公開結果はdocs/status.md冒頭を正本とする。
+
+公開結果：コードdb8017413961dd4e0e5d2514e5835a9341ab4e54 / 配備dpl_EGBpDR2MNQGTNrcCwvPEdjh44Hho / READY / production。固定URLの配備ID・プロジェクト・ソースSHA、公開13アセット、匿名業務9経路/Cron HEAD401、配備物9検査/1041ファイルを確認。公開前後の業務5文書hash/revisionが一致、63下書き保持。対象配備直近5分のerrorログ0（Drainsは今回再確認していない）。本番DB書込、架空商品登録、実メール送信、Cron GET実行は0。証跡はoutput/picker-deployment-inspect.json、output/picker-public-checks-20261110.json、output/picker-production-preservation.json、output/picker-ui-acceptance-20261110.json。
