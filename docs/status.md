@@ -2,6 +2,8 @@
 
 2026-11-11 04:23 JST、通知漏れと古い再出品案内を点検・修正して公開。コード6fe2025、配備dpl_Cf5NbSLr2YVHXtebSZ1bj1u5jjnH（production READY）。設定変更で取消済みの送信待ち復帰、受付IDのみqueued、送信直前の最新在庫/設定/再出品文面再判定、回復後の再不足の世代識別、在庫監視の未完了通知を修正。修正前の不具合再現、全462テスト、配備物9項目/1051ファイル、実受信4通のMessage-ID/本文一致、公開API匿名401/Cron認証HEAD204を確認。公開前後の本番5文書revision/hash一致。実メール送信、手動Cron、通知設定/頻度/閾値/実在庫変更は0。詳細docs/notification-reliability-20261111.md、証跡/未設定一覧output/notification-reliability-20261111/。
 
+2026-11-11：写真仕分けナビへの共通ヘッダーリンクを追加。456テストとcloud資産ビルド成功。今回の範囲は相互ナビのみで、写真受領・下書き作成・業務数量・メール・Cron・PC版を変更しない。仕様docs/photo-navi-integration-20261111.md、公開記録output/photo-navi-links-20261111/release.json。
+
 2026-11-11 03:48 JST、本人が「中古・良い」を指定したため、iiyama E2483HS-B3をSKU 20220716B075D23YM3へ保存。Amazonから03:46に再取得し、在庫カード・販売監視ともFBA2個を確認。手入力補正はnullのまま、source=amazon。コンテナ9個/自宅会社未確認、他商品、計画、下書き、通知設定・送信記録の保持を比較検証。証跡output/cockpit-fixes-20261111/sku-after-summary.json。
 
 2026-11-11 02:41 JST、場所別数量・FBA未確認理由と再取得・下書き5件選択出品/直接アーカイブを本番へ反映。最終コードeddbd35、配備dpl_Bas4Ja3FPrdJ4Yz5My6RHLkVJM7c（production READY）、公開先 https://amazon-yahoo-inventory.vercel.app/ 。453テスト、配備物9項目、公開7資産の完全一致、未認証API401を確認。詳細docs/cockpit-editing-20261111.md、報告output/cockpit-fixes-20261111/report.md。
