@@ -110,3 +110,6 @@
 残件：過去の未関連データの一括統合は行わない。既存在庫の選択や既存出品の指定を本人が確認して保存する。PC版とクラウドの自動同期、同ASIN別SKUごとの下書き複製、実メールと次回日次確認は従来の継続確認事項。
 
 候補写真は登録画像を優先し、不足時は同じASINの保存済み下書き画像・Amazon参考画像を表示する。この表示だけで画像や商品情報を保存しない。最終433テスト合格。
+
+
+公開確認：コード5e4c93b07319c439188d148f4a49862b59de94b3、dpl_Fj5FP3638yKAG8TWYYDkZiQUTUAG、READY/production、固定URLへ反映済み。433テスト、配備物9検査/1041ファイル、公開13アセットhash一致、匿名API9経路/Cron HEAD401、直近5分errorログ0。切替直後に1ファイルの旧配信を観測したが、再照合ではクエリなしの通常URLで全13ファイルが一致した。公開前後で業務5文書hash/revisionが一致し、本人の並行登録後の下書き63件を保持。実DB127登録元の編集情報もREAD ONLYで再確認し欠落0。証跡：output/relations-public-checks-20261110.json、relations-preservation.json、four-tool-existing-data-check-20261110.json。実際の登録先の付け替え・在庫調整・メール送信は代行していない。
