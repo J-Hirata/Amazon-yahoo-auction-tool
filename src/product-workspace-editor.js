@@ -32,8 +32,8 @@ export function workspaceDescriptor(docs,key,row,at=new Date().toISOString()){
  return {product,stockId:stock?.id||'',ambiguousStock:row.stockIds.length>1,
 
   counts:stock?Object.fromEntries(stockTotals(docs['physical-stock'].state,stock.id).locations.map(l=>[l.locationId,l.usable])):{container:null,home:null},
-  candidates:docs['physical-stock'].state.products.filter(c=>c.asin===row.asin&&c.id!==stock?.id).map(c=>({...c,imageUrl:picture(c),locations:stockTotals(docs['physical-stock'].state,c.id).locations,issue:relationIssue(product,c)})),linkIds:[...row.linkIds],
-  planCandidates:docs['sales-planning'].state.plans.filter(c=>c.asin===row.asin&&c.status!=='closed'&&!row.plans.some(p=>p.id===c.id)).map(c=>({id:c.id,title:c.title,imageUrl:c.imageUrl,issue:relationIssue(product,c)})),
+  candidates:docs['physical-stock'].state.products.filter(c=>c.id!==stock?.id).map(c=>({...c,imageUrl:picture(c),locations:stockTotals(docs['physical-stock'].state,c.id).locations,issue:relationIssue(product,c)})),linkIds:[...row.linkIds],
+  planCandidates:docs['sales-planning'].state.plans.filter(c=>c.status!=='closed'&&!row.plans.some(p=>p.id===c.id)).map(c=>({id:c.id,title:c.title,asin:c.asin,sellerSku:c.sellerSku,condition:c.condition,setContents:c.setContents,imageUrl:picture(c),issue:relationIssue(product,c)})),
   drafts:(docs['draft-items']?.state||[]).filter(d=>d.asin===row.asin).map(d=>({asin:d.asin,status:d.status,associated:row.sourceKeys.includes('draft:'+d.asin)})),
   plans:row.plans.map(p=>({id:p.id,status:p.status,title:p.title})),
   yahooUrls:row.linkIds.map(id=>docs['link-monitor'].state.links.find(l=>l.id===id)).filter(Boolean).map(l=>'https://auctions.yahoo.co.jp/jp/auction/'+l.listingId),
@@ -69,9 +69,9 @@ export async function applyProductWorkspaceEdit(docs,command,{actor,at=new Date(
  if(!reg.stock&&stock)throw fail('登録済み在庫はチェックを外して削除できません');
  if(reg.stock&&!stock&&command.stockId){
   stock=stockState.products.find(p=>p.id===command.stockId);
-  if(!stock||!before.candidates.some(p=>p.id===stock.id&&!p.issue)||!identity(product,stock))throw fail('選択した在庫とASIN・SKU・状態・セット内容が一致しません',409);
+  if(!stock||!before.candidates.some(p=>p.id===stock.id)||relationIssue(product,stock))throw fail('選択した在庫とASIN・SKU・状態・セット内容が一致しません',409);
  }
- if(reg.stock&&!stock&&before.candidates.some(p=>!p.issue))throw fail('同じ商品の在庫候補があります。登録済みの在庫を選んでください',409);
+ if(reg.stock&&!stock&&before.candidates.some(p=>!relationIssue(product,p)))throw fail('同じ商品の在庫候補があります。登録済みの在庫を選んでください',409);
  if(!reg.stock&&command.workspace?.counts&&Object.keys(command.workspace.counts).length)throw fail('場所別数量を登録する場合はコンテナ・自社在庫を選んでください');
  const selected=[...new Set([...before.linkIds,...(stock?.linkedLinkIds||[]),...(command.linkIds||[])])];
  if(!Array.isArray(command.linkIds)||selected.length>10||selected.some(id=>!uuid(id)))throw fail('紐付け先を確認してください');
@@ -85,7 +85,10 @@ export async function applyProductWorkspaceEdit(docs,command,{actor,at=new Date(
  for(const id of linkIds){
   const link=monitor.links.find(l=>l.id===id);
   if(!link||!link.verified||link.observationConflict||!identity(association,{asin:link.asin||monitor.catalog.find(c=>c.id===link.catalogId)?.asin,sellerSku:resolvedLinkSku(link,monitor,docs['product-watch']?.state,at),condition:resolvedLinkCondition(link,monitor,docs['product-watch']?.state,at),setContents:link.workspaceProduct?.setContents||monitor.catalog.find(c=>c.id===link.catalogId)?.setContents||''}))throw fail('紐付け先とASIN・SKU・状態・セット内容を確認してください',409);
+  if(reg.yahoo&&!before.linkIds.includes(id))summary.push('紐付けるヤフオク出品：'+link.listingId+' ／ '+product.asin);
  }
+
+ if(reg.stock&&stock&&!before.stockId)summary.push('利用する登録済み在庫：'+stock.title+' ／ '+stock.asin+' ／ '+(stock.sellerSku||'SKU未指定'));
 
  if(reg.stock){
   const stockCommand={operationId:child(command.operationId,':stock'),kind:stock?'edit':'create',productId:stock?.id||child(command.operationId,':stock-product'),product:{...(stock?{...stock,...command.product,sellerSku:stock.sellerSku||product.sellerSku}:product),unit:stock?.unit||product.unit,linkedLinkIds:[...new Set([...(stock?.linkedLinkIds||[]),...linkIds])],useChannels:[...new Set([...(stock?.useChannels||[]),...(reg.merchant?['merchant']:[]),...(reg.yahoo?['yahoo']:[])])]},reason:'商品情報・販路編集'};
@@ -120,7 +123,7 @@ export async function applyProductWorkspaceEdit(docs,command,{actor,at=new Date(
    found.linkedLinkIds=[...new Set([...(found.linkedLinkIds||[]),...linkIds])];
    summary.push('登録済みの販売監視を利用（方針・日付・メモを保持）');
   }else{
-   if(before.planCandidates.some(c=>!c.issue))throw fail('同じ商品の販売監視があります。既存の計画を選んでください',409);
+   if(before.planCandidates.some(c=>!relationIssue(association,c)))throw fail('同じ商品の販売監視があります。既存の計画を選んでください',409);
    const source=stock?{kind:'stock',id:stock.id}:s.kind==='draft'?{kind:'manual',id:''}:{kind:s.kind,id:s.id},id=child(command.operationId,':plan');
    applyPlanningCommand(planning,{operationId:child(command.operationId,':plan-create'),kind:'create',planId:id,plan:{...product,source,kind:'amazon',status:'active',durationDays:10,availableOn:'',reviewOn:'',note:'',decisions:['undecided'],linkedLinkIds:linkIds}},{actor,at,sources:[{...product,...source}]});activePlan=planning.plans.find(p=>p.id===id);summary.push('販売監視に追加（方針・日付は未設定）');
   }
