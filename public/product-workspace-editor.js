@@ -38,7 +38,7 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
    if(result.status==='running')throw new Error('別の取得処理が実行中です。少し待ってから再取得してください。');
    const updated=(await request()).entries[entry.key];
    if(!updated?.editor||['product','counts','sources'].some(k=>JSON.stringify(updated.editor[k])!==JSON.stringify(entry.editor[k])))throw new Error('取得中に商品情報も更新されました。入力は残しています。最新の商品情報を確認してください。');
-   entries[entry.key]=updated;entry=updated;workspaceFields.refresh(entry.live);
+   entries[entry.key]=updated;entry=updated;workspaceFields.refresh(entry.live);await onChanged();
    form.querySelector('[data-status]').textContent=result.errors?.length?result.errors.join(' ／ '):'Amazonから取得しました。数量が未確認の場合は、商品カードの「SKUを選ぶ」で対象を選んでください。';
   }));
   for(const b of dialog.querySelectorAll('[data-close]'))b.addEventListener('click',()=>{if(!busy)dialog.close();});
