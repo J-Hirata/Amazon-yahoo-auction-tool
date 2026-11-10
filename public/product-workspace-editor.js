@@ -5,7 +5,7 @@ import {createProductPicker} from './workspace-product-picker.js';
 const fields=['title','asin','sellerSku','condition','setContents','memo','imageUrl','fbaEligibility'];
 const el=(tag,text,cls)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(cls)n.className=cls;return n;};
 export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async()=>{}}={}){
- let dialog,form,entry,entries={},workspaceFields,asinInput,busy=false,preview,pending,pickers=[],chosenLinkIds=new Set(),merchantSku='';
+ let dialog,form,entry,entries={},workspaceFields,asinInput,busy=false,preview,pending,pickers=[],chosenLinkIds=new Set(),merchantSku='',editedLocations=new Set();
  const pendingKey='product-workspace-pending';
  try{pending=JSON.parse(sessionStorage.getItem(pendingKey)||'null');}catch{}
  async function request(path='',body,revision){
@@ -31,6 +31,16 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
   }));
   const linkSection=form.querySelector('[data-link-options]');linkSection.innerHTML='<div data-link-picker></div>';
   workspaceFields=createStockWorkspaceFields(form);asinInput=bindStockAsin(form.elements.asin);
+  const refreshFba=el('button','FBA在庫をAmazonから取得','secondary');refreshFba.type='button';form.querySelector('[data-current]').after(refreshFba);
+  refreshFba.addEventListener('click',()=>work(async()=>{
+   form.querySelector('[data-status]').textContent='Amazonから在庫・SKUを取得しています…';
+   const result=await request('/fba-refresh',{});
+   if(result.status==='running')throw new Error('別の取得処理が実行中です。少し待ってから再取得してください。');
+   const updated=(await request()).entries[entry.key];
+   if(!updated?.editor||['product','counts','sources'].some(k=>JSON.stringify(updated.editor[k])!==JSON.stringify(entry.editor[k])))throw new Error('取得中に商品情報も更新されました。入力は残しています。最新の商品情報を確認してください。');
+   entries[entry.key]=updated;entry=updated;workspaceFields.refresh(entry.live);
+   form.querySelector('[data-status]').textContent=result.errors?.length?result.errors.join(' ／ '):'Amazonから取得しました。数量が未確認の場合は、商品カードの「SKUを選ぶ」で対象を選んでください。';
+  }));
   for(const b of dialog.querySelectorAll('[data-close]'))b.addEventListener('click',()=>{if(!busy)dialog.close();});
   let backdropStart=false;
   const outside=e=>{const r=dialog.getBoundingClientRect();return e.target===dialog&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom);};
@@ -39,7 +49,7 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
   dialog.addEventListener('cancel',e=>{if(busy)e.preventDefault();});
   dialog.querySelector('[data-back]').addEventListener('click',()=>{if(!pending)review(false);});
   form.addEventListener('change',()=>{if(!pending){preview=null;sync();}});
-  form.addEventListener('input',()=>{if(!pending)preview=null;});
+  form.addEventListener('input',e=>{if(!pending){preview=null;if(['containerQuantity','homeQuantity'].includes(e.target.name)){editedLocations.add(e.target.name);if(e.target.value!=='')form.elements.alsoStock.checked=true;sync();}}});
   for(const name of ['asin','sellerSku','condition','setContents'])form.elements[name].addEventListener('input',()=>{if(!pending)for(const picker of pickers)picker.draw();});
   form.elements.asin.addEventListener('blur',()=>{for(const picker of pickers)picker.draw();});
   form.addEventListener('submit',e=>{e.preventDefault();work(async()=>{
@@ -72,12 +82,13 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
  async function work(fn){if(busy||readOnly())return;busy=true;controls();try{await fn();}catch(e){dialog.querySelector('[data-status]').textContent=e.message;}finally{busy=false;controls();}}
  function selectedStock(){return entry.editor.stockId?entry.editor:entry.editor.candidates.find(c=>c.id===form.elements.stockId.value);}
  function sync(){
-  const f=form.elements;for(const id of ['container','home'])f[id+'Quantity'].disabled=!f.alsoStock.checked;
+  const f=form.elements;for(const id of ['container','home'])f[id+'Quantity'].disabled=false;
   form.querySelector('[data-stock-choice]').hidden=!f.alsoStock.checked||Boolean(entry.editor.stockId);
   const linked=entry.editor.linkIds.length>0;
   form.querySelector('[data-yahoo-url]').hidden=!f.alsoYahoo.checked||linked;
   form.querySelector('[data-yahoo-registered]').hidden=!linked;
-  form.querySelector('[data-stock-registered]').hidden=!entry.editor.stockId;
+  form.querySelector('[data-stock-registered]').hidden=!entry.editor.stockId&&!f.alsoStock.checked;
+  if(!entry.editor.stockId)form.querySelector('[data-stock-registered]').textContent='入力した数量は共通の在庫台帳に保存します。ほかのページにも反映されます。空欄は未確認、0は在庫なしです。';
   form.querySelector('[data-plan-registered]').hidden=!entry.editor.plans.some(p=>p.status!=='closed');
   form.querySelector('[data-merchant-choice]').hidden=!f.alsoMerchant.checked;
   form.querySelector('[data-yahoo-help]').textContent=f.alsoYahoo.checked&&!linked?'既存の出品を選ぶか、ヤフオク出品URLを入力してください。下書きは別のチェックで選択します。':'';
@@ -86,7 +97,7 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
  }
  function values(){
   const product={},f=form.elements;for(const k of fields){const v=f[k].value.trim();if(v!==(entry.editor.product[k]||''))product[k]=v;}
-  const workspace=workspaceFields.values(),counts={};for(const id of ['container','home'])if(f.alsoStock.checked){const v=f[id+'Quantity'].value,before=selectedStock()?.counts?.[id]??selectedStock()?.locations?.find(l=>l.locationId===id)?.usable??null;if(v===''&&before!==null)throw new Error('登録済みの数量は空欄にできません。在庫なしは0を入力してください。');if(v!==''&&Number(v)!==before)counts[id]=Number(v);}if(Object.keys(counts).length)workspace.counts=counts;
+  const workspace=workspaceFields.values(),counts={};for(const id of ['container','home']){const v=f[id+'Quantity'].value,before=selectedStock()?.counts?.[id]??selectedStock()?.locations?.find(l=>l.locationId===id)?.usable??null;if(v===''&&before!==null)throw new Error('登録済みの数量は空欄にできません。在庫なしは0を入力してください。');if(v!==''&&Number(v)!==before)counts[id]=Number(v);}if(Object.keys(counts).length){workspace.counts=counts;f.alsoStock.checked=true;}
   return {operationId:crypto.randomUUID(),key:entry.key,kind:'workspace',product,workspace,merchantSellerSku:f.alsoMerchant.checked?merchantSku:'',stockId:f.stockId.value||entry.editor.stockId,linkIds:[...new Set([...entry.editor.linkIds,...(f.alsoYahoo.checked?chosenLinkIds:[])])],planId:f.planId.value||undefined,registration:{draft:f.alsoDraft.checked,stock:f.alsoStock.checked,merchant:f.alsoMerchant.checked,yahoo:f.alsoYahoo.checked,planning:f.alsoPlanning.checked,yahooUrl:f.alsoYahoo.checked&&!entry.editor.linkIds.length?f.yahooUrl.value.trim():''}};
  }
  async function open(key){
@@ -94,7 +105,7 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
   try{
    entries=(await request()).entries;entry=entries[key];if(!entry?.editor)throw new Error('商品情報を読み直してください');
    if(pending&&pending.command.key!==key)throw new Error('前の商品に保存結果が未確認の操作があります。その商品の編集から確認してください。');
-   form.reset();preview=null;review(false);const f=form.elements,p=entry.editor.product;
+   form.reset();editedLocations=new Set();preview=null;review(false);const f=form.elements,p=entry.editor.product;
    for(const k of fields)f[k].value=p[k]||'';asinInput.refresh();
    f.asin.readOnly=entry.editor.linkIds.length>0||key.startsWith('draft:');f.sellerSku.readOnly=Boolean(p.sellerSku);f.condition.disabled=Boolean(entry.editor.stockId);f.setContents.readOnly=Boolean(entry.editor.stockId);
    for(const id of ['container','home'])f[id+'Quantity'].value=entry.editor.counts[id]??'';
@@ -119,7 +130,7 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
    const merchantProducts=()=>{const list=[...(entry.editor.merchantChoices||[])];if(merchantSku===entry.editor.merchant?.sellerSku&&merchantSku&&!list.some(c=>c.sellerSku===merchantSku&&c.asin===p.asin))list.unshift({id:JSON.stringify([p.asin,merchantSku]),asin:p.asin,sellerSku:merchantSku,title:p.title,condition:p.condition,imageUrl:p.imageUrl,detail:'紐付け済み・出品状況は取得ボタンで更新できます'});return list;};
    pickers.push(createProductPicker(form.querySelector('[data-merchant-picker]'),{label:'Amazon自社発送の登録済み出品',products:merchantProducts,source:()=>({...current(),sellerSku:''}),selected:()=>merchantSku?[JSON.stringify([f.asin.value,merchantSku])]:[],onSelect:c=>{merchantSku=c.sellerSku;if(!f.asin.value&&!f.asin.readOnly)f.asin.value=c.asin;if(f.condition.value==='unknown')f.condition.value=c.condition;asinInput.refresh();refreshPickers();}}));
    pickers.push(createProductPicker(form.querySelector('[data-stock-picker]'),{label:'登録済みのコンテナ・自社在庫',products:()=>entry.editor.candidates.map(c=>({...c,detail:c.locations.map(l=>(l.locationId==='container'?'コンテナ':'自宅・会社')+' '+(l.usable??'未確認')).join(' ／ ')})),source:current,selected:()=>[f.stockId.value].filter(Boolean),onSelect:c=>{
-    f.stockId.value=c.id;fillMissing(c);for(const id of ['container','home'])f[id+'Quantity'].value=c.locations.find(l=>l.locationId===id)?.usable??'';
+    f.stockId.value=c.id;fillMissing(c);for(const id of ['container','home'])if(!editedLocations.has(id+'Quantity'))f[id+'Quantity'].value=c.locations.find(l=>l.locationId===id)?.usable??'';
     const relatedMerchant=entries['stock:'+c.id]?.editor.merchant;if(relatedMerchant?.sellerSku||relatedMerchant?.conflict){if(merchantSku&&relatedMerchant.sellerSku&&merchantSku!==relatedMerchant.sellerSku){merchantSku='';form.querySelector('[data-merchant-help]').textContent='元の商品と選んだ在庫で自社発送SKUが異なります。正しい出品を選んでください。';}else merchantSku=relatedMerchant.sellerSku;f.alsoMerchant.checked=true;f.alsoMerchant.disabled=true;}
     const plan=entries['stock:'+c.id]?.editor.plans.find(p=>p.status!=='closed');if(plan&&!entry.editor.plans.some(p=>p.status!=='closed')){f.alsoPlanning.checked=true;f.planId.value=plan.id;}refreshPickers();
    }}));

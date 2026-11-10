@@ -25,6 +25,7 @@ function harness() {
       }},
       tabs: {
         create: async () => ({id: ++id}),
+        sendMessage:async (tabId,message)=>({ok:true,tabId,message}),
         update: async (tabId, options) => {assert.ok(stored[`draft:${tabId}`]); navigation.push({tabId, ...options});},
         onRemoved: {addListener() {}}
       },
@@ -87,4 +88,20 @@ test('the content bridge forwards the input status body to the guarded backgroun
   const response=await bridge.fetch('http://localhost:41731/api/items/B000000001',{method:'PATCH',body:JSON.stringify({status:workStatus,...(workStatus==='draft_saved'?{saveConfirmed:true}:{})})});assert.equal(response.ok,true);assert.deepEqual(JSON.parse(h.requests.at(-1).options.body),{status:workStatus,...(workStatus==='draft_saved'?{saveConfirmed:true}:{})});
  }
  await assert.rejects(()=>bridge.fetch('http://localhost:41731/api/items/B000000001',{method:'PATCH',body:JSON.stringify({status:'sold'})}));assert.equal(h.requests.length,2);
+});
+
+const cloud='https://amazon-yahoo-inventory.vercel.app/?view=drafts';
+const cloudMessage=(n=5)=>({type:'openCloudListings',handoffId:'12345678-1234-4123-8123-123456789abc',yahooSellerUrl:'https://auctions.yahoo.co.jp/jp/show/submit?category=0',drafts:Array.from({length:n},(_,i)=>({asin:'B'+String(i+1).padStart(9,'0'),title:'商品'+i,description:'手書き説明'+i,price:i?1000:null,imageUrls:[]}))});
+test('five cloud selections open isolated tabs without localhost, preserve each draft and return guarded progress to the source tab',async()=>{
+ const h=harness(),m=cloudMessage();assert.equal((await h.send(m,cloud,42)).ok,true);assert.equal(h.navigation.length,5);assert.equal(h.requests.length,0);
+ for(let i=1;i<=5;i++){const result=await h.send({type:'api',path:'/api/items/'+m.drafts[i-1].asin+'/draft'},undefined,i);assert.equal(result.json.draft.description,'手書き説明'+(i-1));assert.equal((await h.send({type:'selection'},undefined,i)).asin,m.drafts[i-1].asin);}
+ const r=await h.send({type:'api',method:'PATCH',path:'/api/items/B000000001',body:{status:'input_done'}},undefined,1);assert.equal(r.ok,true);assert.equal(r.json.tabId,42);assert.equal(r.json.message.patch.status,'input_done');assert.equal(h.requests.length,0);
+ assert.equal((await h.send({type:'api',path:'/api/items/B000000002/draft'},undefined,1)).ok,false);
+ assert.equal((await h.send({type:'api',method:'PATCH',path:'/api/items/B000000001',body:{status:'listed'}},undefined,1)).ok,false);
+ h.stored['draft:1'].at=Date.now()-3600001;assert.equal((await h.send({type:'api',path:'/api/items'},undefined,1)).ok,false);assert.equal(h.requests.length,0);
+});
+test('cloud handoff rejects foreign origins, frames, unsafe images and invalid/duplicate/oversized batches before opening any tab',async()=>{
+ for(const alter of [m=>m.drafts.push(m.drafts[0]),m=>m.drafts[1].asin=m.drafts[0].asin,m=>m.drafts[0].imageUrls=['https://evil.example/a.jpg'],m=>m.yahooSellerUrl='https://auctions.yahoo.co.jp/account',m=>m.drafts[0].price=-1,m=>m.drafts[0].description='x'.repeat(30001)]){const h=harness(),m=cloudMessage();alter(m);assert.equal((await h.send(m,cloud)).ok,false);assert.equal(h.navigation.length,0);assert.equal(h.requests.length,0);}
+ for(const origin of ['https://evil.example','http://localhost:41731/','https://amazon-yahoo-inventory.vercel.app.evil.example']){const h=harness();assert.equal((await h.send(cloudMessage(),origin)).ok,false);assert.equal(h.navigation.length,0);}
+ const h=harness();await h.send(cloudMessage(1),cloud);h.context.chrome.tabs.sendMessage=async()=>({ok:false,error:'管理画面は閉じています'});const r=await h.send({type:'api',method:'PATCH',path:'/api/items/B000000001',body:{status:'draft_saved',saveConfirmed:true}});assert.equal(r.ok,false);assert.match(r.error,/閉じています/);assert.equal(h.requests.length,0);
 });

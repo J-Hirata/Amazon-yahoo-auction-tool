@@ -52,7 +52,13 @@ export async function applyProductWorkspaceEdit(docs,command,{actor,at=new Date(
  if(old){if(old.actor!==actor||old.digest!==digest)throw fail('同じ操作IDの内容が異なります',409);return {...old,replayed:true};}
  if(expectedRevision!==docs['link-monitor'].revision||Object.keys(docs).some(k=>sourceRevisions?.[k]!==docs[k].revision))throw fail('ほかの編集・自動確認が保存されました。入力を残して最新の内容を確認し直してください',409);
  if(receipts.length>=10000)throw fail('商品編集の保存履歴の上限です',409);
- const s=origin(docs,command.key),before=workspaceDescriptor(docs,command.key,undefined,at),reg=command.registration;
+ const s=origin(docs,command.key),before=workspaceDescriptor(docs,command.key,undefined,at),reg={...command.registration};
+ if(!command.registration||typeof command.registration.stock!=='boolean')throw fail('登録先を確認してください');
+ const counts=command.workspace?.counts;
+ if(counts!==undefined&&(!counts||Array.isArray(counts)||typeof counts!=='object'||Object.entries(counts).some(([k,v])=>!['container','home'].includes(k)||!Number.isSafeInteger(v)||v<0||v>1000000)))throw fail('場所別数量は0以上の整数を入力してください');
+ // Entering a location count is sufficient intent to use the shared stock ledger.
+ // Keep the original command/digest untouched for safe retries.
+ if(command.workspace?.counts&&Object.keys(command.workspace.counts).length)reg.stock=true;
  if(reg?.draft!==undefined&&typeof reg.draft!=='boolean')throw fail('下書きの登録先を確認してください');
  if(!reg||['stock','merchant','yahoo','planning'].some(k=>typeof reg[k]!=='boolean')||typeof reg.yahooUrl!=='string'||reg.yahooUrl.length>2048||reg.yahooUrl&&!reg.yahoo)throw fail('登録先を確認してください');
  if(!command.product||Array.isArray(command.product)||Object.keys(command.product).some(k=>!['title','asin','sellerSku','condition','setContents','memo','imageUrl','fbaEligibility'].includes(k)))throw fail('商品情報の入力を確認してください');
@@ -73,7 +79,6 @@ export async function applyProductWorkspaceEdit(docs,command,{actor,at=new Date(
   if(!stock||!before.candidates.some(p=>p.id===stock.id)||relationIssue(product,stock))throw fail('選択した在庫とASIN・SKU・状態・セット内容が一致しません',409);
  }
  if(reg.stock&&!stock&&before.candidates.some(p=>!relationIssue(product,p)))throw fail('同じ商品の在庫候補があります。登録済みの在庫を選んでください',409);
- if(!reg.stock&&command.workspace?.counts&&Object.keys(command.workspace.counts).length)throw fail('場所別数量を登録する場合はコンテナ・自社在庫を選んでください');
  const selected=[...new Set([...before.linkIds,...(stock?.linkedLinkIds||[]),...(command.linkIds||[])])];
  if(!Array.isArray(command.linkIds)||selected.length>10||selected.some(id=>!uuid(id)))throw fail('紐付け先を確認してください');
  const summary=[],workspace=structuredClone(command.workspace||{});

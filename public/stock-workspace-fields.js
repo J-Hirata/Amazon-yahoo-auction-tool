@@ -1,13 +1,19 @@
+import {fbaStatus} from './fba-status.js';
 const el=(tag,text)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;return n;};
 export function createStockWorkspaceFields(form){
  const section=el('fieldset');section.className='stock-workspace-fields';section.innerHTML='<legend>FBA在庫・納品予定</legend><p data-current></p><label class="stock-alarm-primary">FBAが何個以下なら通知するか<input name="workspaceAlarm" type="number" min="0" max="1000000" step="1" placeholder="残数を指定"></label><small>紐付け済みの商品紐付け・在庫・販売監視で共通の設定です。0なら在庫切れ時。日次確認で通知します。</small><p data-alarm-status role="status"></p><label data-alarm-clear hidden><input name="workspaceAlarmClear" type="checkbox">残数指定を解除して各ページを揃える</label><div class="stock-manual-correction"><label>在庫数の手入力補正（任意）<select name="workspaceFbaAction"><option value="keep">変更しない（通常はこちら）</option><option value="set">現在のFBA在庫数を手入力する</option><option value="clear">手入力を解除しAmazon取得値に戻す</option></select></label><p data-manual-status></p><label data-manual-field hidden>現在のFBA在庫数（手入力）<input name="workspaceFba" type="number" min="0" max="1000000" step="1" placeholder="確認した現在庫を入力"></label><small>手入力した時点の在庫数から販売分を差し引きます。通知する残数とは別です。Amazon側の数量は変更しません。</small></div><div data-existing></div><div class="stock-incoming-new"><strong>納品予定を追加</strong><div class="stock-form-grid"><label>到着予定数<input name="incomingQuantity" type="number" min="1" max="1000000" step="1" placeholder="予定があれば入力"></label><label>状況<select name="incomingStage"><option value="packing">梱包中</option><option value="transit">発送中</option></select></label><label>到着予定日<input name="incomingDate" type="date"></label><label>納品番号・メモ<input name="incomingReference" maxlength="200"></label></div></div>';
  form.querySelector('[data-location-fields],#stockInitialFields').after(section);let initial={},plans=[];
  function manualFields(){const active=form.elements.workspaceFbaAction.value==='set';section.querySelector('[data-manual-field]').hidden=!active;form.elements.workspaceFba.disabled=!active;form.elements.workspaceFba.required=active;}
  form.elements.workspaceFbaAction.addEventListener('change',manualFields);form.elements.workspaceAlarmClear.addEventListener('change',()=>{form.elements.workspaceAlarm.disabled=form.elements.workspaceAlarmClear.checked;});
- function populate(product,live){
+ function refresh(live){
   const f=live?.availability?.fba,c=f?.counter,source=({estimate:'推定',manual:'手入力',amazon:'Amazon取得',unknown:'数量未取得'})[f?.source]||'数量未取得';
   let skuList=form.querySelector('#stockWorkspaceSkus');if(!skuList){skuList=el('datalist');skuList.id='stockWorkspaceSkus';form.append(skuList);form.elements.sellerSku.setAttribute('list',skuList.id);}skuList.replaceChildren();for(const option of live?.skuOptions||[]){const o=el('option');o.value=option.sellerSku;o.label=[option.condition,option.shipping,Number.isSafeInteger(option.fbaQuantity)?'FBA '+option.fbaQuantity+'個':''].filter(Boolean).join(' ／ ');skuList.append(o);}
   section.querySelector('[data-current]').textContent=`現在のFBA在庫：${Number.isSafeInteger(f?.quantity)?f.quantity+'個':'数量未取得'}${f?.source?'（'+source+'）':''}${c?.sales!==null&&c?.sales!==undefined?' ／ 基準'+c.baseline+' − 販売'+c.sales:''}`;
+  let reason=section.querySelector('[data-fba-reason]');if(!reason){reason=el('p');reason.dataset.fbaReason='';section.querySelector('[data-current]').after(reason);}reason.textContent=fbaStatus(live).message+(f?.checkedAt?' 最終取得：'+new Date(f.checkedAt).toLocaleString('ja-JP',{timeZone:'Asia/Tokyo'}):'');
+  if(f?.variants?.length)reason.textContent+=' '+f.variants.map(v=>v.sellerSku+'：'+(Number.isSafeInteger(v.quantity)?v.quantity+'個':'未確認')+'（'+v.condition+'）').join(' ／ ');
+ }
+ function populate(product,live){
+  refresh(live);
   form.elements.workspaceFba.value='';form.elements.workspaceFbaAction.value='keep';manualFields();form.elements.workspaceAlarm.value=live?.alarmThreshold??'';form.elements.workspaceAlarm.disabled=false;form.elements.workspaceAlarmClear.checked=false;
   const shared=live?.sharedLowStock,conflict=Boolean(shared?.conflict);section.querySelector('[data-alarm-clear]').hidden=!conflict;
   section.querySelector('[data-alarm-status]').textContent=conflict?'通知残数が異なります（'+shared.values.map(v=>v.source==='fba'?v.threshold+'個以下':v.source?'別の在庫を対象':'残数指定なし').join(' ／ ')+'）。共通の数を入力するか、残数指定の解除を選んでください。':live?.workspace?.stockCandidates?.some(p=>!p.mismatch)?'同じASINの在庫候補があります。未連携の在庫とは通知設定を共有しません。登録先欄で対象を選んで関連付けてください。':'';
@@ -29,5 +35,5 @@ export function createStockWorkspaceFields(form){
   else if(form.elements.incomingDate.value||form.elements.incomingReference.value.trim())throw new Error('納品予定の個数を入力してください。');
   if(incoming.length)w.incoming=incoming;return w;
  }
- return {populate,values};
+ return {populate,values,refresh};
 }

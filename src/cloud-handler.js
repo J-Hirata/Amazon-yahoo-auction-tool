@@ -74,10 +74,10 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
       if (owner.status !== 200) return reply({error: owner.status === 403 ? "このアカウントには利用権限がありません" : "ログインが必要です"}, owner.status);
       if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly, physicalStock: Boolean(stock),salesPlanning:Boolean(planning),productOverview:Boolean(overview)});
       if(productLinks&&request.method==="GET"&&url.pathname==="/api/product-links")return reply(await productLinks.list());
-      if(productLinks&&request.method==="POST"&&["/api/product-links/operations","/api/product-links/preview","/api/product-links/refresh","/api/product-links/merchant-options"].includes(url.pathname)){
+      if(productLinks&&request.method==="POST"&&["/api/product-links/operations","/api/product-links/preview","/api/product-links/refresh","/api/product-links/fba-refresh","/api/product-links/merchant-options"].includes(url.pathname)){
         if(config.readOnly)return reply({error:"現在は閲覧のみです"},403);
         const data=await jsonBody(request);
-        if(url.pathname.endsWith("/refresh")){if(!productLinks.refresh)return reply({error:"自動取得にはAmazon接続が必要です。商品ページのリンクから確認してください"},503);return reply(await productLinks.refresh());}
+        if(url.pathname.endsWith('/refresh')||url.pathname.endsWith('/fba-refresh')){if(!productLinks.refresh)return reply({error:"自動取得にはAmazon接続が必要です。商品ページのリンクから確認してください"},503);return reply(await productLinks.refresh({inventoryOnly:url.pathname.endsWith('/fba-refresh')}));}
         const match=request.headers.get("if-match");if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||""))return reply({error:"最新のURL登録画面を開いてください"},428);
         const options={expectedRevision:Number(match.slice(1,-1)),sourceRevisions:data.sourceRevisions,actor:owner.userId,confirmed:data.confirmed};return reply(await (url.pathname.endsWith('/merchant-options')?productLinks.merchantOptions(data.command,options):url.pathname.endsWith('/preview')?productLinks.preview(data.command,options):productLinks.save(data.command,options)));
       }

@@ -34,6 +34,12 @@
 !public/extension-logo.png
 !scripts
 !scripts/build-cloud.mjs
+!scripts/build-extension.mjs
+!chrome-extension
+!chrome-extension/**
+!public/yahoo-fill.js
+!public/extension-helper.html
+!public/fba-status.js
 !package.json
 !package-lock.json
 !vercel.json

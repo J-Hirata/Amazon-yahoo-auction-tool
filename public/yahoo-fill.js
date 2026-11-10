@@ -204,10 +204,11 @@
   }
 
   function utilityLinks() {
+    const management=extension?.managementUrl||`${baseUrl}/`;
     return `
       <div style="border-top:1px solid #e2e8f0;margin-top:4px;padding-top:10px;display:grid;gap:6px">
         <div style="font-weight:700;color:#334155">管理・登録</div>
-        ${linkButton("管理画面を開く", `${baseUrl}/`)}
+        ${linkButton("管理画面を開く", management)}
         ${linkButton("ASIN登録へ戻る", `${baseUrl}/#asin-register`)}
         ${linkButton("Yahoo補助の登録方法", `${baseUrl}/yahoo-helper.html`)}
       </div>
@@ -693,11 +694,13 @@
   }
 
   async function recordLocalWorkStatus(asin, workStatus) {
+    try{
     const response = await fetch(`${baseUrl}/api/items/${encodeURIComponent(asin)}`, {
       method: "PATCH", headers: {"Content-Type": "application/json"},
       body: JSON.stringify({status: workStatus, ...(workStatus === "draft_saved" ? {saveConfirmed: true} : {})})
     });
     if (!response.ok) {status.textContent = "管理画面への作業記録を保存できませんでした。入力内容は残しています。"; throw new Error("作業記録の保存に失敗しました");}
+    }catch(error){status.textContent='フォームの入力は残っています。管理画面への記録に失敗：'+error.message;throw error;}
   }
 
   async function markLocalDraftSaved(asin) {

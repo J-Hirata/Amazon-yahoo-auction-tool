@@ -116,3 +116,25 @@ test('overview edits use the same threshold and an unrelated note edit cannot ov
  await overview.commit(c,{expectedRevision:view.revision,actor});assert.deepEqual(f.read(),after);
  await assert.rejects(()=>overview.commit({...c,operationId:randomUUID()},{expectedRevision:view.revision,actor}),{status:409});assert.deepEqual(f.read(),after);
 });
+
+test('location input creates the common ledger from link, plan or draft without the registration checkbox; replay and later edits reuse it',async()=>{
+ for(const kind of ['link','plan','draft']){
+  const f=fixture();let key='plan:'+f.planId;
+  if(kind==='link')await f.transaction.update(d=>{const l=registerPageLink(d['link-monitor'].state,{amazon:'B000COUNT1',yahoo:'https://auctions.yahoo.co.jp/jp/auction/h1248825099',submitted:true},at);key='link:'+l.id;});
+  if(kind==='draft')await f.transaction.update(d=>{d['draft-items'].state.push({asin:'B000COUNT1',title:'手書き商品名',description:'消さない説明',imageUrls:[],status:'ready_for_draft',startPrice:1000,createdAt:at});key='draft:B000COUNT1';});
+  const c=cmd(key,{workspace:{counts:{home:6}},registration:{stock:false,merchant:false,yahoo:kind==='link',planning:kind==='plan',draft:kind==='draft',yahooUrl:''}}),before=f.read();
+  await f.editor.preview(c,options(before));assert.deepEqual(f.read(),before);
+  await f.editor.save(c,options(before));let d=f.read(),stockId=d['physical-stock'].state.products[0].id;
+  assert.equal(d['physical-stock'].state.products.length,1);assert.equal((await f.editor.list()).entries[key].editor.stockId,stockId);
+  assert.deepEqual((await f.editor.list()).entries[key].editor.counts,{container:null,home:6});
+  await f.editor.save(c,options(before));assert.deepEqual(f.read(),d);
+  await f.editor.save(cmd(key,{workspace:{counts:{home:0}},registration:c.registration}),options(d));d=f.read();assert.equal(d['physical-stock'].state.products.length,1);assert.deepEqual((await f.editor.list()).entries[key].editor.counts,{container:null,home:0});
+  if(kind==='draft'){assert.equal(d['draft-items'].state[0].description,'消さない説明');assert.equal(d['draft-items'].state[0].startPrice,1000);}
+ }
+});
+test('implicit location registration rejects malformed counts and duplicate compatible stock atomically',async()=>{
+ for(const counts of [{home:-1},{home:1.5},{other:6},{home:null},[],{home:'6'}]){const f=fixture(),before=f.read();await assert.rejects(()=>f.editor.save(cmd('plan:'+f.planId,{workspace:{counts}}),options(before)));assert.deepEqual(f.read(),before);}
+ const f=fixture(),id=randomUUID();await f.transaction.update(d=>applyStockCommand(d['physical-stock'].state,{operationId:randomUUID(),kind:'create',productId:id,product:{title:'既存在庫',asin,sellerSku:'SKU',condition:'used',setContents:'ケーブル付き',unit:'個'},initialCounts:{container:10,home:2}},{actor,at}));
+ const c=cmd('plan:'+f.planId,{workspace:{counts:{home:6}}}),before=f.read();await assert.rejects(()=>f.editor.save(c,options(before)),/登録済みの在庫/);assert.deepEqual(f.read(),before);
+ await f.editor.save({...c,stockId:id},options(before));const e=(await f.editor.list()).entries[c.key];assert.deepEqual(e.editor.counts,{container:10,home:6});assert.equal(f.read()['physical-stock'].state.products.length,1);
+});

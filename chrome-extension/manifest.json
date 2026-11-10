@@ -1,15 +1,62 @@
 {
   "manifest_version": 3,
   "name": "ASIN下書きQ・Yahoo入力補助",
-  "version": "1.0.3",
-  "icons": {"16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png"},
+  "version": "1.0.4",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "description": "ヤフオク画面からASIN下書きを選んで入力します。出品の確定は手動です。",
-  "permissions": ["storage", "scripting", "clipboardWrite"],
-  "host_permissions": ["http://localhost/*", "https://auctions.yahoo.co.jp/*", "https://*.auctions.yahoo.co.jp/*"],
-  "background": {"service_worker": "background.js", "type": "module"},
-  "action": {"default_title": "Amazon → ヤフオク・ASIN下書きQを開く", "default_icon": {"16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png"}},
+  "permissions": [
+    "storage",
+    "scripting",
+    "clipboardWrite"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://auctions.yahoo.co.jp/*",
+    "https://*.auctions.yahoo.co.jp/*",
+    "https://amazon-yahoo-inventory.vercel.app/*",
+    "https://*.media-amazon.com/*",
+    "https://*.ssl-images-amazon.com/*",
+    "https://*.images-amazon.com/*",
+    "https://*.yimg.jp/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Amazon → ヤフオク・ASIN下書きQを開く",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
   "content_scripts": [
-    {"matches": ["https://auctions.yahoo.co.jp/*", "https://*.auctions.yahoo.co.jp/*"], "js": ["yahoo.js"], "run_at": "document_idle"},
-    {"matches": ["http://localhost/*"], "js": ["management.js"], "run_at": "document_idle"}
+    {
+      "matches": [
+        "https://auctions.yahoo.co.jp/*",
+        "https://*.auctions.yahoo.co.jp/*"
+      ],
+      "js": [
+        "yahoo.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "http://localhost/*",
+        "https://amazon-yahoo-inventory.vercel.app/*"
+      ],
+      "js": [
+        "management.js"
+      ],
+      "run_at": "document_idle"
+    }
   ]
 }

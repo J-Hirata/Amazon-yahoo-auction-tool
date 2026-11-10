@@ -10,14 +10,14 @@ export {collectProductAlerts} from "./product-alerts.js";
 import {collectProductAlerts} from "./product-alerts.js";
 
 export function createProductMonitoring({overview,watchStore,config,readInventory=readFbaInventory,readYahoo=fetchYahooListing,readListings,followRelistings,now=()=>new Date().toISOString()}){
-  async function run({settings,enqueueAlerts,refreshListings=false}){
+  async function run({settings,enqueueAlerts,refreshListings=false,inventoryOnly=false}){
     const id=randomUUID(),at=now(),claim=await watchStore.update(state=>{
       if(state.observations.job?.status==="running"&&Date.parse(state.observations.job.leaseUntil)>Date.parse(at))return false;
       state.observations.job={id,status:"running",startedAt:at,leaseUntil:new Date(Date.parse(at)+150000).toISOString()};return true;
     });
     if(!claim)return {status:"running"};
     let relistingError='';
-    if(followRelistings)try{await followRelistings();}catch{relistingError='再出品メールの確認に失敗しました。以前の紐付けを保持しています';}
+    if(followRelistings&&!inventoryOnly)try{await followRelistings();}catch{relistingError='再出品メールの確認に失敗しました。以前の紐付けを保持しています';}
     const input=await overview.inputs(),asins=[...new Set(productOverview(input,at).filter(r=>!r.sources.every(s=>s==="draft")).map(r=>r.asin).filter(Boolean))];
     let fba,listings,errors=relistingError?[relistingError]:[];
     if(asins.length&&asins.length<=100){
@@ -30,7 +30,7 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
     }
     const ids=[...new Set(input.monitor.links.map(l=>l.listingId))];
     const previous=input.watch.observations.yahoo||[];
-    const targets=ids.map(listingId=>({listingId,previous:previous.find(y=>y.listingId===listingId)})).sort((a,b)=>(a.previous?.checkedAt||"").localeCompare(b.previous?.checkedAt||"")).slice(0,20);
+    const targets=inventoryOnly?[]:ids.map(listingId=>({listingId,previous:previous.find(y=>y.listingId===listingId)})).sort((a,b)=>(a.previous?.checkedAt||"").localeCompare(b.previous?.checkedAt||"")).slice(0,20);
     const results=[];
     for(let i=0;i<targets.length;i+=4)await Promise.all(targets.slice(i,i+4).map(async target=>{
       try{
@@ -42,14 +42,17 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
       }catch{results.push({listingId:target.listingId,status:"unknown",verified:false,reason:"取得できず・終了とは判断しません",checkedAt:now()});}
     }));
     if(results.some(r=>!r.verified))errors.push(`ヤフオク${results.filter(r=>!r.verified).length}件を確認できません。ログインやページ変更の可能性があります`);
-    if(ids.length>targets.length)errors.push(`ヤフオクは今回${targets.length}/${ids.length}件を確認。残りは次回に順番に確認します`);
+    if(!inventoryOnly&&ids.length>targets.length)errors.push(`ヤフオクは今回${targets.length}/${ids.length}件を確認。残りは次回に順番に確認します`);
     await watchStore.update(state=>{
       if(state.observations.job?.id!==id)throw new Error("監視中に別の実行が始まりました");
       if(fba)state.observations.fba=fba;
       if(listings)state.observations.listings=listings;
-      state.observations.yahoo=[...previous.filter(p=>ids.includes(p.listingId)&&!results.some(r=>r.listingId===p.listingId)),...results];
+      if(!inventoryOnly)state.observations.yahoo=[...previous.filter(p=>ids.includes(p.listingId)&&!results.some(r=>r.listingId===p.listingId)),...results];
       state.observations.job={...state.observations.job,status:errors.length?"partial":"complete",finishedAt:now(),errors,fbaCheckedAsins:asins.length,yahooChecked:results.length};
     });
+    // A user-requested Amazon refresh updates observations only. It never reads
+    // relisting mail, consumes alert transitions, or sends notifications.
+    if(inventoryOnly)return {status:errors.length?'partial':'complete',errors,pendingAlerts:0};
     const current=await overview.inputs();
     const pending=await watchStore.update(state=>{
       for(const record of current.monitor.mailOutbox||[])if(record.status==='cancelled'&&record.cancelledFor==='conditions_changed')for(const p of state.pendingAlerts||[])if(record.alertIds?.includes(p.id)&&p.queuedAt){delete p.queuedAt;if(record.cancelledAlertIds?.includes(p.id))p.dismissedAt=now();}

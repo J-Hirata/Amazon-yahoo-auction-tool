@@ -32,6 +32,7 @@
       const selection = await chrome.runtime.sendMessage({type: "selection"});
       if (!selection?.ok) throw new Error(selection?.error || "ページを再読み込みしてください");
       bridge.selectedAsin = selection.asin;
+      bridge.managementUrl=selection.managementUrl;
       const result = await chrome.runtime.sendMessage({type: "showHelper"});
       if (!result?.ok) throw new Error(result?.error || "入力補助を開けませんでした");
     } catch (error) { status.textContent = error.message; }

@@ -89,12 +89,12 @@ test("actual Vercel function export fails closed with no owner configuration", a
     assert.equal(response.status, 503);
   } finally {if (before !== undefined) process.env.ASIN_OWNER_USER_ID = before;}
 });
-test("upload allowlist includes parent directories and excludes business data, secrets and local helpers", async () => {
+test("upload allowlist includes parent directories and excludes business data, secrets and unconnected local helpers", async () => {
   const rules = ignore().add(await readFile(new URL("../.vercelignore", import.meta.url), "utf8"));
-  for (const file of ["api", "api/inventory.js", "src", "src/vercel-entry.js", "public", "public/cloud-login.js", "scripts", "scripts/build-cloud.mjs", "package.json", "package-lock.json", "vercel.json"]) {
+  for (const file of ["api", "api/inventory.js", "src", "src/vercel-entry.js", "public", "public/cloud-login.js", "scripts", "scripts/build-cloud.mjs", "scripts/build-extension.mjs", "chrome-extension", "chrome-extension/manifest.json", "chrome-extension/background.js", "public/yahoo-fill.js", "public/extension-helper.html", "public/fba-status.js", "package.json", "package-lock.json", "vercel.json"]) {
     assert.equal(rules.ignores(file), false, file);
   }
-  for (const file of [".env.neon-dev", "data/link-monitor.json", "data/items.json", "data/gmail-credential.xml", "output/cloud-monitor-mobile.png", "test-output/report.json", "tests/cloud.test.mjs", "public/amazon-capture.js", "public/yahoo-fill.js", "scripts/setup-gmail.ps1", "docs/status.md", ".vercel/.env.preview.local", "node_modules/pg/package.json", "dist/cloud/index.html", "netlify/functions/inventory.mjs", "unknown-new-file.json"]) {
+  for (const file of [".env.neon-dev", "data/link-monitor.json", "data/items.json", "data/gmail-credential.xml", "output/cloud-monitor-mobile.png", "test-output/report.json", "tests/cloud.test.mjs", "public/amazon-capture.js", "scripts/setup-gmail.ps1", "docs/status.md", ".vercel/.env.preview.local", "node_modules/pg/package.json", "dist/cloud/index.html", "netlify/functions/inventory.mjs", "unknown-new-file.json"]) {
     assert.equal(rules.ignores(file), true, file);
   }
 });
