@@ -106,7 +106,7 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
       if(overview&&request.method==="POST"&&url.pathname==="/api/product-overview/operations"){
         if(config.readOnly)return reply({error:"現在は閲覧のみです"},403);
         const match=request.headers.get("if-match");if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||""))return reply({error:"全商品一覧を更新してください"},428);
-        const data=await jsonBody(request);return reply(await overview.commit(data.command,{expectedRevision:Number(match.slice(1,-1)),actor:owner.userId}));
+        const data=await jsonBody(request),result=await overview.commit(data.command,{expectedRevision:Number(match.slice(1,-1)),actor:owner.userId});return reply(photoLibrary?await photoLibrary.decorateOverview(result):result);
       }
       if(planning&&request.method==="GET"&&url.pathname==="/api/sales-planning")return reply(await planning.view());
       if(planning&&request.method==="POST"&&url.pathname==="/api/sales-planning/catalog"){

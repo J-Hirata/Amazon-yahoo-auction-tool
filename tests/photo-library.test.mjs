@@ -5,6 +5,7 @@ import {PROTOCOL,hash,normalizedContent,contentDigest,parsePackage,stableItemId,
 import {emptyPhotoLibrary,validatePhotoLibrary,createPhotoLibrary} from '../src/photo-library.js';
 import {createCloudHandler} from '../src/cloud-handler.js';
 import {vercelCloudRequest} from '../src/vercel-entry.js';
+import {retainSharedStock} from '../public/shared-photo-images.js';
 const owner=randomUUID(),source='https://photos.example',target='https://inventory.example',key='1'.repeat(64),bytes=Buffer.from('private-jpeg-fixture');
 function pack(changes={}){
  const asset={id:randomUUID(),name:'DSC_0001.JPG',position:1,sourceSha256:hash('original'),sha256:hash(bytes),previewSha256:hash(bytes),bytes:bytes.length,previewBytes:bytes.length,width:100,height:80,quality:'stored'};
@@ -90,6 +91,12 @@ test('decorates only matching stock IDs and avoids ambiguous overview with multi
  const before=await f.stocks.read(),stocks=await f.lib.decorateStock(before);assert.ok(stocks.products.every(p=>p.sharedPhoto));assert.equal(before.products[0].sharedPhoto,undefined);
  const overview=await f.lib.decorateOverview({rows:[{stockIds:[v.stocks[0].id]},{stockIds:v.stocks.map(s=>s.id)},{stockIds:[randomUUID()]}]});assert.ok(overview.rows[0].sharedPhoto);assert.equal(overview.rows[1].sharedPhoto,undefined);assert.equal(overview.rows[2].sharedPhoto,undefined);
  validatePhotoLibrary(await f.saved.read());
+});
+test('stock quantity save retains photo display only by exact ID without changing source fields',()=>{
+ const one=randomUUID(),two=randomUUID(),sharedPhoto={packageId:randomUUID(),assetId:randomUUID(),useAsMain:true};
+ const previous={products:[{id:one,sharedPhoto},{id:randomUUID(),sharedPhoto}],photoLibrary:true,photoRead:true,amazonRead:true};
+ const next={products:[{id:one,imageUrl:'',quantity:8},{id:two,imageUrl:'https://m.media-amazon.com/b.jpg',quantity:2}],storage:{revision:9}};
+ const view=retainSharedStock(next,previous);assert.equal(view.photoLibrary,true);assert.deepEqual(view.products[0].sharedPhoto,sharedPhoto);assert.equal(view.products[0].quantity,8);assert.equal(view.products[0].imageUrl,'');assert.equal(view.products[1].sharedPhoto,undefined);assert.equal(next.products[0].sharedPhoto,undefined);
 });
 test('private HTTP boundary accepts only signed import and owner image/view/link',async()=>{
  const f=fixture(),p=pack(),config={origin:target,authUrl:'https://fixture.neonauth.ap-southeast-1.aws.neon.tech/neondb/auth',readOnly:false};

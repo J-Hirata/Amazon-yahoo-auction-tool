@@ -59,7 +59,7 @@ export async function openOverview({readOnly,userId}){
     $('#overviewBaselineCurrent').disabled=!(selected.fba?.status==='complete'&&selected.fba.quantity>0);
     for(const input of form.querySelectorAll('[name="tags"]'))input.checked=rule.tags.includes(input.value);$("#overviewFormMessage").textContent="";dialog.showModal();controls();
   }
-  async function send(){try{view=await request("/operations",pending.command,pending.revision);pending=null;sessionStorage.removeItem(pendingKey);await access.load();dialog.close();render();message("監視・補充設定を保存しました。現物数量は変更していません。");}catch(e){if(e.status>=400&&e.status<500){pending=null;sessionStorage.removeItem(pendingKey);await load();}throw e;}}
+  async function send(){try{view=await hydrateSharedPhotos(await request("/operations",pending.command,pending.revision),'overview');pending=null;sessionStorage.removeItem(pendingKey);await access.load();dialog.close();render();message("監視・補充設定を保存しました。現物数量は変更していません。");}catch(e){if(e.status>=400&&e.status<500){pending=null;sessionStorage.removeItem(pendingKey);await load();}throw e;}}
   function riskFields(){const q=selected?.riskOptions?.[form.elements.riskSource.value];$('#overviewRiskQuantity').textContent=q?`${q.label}：${q.quantity===null?'数量を確認できません':q.quantity+q.unit} ／ SKU：${q.sku||'未指定'} ／ 確認：${date(q.checkedAt)}。${q.basis}`:'対象数量はまだ選択していません。';}
   form.elements.riskSource.addEventListener('change',riskFields);
   function replenishmentFields(){const ratio=Number(form.elements.replenishPercent.value)>0;$('#overviewBaselineFields').hidden=!ratio;$('#overviewThresholdField').hidden=ratio;form.elements.baselineQuantity.required=ratio;}

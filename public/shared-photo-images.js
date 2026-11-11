@@ -18,6 +18,11 @@ export async function sharedPhotoUrl(photo,mode='preview'){
 }
 export function releaseSharedImages(){for(const url of urls.values())URL.revokeObjectURL(url);urls.clear();}
 if(typeof window!=='undefined')window.addEventListener('pagehide',releaseSharedImages);
+export function retainSharedStock(next,previous){
+ const byId=new Map(previous.products.filter(p=>p.sharedPhoto).map(p=>[p.id,p.sharedPhoto]));
+ return {...next,photoRead:previous.photoRead,amazonRead:previous.amazonRead,photoLibrary:previous.photoLibrary,
+  products:next.products.map(p=>({...p,...(byId.has(p.id)?{sharedPhoto:byId.get(p.id)}:{})}))};
+}
 export async function hydrateSharedPhotos(data,kind){
  const rows=kind==='stock'?data.products:data.rows;
  let cursor=0;

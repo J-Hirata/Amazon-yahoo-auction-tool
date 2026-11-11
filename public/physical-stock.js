@@ -1,7 +1,7 @@
 import {bindStockAsin} from './stock-asin-input.js';
 import {createStockWorkspaceFields} from './stock-workspace-fields.js';
 import {monitorRequest} from "./monitor-http.js";
-import {hydrateSharedPhotos} from './shared-photo-images.js';
+import {hydrateSharedPhotos,retainSharedStock} from './shared-photo-images.js';
 import {createCatalogView} from "./catalog-view.js";
 import {createProductAccess} from "./product-access.js";
 import {registrationCandidates,selectedYahooListing} from './stock-registration.js';
@@ -267,7 +267,7 @@ export async function openStock({userId, readOnly}) {
     sessionStorage.setItem(pendingKey, JSON.stringify(payload)); pending = payload; controls();
     try {
       const result = await request("/operations", {command: payload.command, confirmed: true,sourceRevisions:payload.sourceRevisions}, payload.revision);
-      view = {...result.result, photoRead: view.photoRead,amazonRead:view.amazonRead}; clearPending(); dirty = false;await access.load();
+      view = await hydrateSharedPhotos(retainSharedStock(result.result,view),'stock'); clearPending(); dirty = false;await access.load();
       for (const dialog of document.querySelectorAll(".stock-dialog[open]")) dialog.close(); render(); status(result.receipt.replayed ? "保存済みの操作を確認しました。数量を重複変更していません。" : payload.command.kind==='memo'?'メモを保存しました。数量は変更していません。':payload.command.reason==="ヤフオク出品との関連付け" ? "ヤフオクとの関連付けを保存しました。場所別数量は変更していません。" : "在庫の変更と履歴を保存しました。");
     } catch (error) {$("#stockPendingStatus").textContent = error.message; throw error;}
   }
