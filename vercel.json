@@ -21,7 +21,7 @@
         {"key": "Cache-Control", "value": "no-store"},
         {"key": "X-Content-Type-Options", "value": "nosniff"},
         {"key": "Referrer-Policy", "value": "no-referrer"},
-        {"key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' https://*.neon.tech; frame-src https://*.neon.tech; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"}
+        {"key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' https://*.neon.tech; frame-src https://*.neon.tech; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'"}
       ]
     }
   ]

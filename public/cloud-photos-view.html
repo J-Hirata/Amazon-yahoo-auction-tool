@@ -1,0 +1,8 @@
+<main class="shared-photos-shell">
+ <header class="shared-photos-heading"><div><h1>共有写真</h1><p>写真仕分けナビの商品写真を、在庫商品に関連付けます。</p></div><button id="sharedPhotosRefresh" type="button">一覧を更新</button></header>
+ <p class="shared-photos-note">写真セットの受取・在庫への表示まで行えます。販売サイトへの写真登録・出品は次の段階です。元の商品情報・在庫数量は変わりません。</p>
+ <p id="sharedPhotosStatus" role="status" aria-live="polite"></p>
+ <label class="shared-photos-search">商品名・ASIN・SKUで絞り込み<input id="sharedPhotosSearch" type="search"></label>
+ <section id="sharedPhotosItems" class="shared-photos-grid" aria-label="共有された商品写真"></section>
+ <dialog id="sharedPhotoDialog" class="shared-photo-dialog" aria-label="写真のプレビュー"><header><span id="sharedPhotoCaption"></span><button id="sharedPhotoClose" type="button" aria-label="プレビューを閉じる">閉じる</button></header><img id="sharedPhotoFull" alt="選択した商品の写真"><footer><button id="sharedPhotoPrevious" type="button">← 前へ</button><span id="sharedPhotoPosition"></span><button id="sharedPhotoNext" type="button">次へ →</button></footer></dialog>
+</main>

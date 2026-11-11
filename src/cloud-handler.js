@@ -6,13 +6,14 @@ import {draftView, patchDraft, addDrafts, batchDraftAction, buildYahooDraft, bui
 import {splitDraftQueue} from "./queue.js";
 import {salesHistoryView} from "./sales-history.js";
 import {stockCsv} from "./cloud-stock.js";
+import {verifyBridge} from '../shared/photo-bridge.mjs';
 
 const maxBody = 2 * 1024 * 1024;
 const inactive = {status: "idle", pages: 0, scanned: 0};
 const apiRoot = "/api/link-monitor";
 
 function fail(message, status) {return Object.assign(new Error(message), {status});}
-export async function jsonBody(request) {
+async function rawJSON(request) {
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get("content-type") || "")) throw fail("JSON形式で送信してください", 415);
   if (Number(request.headers.get("content-length")) > maxBody) throw fail("入力は2MB以内にしてください", 413);
   const reader = request.body?.getReader();
@@ -29,14 +30,18 @@ export async function jsonBody(request) {
       }
     } finally {reader.releaseLock();}
   }
-  try {return JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");}
+  return Buffer.concat(chunks).toString("utf8") || "{}";
+}
+export async function jsonBody(request) {
+  const raw=await rawJSON(request);
+  try {return JSON.parse(raw);}
   catch {throw fail("入力データを読み取れません", 400);}
 }
 
-export function createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
+export function createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, photoLibrary, photoBridgeKey, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
-    "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
+    "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
     "Permissions-Policy": "camera=(), microphone=(), geolocation=()"
   };
   if (config.origin.startsWith("https:")) headers["Strict-Transport-Security"] = "max-age=31536000";
@@ -55,7 +60,7 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
       if (url.origin !== config.origin) return reply({error: "公開先が一致しません"}, 403);
       if (request.headers.get("origin") && request.headers.get("origin") !== config.origin) return reply({error: "同じ管理画面から操作してください"}, 403);
       if (request.headers.get("sec-fetch-site") === "cross-site") return reply({error: "別サイトからは操作できません"}, 403);
-      const draftPage = request.method === "GET" && url.pathname === "/" && ["?view=drafts", "?view=stock", "?view=planning","?view=overview"].includes(url.search);
+      const draftPage = request.method === "GET" && url.pathname === "/" && ["?view=drafts", "?view=stock", "?view=planning","?view=overview","?view=photos"].includes(url.search);
       if ((url.search && !draftPage) || url.hash || /%2f|%5c/i.test(url.pathname)) return reply({error: "未対応のURLです"}, 404);
       if (request.method === "GET" && url.pathname === "/api/cloud-config") return reply({authUrl: config.authUrl, setupEnabled: Boolean(ownerAccess)});
       if (request.method === "GET" && assets.has(url.pathname)) {
@@ -70,9 +75,24 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
         if (identity.status !== 200) return reply({error: "本人のログインを確認してください"}, 401);
         return reply(await ownerAccess.claim({token: data.setupToken, verifiedUserId: identity.userId}));
       }
+      if (photoLibrary && request.method === 'POST' && url.pathname === '/api/photo-library/import') {
+        if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
+        const raw=await rawJSON(request);
+        if(!verifyBridge(request,photoBridgeKey,raw))return reply({error:'写真共有の認証を確認できません'},401);
+        let input;try{input=JSON.parse(raw);}catch{return reply({error:'共有内容を読み取れません'},400);}
+        return reply(await photoLibrary.receive(input));
+      }
       const owner = await verifyOwner(request);
       if (owner.status !== 200) return reply({error: owner.status === 403 ? "このアカウントには利用権限がありません" : "ログインが必要です"}, owner.status);
-      if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly, physicalStock: Boolean(stock),salesPlanning:Boolean(planning),productOverview:Boolean(overview)});
+      if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly, physicalStock: Boolean(stock),salesPlanning:Boolean(planning),productOverview:Boolean(overview),photoLibrary:Boolean(photoLibrary)});
+      if(photoLibrary&&request.method==='GET'&&url.pathname==='/api/photo-library')return reply(await photoLibrary.view());
+      const sharedImage=url.pathname.match(/^\/api\/photo-library\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})\/(preview|image)$/i);
+      if(photoLibrary&&sharedImage&&request.method==='GET')return photoLibrary.image(sharedImage[1],sharedImage[2],sharedImage[3]);
+      if(photoLibrary&&request.method==='POST'&&url.pathname==='/api/photo-library/link'){
+        if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
+        const match=request.headers.get('if-match');if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||''))return reply({error:'共有写真一覧を更新してください'},428);
+        const data=await jsonBody(request);return reply(await photoLibrary.link(data,{expectedRevision:Number(match.slice(1,-1)),actor:owner.userId}));
+      }
       if(productLinks&&request.method==="GET"&&url.pathname==="/api/product-links")return reply(await productLinks.list());
       if(productLinks&&request.method==="POST"&&["/api/product-links/operations","/api/product-links/preview","/api/product-links/refresh","/api/product-links/fba-refresh","/api/product-links/merchant-options"].includes(url.pathname)){
         if(config.readOnly)return reply({error:"現在は閲覧のみです"},403);
@@ -82,7 +102,7 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
         const options={expectedRevision:Number(match.slice(1,-1)),sourceRevisions:data.sourceRevisions,actor:owner.userId,confirmed:data.confirmed};return reply(await (url.pathname.endsWith('/merchant-options')?productLinks.merchantOptions(data.command,options):url.pathname.endsWith('/preview')?productLinks.preview(data.command,options):productLinks.save(data.command,options)));
       }
       if(overview&&request.method==="GET"&&url.pathname==="/api/product-overview/risk-preview")return reply(await overview.previewRisks());
-      if(overview&&request.method==="GET"&&url.pathname==="/api/product-overview")return reply(await overview.view());
+      if(overview&&request.method==="GET"&&url.pathname==="/api/product-overview")return reply(photoLibrary?await photoLibrary.decorateOverview(await overview.view()):await overview.view());
       if(overview&&request.method==="POST"&&url.pathname==="/api/product-overview/operations"){
         if(config.readOnly)return reply({error:"現在は閲覧のみです"},403);
         const match=request.headers.get("if-match");if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||""))return reply({error:"全商品一覧を更新してください"},428);
@@ -99,7 +119,7 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
         const match=request.headers.get("if-match");if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||""))return reply({error:"最新の販売計画を読み込んでください"},428);
         const data=await jsonBody(request);return reply(await planning.commit(data.command,{expectedRevision:Number(match.slice(1,-1)),actor:owner.userId}));
       }
-      if (stock && request.method === "GET" && url.pathname === "/api/physical-stock") return reply({...await stock.view(), photoRead: Boolean(stockPhotos), amazonRead:Boolean(stockAmazon)});
+      if (stock && request.method === "GET" && url.pathname === "/api/physical-stock") return reply({...photoLibrary?await photoLibrary.decorateStock(await stock.view()):await stock.view(), photoRead: Boolean(stockPhotos), amazonRead:Boolean(stockAmazon),photoLibrary:Boolean(photoLibrary)});
       if (stock && request.method === "GET" && url.pathname === "/api/physical-stock/export.csv") return new Response(stockCsv(await stock.view()), {headers: {...headers, "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": "attachment; filename=physical-stock.csv"}});
       const stockOperation = url.pathname.match(/^\/api\/physical-stock\/operations\/([0-9a-f-]{36})$/i);
       if (stock && stockOperation && request.method === "GET") return reply(await stock.operation(stockOperation[1], owner.userId));

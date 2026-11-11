@@ -4,6 +4,8 @@
 !api/**
 !src
 !src/**
+!shared
+!shared/**
 !public
 !public/cloud-login.html
 !public/cloud-login.css
@@ -58,7 +60,6 @@ netlify/**
 docs/**
 
 # Explicit reviewed browser build inputs; business records remain excluded.
-!public/amazon-capture.js
 !public/amazon-helper.html
 !public/cloud-overview-view.html
 !public/cloud-stock-view.html
@@ -94,4 +95,8 @@ docs/**
 !public/workspace-planning.png
 !public/workspace-product-picker.js
 !public/workspace-stock.png
+!public/cloud-photos-view.html
+!public/shared-photos.js
+!public/shared-photo-images.js
+!public/shared-photos.css
 !public/yahoo-helper.html

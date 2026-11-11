@@ -96,7 +96,7 @@ export function createCatalogView({key,host,roots,measureLabels=["数量 多い�
       const registration=node("small","catalog-registration",`登録日：${Number.isFinite(registered)?new Date(registered).toLocaleDateString("ja-JP"):"不明"}`);
       (row.tagName==="TR"?row.firstElementChild:row).append(registration);
       const summary=node("div","catalog-summary"),imageBox=node("div","catalog-image"),image=node("img");
-      image.src=catalogImage(data.imageUrl)||"/catalog-image.svg";image.alt=data.imageLabel||data.title||"商品画像";image.loading="lazy";image.referrerPolicy="no-referrer";
+      image.src=(/^blob:/.test(data.privateImageUrl||"")?data.privateImageUrl:"")||catalogImage(data.imageUrl)||"/catalog-image.svg";image.alt=data.imageLabel||data.title||"商品画像";image.loading="lazy";image.referrerPolicy="no-referrer";
       image.addEventListener("load",()=>imageBox.classList.add("loaded"));
       image.addEventListener("error",()=>{if(image.getAttribute("src")!=="/catalog-image.svg")image.src="/catalog-image.svg";});imageBox.append(image);
       const title=node("strong","catalog-title",data.title||"商品名未取得");title.title=data.title||"商品名未取得";

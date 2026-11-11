@@ -28,8 +28,10 @@ import {withMerchantSalesSources} from './merchant-relations.js';
 import {createCloudSalesAutomation} from "./cloud-sales-automation.js";
 import {createProductOverview,validateProductWatch} from "./product-overview.js";
 import {createProductMonitoring} from "./product-monitoring.js";
+import {createPhotoLibrary,validatePhotoLibrary} from './photo-library.js';
 
 const fileTypes = {
+  "cloud-photos-view.html":"text/html; charset=utf-8","shared-photos.js":"text/javascript; charset=utf-8","shared-photo-images.js":"text/javascript; charset=utf-8","shared-photos.css":"text/css; charset=utf-8",
   "product-workspace.js":"text/javascript; charset=utf-8",
   "product-workspace-editor.js":"text/javascript; charset=utf-8","product-access.js":"text/javascript; charset=utf-8","inventory-panel.js":"text/javascript; charset=utf-8","product-access.css":"text/css; charset=utf-8",
   "cloud-overview-view.html":"text/html; charset=utf-8","overview-filters.js":"text/javascript; charset=utf-8", "product-overview.js":"text/javascript; charset=utf-8","product-overview.css":"text/css; charset=utf-8",
@@ -67,6 +69,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
     readCatalog:env.ASIN_AMAZON_CLIENT_ID?asin=>readPlanningCatalog({asin,config:cloudAmazonConfig(env)}):undefined}):undefined;
   const stockPhotos = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockPhotoRefresh({store: stockStore, config: cloudAmazonConfig(env)}) : undefined;
   const stockAmazon = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:cloudAmazonConfig(env)}) : undefined;
+  const photoLibrary=config.fullWorkspace&&env.PHOTO_BRIDGE_KEY&&env.PHOTO_BRIDGE_SOURCE_ORIGIN&&env.PHOTO_BRIDGE_WORKSPACE_ID?createPhotoLibrary({store:createPostgresDocumentStore({pool,key:'photo-library',validate:validatePhotoLibrary}),stockStore,sourceOrigin:env.PHOTO_BRIDGE_SOURCE_ORIGIN,sourceWorkspaceId:env.PHOTO_BRIDGE_WORKSPACE_ID,key:env.PHOTO_BRIDGE_KEY,linkTransaction:createDocumentTransaction({pool,validators:{'photo-library':validatePhotoLibrary,'physical-stock':validatePhysicalStock}}),allowLocal:env.PHOTO_BRIDGE_ALLOW_LOCAL==='1'}):undefined;
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
   const readTargets=async()=>{
@@ -89,7 +92,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const monitoring=overview&&env.ASIN_AMAZON_CLIENT_ID?createProductMonitoring({overview,watchStore,config:cloudAmazonConfig(env),readListings:readOwnAmazonListings,followRelistings:env.ASIN_GMAIL_USER?createYahooRelisting({store,readMails:createYahooMailReader(cloudMailConfig(env)),readListing:fetchYahooListing}):undefined}):undefined;
   const productLinks=overview?createProductLinkEditor({transaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning,"product-watch":validateProductWatch,"draft-items":validateDraftItems}}),overview,readMerchantListings:env.ASIN_AMAZON_CLIENT_ID?readOwnAmazonListings:undefined,amazonConfig:env.ASIN_AMAZON_CLIENT_ID?cloudAmazonConfig(env):undefined,refresh:monitoring?(options={})=>monitoring.run({inventoryOnly:options.inventoryOnly===true,refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}}):undefined}):undefined;
   const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring,readAlertStates:monitoring?.alertStates,readAlertContext:monitoring?.deliveryContext,readInventory:overview?()=>overview.view():undefined}) : undefined;
-  const handler = createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
+  const handler = createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, photoLibrary, photoBridgeKey:env.PHOTO_BRIDGE_KEY, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     productLinks,verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
   return {config, handler, pool,sales,automation,overview,productLinks,runSalesAutomation:automation ? ()=>automation.run() : undefined};
 }

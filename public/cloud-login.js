@@ -44,7 +44,8 @@ async function openApplication() {
   const stock = new URLSearchParams(location.search).get("view") === "stock";
   const planning = new URLSearchParams(location.search).get("view") === "planning";
   const overview = new URLSearchParams(location.search).get("view") === "overview";
-  const htmlResponse = await fetch(overview ? "/cloud-overview-view.html" : planning ? "/cloud-planning-view.html" : stock ? "/cloud-stock-view.html" : drafts ? "/cloud-drafts-view.html" : "/cloud-view.html", {cache: "no-store"});
+  const photos = new URLSearchParams(location.search).get("view") === "photos";
+  const htmlResponse = await fetch(photos ? "/cloud-photos-view.html" : overview ? "/cloud-overview-view.html" : planning ? "/cloud-planning-view.html" : stock ? "/cloud-stock-view.html" : drafts ? "/cloud-drafts-view.html" : "/cloud-view.html", {cache: "no-store"});
   if (!htmlResponse.ok) throw new Error("画面を読み込めませんでした。");
   const main = new DOMParser().parseFromString(await htmlResponse.text(), "text/html").querySelector("main");
   if (!main) throw new Error("画面を読み込めませんでした。");
@@ -62,20 +63,21 @@ async function openApplication() {
       location.replace("/");
     } catch (error) {logout.disabled = false; mode.textContent = error.message;}
   });
-  const navigation = workspaceNavigation({drafts,stock,planning,overview,physicalStock:session.physicalStock,salesPlanning:session.salesPlanning,productOverview:session.productOverview});
+  const navigation = workspaceNavigation({drafts,stock,planning,overview,photos,photoLibrary:session.photoLibrary,physicalStock:session.physicalStock,salesPlanning:session.salesPlanning,productOverview:session.productOverview});
   const account=cockpitHeader({navigation,mode,logout,home:session.productOverview?'/?view=overview':'/'});
   main.classList.add('cockpit-content');
   panel.append(account, main);
   configureMonitorRequest(authenticatedRequest);
-  if (overview) {const {openOverview}=await import("./product-overview.js");await openOverview({userId:session.userId,readOnly:session.readOnly});}
+  if (photos) {const {openSharedPhotos}=await import("./shared-photos.js");await openSharedPhotos({readOnly:session.readOnly,enabled:session.photoLibrary});}
+  else if (overview) {const {openOverview}=await import("./product-overview.js");await openOverview({userId:session.userId,readOnly:session.readOnly});}
   else if (planning) {const {openPlanning}=await import("./sales-planning.js");await openPlanning({userId:session.userId,readOnly:session.readOnly});}
   else if (stock) {const {openStock} = await import("./physical-stock.js"); await openStock({userId: session.userId, readOnly: session.readOnly});}
   else await import(drafts ? "./app.js" : "./link-monitor.js");
-  if (!stock && !planning && !overview && session.physicalStock) {
+  if (!stock && !planning && !overview && !photos && session.physicalStock) {
     try {await stockWorkflowContext({drafts,main,request:authenticatedRequest});}
     catch (error) {const warning=document.createElement("p");warning.className="workspace-context-error";warning.setAttribute("role","alert");warning.textContent=error.message;main.prepend(warning);}
   }
-  document.title = `${overview?"全商品一覧":planning ? "販売の監視・見直し" : stock ? "コンテナ・自社在庫" : drafts ? "ヤフオク出品下書きツール" : "商品紐付けツール"} | ${COCKPIT_BRAND.title}`;
+  document.title = `${photos?"共有写真":overview?"全商品一覧":planning ? "販売の監視・見直し" : stock ? "コンテナ・自社在庫" : drafts ? "ヤフオク出品下書きツール" : "商品紐付けツール"} | ${COCKPIT_BRAND.title}`;
   document.querySelector("#loginPanel").hidden = true;
   document.querySelector("#authLoading").hidden = true;
   panel.hidden = false;
