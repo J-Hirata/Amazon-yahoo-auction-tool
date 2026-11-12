@@ -38,7 +38,7 @@ export async function jsonBody(request) {
   catch {throw fail("入力データを読み取れません", 400);}
 }
 
-export function createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, photoLibrary, photoBridgeKey, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
+export function createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, notices, photoLibrary, photoBridgeKey, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
@@ -100,6 +100,12 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
         if(url.pathname.endsWith('/refresh')||url.pathname.endsWith('/fba-refresh')){if(!productLinks.refresh)return reply({error:"自動取得にはAmazon接続が必要です。商品ページのリンクから確認してください"},503);return reply(await productLinks.refresh({inventoryOnly:url.pathname.endsWith('/fba-refresh')}));}
         const match=request.headers.get("if-match");if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||""))return reply({error:"最新のURL登録画面を開いてください"},428);
         const options={expectedRevision:Number(match.slice(1,-1)),sourceRevisions:data.sourceRevisions,actor:owner.userId,confirmed:data.confirmed};return reply(await (url.pathname.endsWith('/merchant-options')?productLinks.merchantOptions(data.command,options):url.pathname.endsWith('/preview')?productLinks.preview(data.command,options):productLinks.save(data.command,options)));
+      }
+      if(notices&&request.method==='GET'&&url.pathname==='/api/product-overview/notices')return reply(await notices.view());
+      if(notices&&request.method==='POST'&&url.pathname==='/api/product-overview/notices'){
+        if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
+        const match=request.headers.get('if-match');if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||''))return reply({error:'最新の再案内一覧を読み込んでください'},428);
+        const data=await jsonBody(request);return reply(await notices.commit(data.command,{expectedRevision:Number(match.slice(1,-1)),actor:owner.userId}));
       }
       if(overview&&request.method==="GET"&&url.pathname==="/api/product-overview/risk-preview")return reply(await overview.previewRisks());
       if(overview&&request.method==="GET"&&url.pathname==="/api/product-overview")return reply(photoLibrary?await photoLibrary.decorateOverview(await overview.view()):await overview.view());

@@ -27,6 +27,7 @@ import {resolveSalesSources} from "./sales-sources.js";
 import {withMerchantSalesSources} from './merchant-relations.js';
 import {createCloudSalesAutomation} from "./cloud-sales-automation.js";
 import {createProductOverview,validateProductWatch} from "./product-overview.js";
+import {createProductNotices} from './product-notices.js';
 import {createProductMonitoring} from "./product-monitoring.js";
 import {createPhotoLibrary,validatePhotoLibrary} from './photo-library.js';
 
@@ -47,6 +48,7 @@ const fileTypes = {
   "workspace-drafts.png":"image/png","workspace-stock.png":"image/png","workspace-planning.png":"image/png","workspace-overview.png":"image/png","cockpit-mark.svg":"image/svg+xml"
 };
 export async function loadCloudAssets(directory = fileURLToPath(new URL("../dist/cloud/", import.meta.url))) {
+  fileTypes['product-notices.js']='text/javascript; charset=utf-8';
   const assets = new Map();
   for (const [name, type] of Object.entries(fileTypes)) assets.set(`/${name}`, {body: await readFile(path.join(directory, name)), type});
   assets.set("/", assets.get("/cloud-login.html"));
@@ -92,7 +94,8 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const monitoring=overview&&env.ASIN_AMAZON_CLIENT_ID?createProductMonitoring({overview,watchStore,config:cloudAmazonConfig(env),readListings:readOwnAmazonListings,followRelistings:env.ASIN_GMAIL_USER?createYahooRelisting({store,readMails:createYahooMailReader(cloudMailConfig(env)),readListing:fetchYahooListing}):undefined}):undefined;
   const productLinks=overview?createProductLinkEditor({transaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning,"product-watch":validateProductWatch,"draft-items":validateDraftItems}}),overview,readMerchantListings:env.ASIN_AMAZON_CLIENT_ID?readOwnAmazonListings:undefined,amazonConfig:env.ASIN_AMAZON_CLIENT_ID?cloudAmazonConfig(env):undefined,refresh:monitoring?(options={})=>monitoring.run({inventoryOnly:options.inventoryOnly===true,refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}}):undefined}):undefined;
   const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring,readAlertStates:monitoring?.alertStates,readAlertContext:monitoring?.deliveryContext,readInventory:overview?()=>overview.view():undefined}) : undefined;
-  const handler = createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, photoLibrary, photoBridgeKey:env.PHOTO_BRIDGE_KEY, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
+  const notices=overview?createProductNotices({overview,watchStore}):undefined;
+  const handler = createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, notices, photoLibrary, photoBridgeKey:env.PHOTO_BRIDGE_KEY, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     productLinks,verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
   return {config, handler, pool,sales,automation,overview,productLinks,runSalesAutomation:automation ? ()=>automation.run() : undefined};
 }

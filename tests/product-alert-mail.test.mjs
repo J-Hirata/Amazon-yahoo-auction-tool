@@ -52,10 +52,10 @@ test('unverified or future endings do not create alerts and repeated endings kee
  const r=row(),watch=emptyProductWatch();for(const patch of [{verified:false},{checkedAt:'2026-11-10T00:00:00Z'}])assert.equal(collectProductAlerts(watch,[{...r,yahoo:[ended(patch)]}],settings,at).length,0);
  const alerts=collectProductAlerts(watch,[r],settings,at);assert.equal(alerts.length,1);const first=alerts[0].id;assert.equal(collectProductAlerts(watch,[r],settings,at)[0].id,first);assert.equal(alerts[0].mailFormat,'yahoo-ended-v1');
 });
-test('compact mail removes generic boilerplate; existing non-Yahoo notifications retain their format',()=>{
+test('grouped mail removes boilerplate and keeps legacy message contents',()=>{
  const r=row(),alert=collectProductAlerts(emptyProductWatch(),[r],settings,at)[0],message=productAlertsMail([alert],{at});assert.match(message,new RegExp(asin));assert.equal(message.split('確認：').length-1,1);assert.doesNotMatch(message,/日次確認で対応|数量・出品・広告は/);
  const mixed=productAlertsMail([alert,{title:'見直し',at,message:'期限11/20'}],{at});assert.match(mixed,/期限11\/20/);
- assert.match(productAlertsMail([{title:'従来の警告',at,message:'FBA0'}],{at}),/日次確認で対応/);
+ const legacy=productAlertsMail([{title:'従来の警告',at,message:'FBA0'}],{at});assert.match(legacy,/FBA0/);assert.doesNotMatch(legacy,/日次確認で対応/);
 });
 test('mocked daily monitoring queues the concise observed inventory once and leaves business records unchanged',async()=>{
  const linkId=randomUUID(),watch=emptyProductWatch(),monitor={amazonAccountKey:'fixture',amazonSellerId:'OWN',links:[{id:linkId,asin,listingId:'d1000000001',amazonSellerSku:sku,verified:true}],catalog:[],listings:[{listingId:'d1000000001',title:row().title,seller:'owner'}],salesAutomation:settings,salesTracking:{events:[],orders:[],trackers:[],sync:{status:'complete'},checkedThrough:at},mailOutbox:[],events:[],logs:[]};

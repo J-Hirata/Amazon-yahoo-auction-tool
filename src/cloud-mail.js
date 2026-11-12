@@ -17,7 +17,7 @@ export function createCloudMailTransport(config, {createTransport = nodemailer.c
     async send(message) {
       const transport = make();
       try {
-        const result = await transport.sendMail({from: NOTIFICATION_ADDRESS, to: NOTIFICATION_ADDRESS, subject: message.subject, text: message.text,
+        const result = await transport.sendMail({from: NOTIFICATION_ADDRESS, to: NOTIFICATION_ADDRESS, subject: message.subject, text: message.text,...(typeof message.html==='string'?{html:message.html}:{}),
           messageId: `<${message.attemptId}@amazon-yahoo-inventory.vercel.app>`, disableFileAccess: true, disableUrlAccess: true});
         return {status: result.accepted?.length === 1 && result.accepted[0] === NOTIFICATION_ADDRESS && !result.rejected?.length ? "smtp_accepted" : "uncertain"};
       } catch (error) {

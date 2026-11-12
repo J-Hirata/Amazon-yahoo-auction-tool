@@ -1,5 +1,6 @@
 import {salesMailSummary} from "./sales-mail-summary.js";
-import {productAlertsMail} from "./product-alert-mail.js";
+import {productAlertsMail,productAlertsHtml,productAlertsSubject} from "./product-alert-mail.js";
+import {noticeDay} from './product-notice-policy.js';
 import {randomUUID,createHash} from "node:crypto";
 import {NOTIFICATION_ADDRESS} from "./notification-settings.js";
 import {catchUpSales} from './sales-catchup.js';
@@ -30,19 +31,19 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       state.salesAutomation={version:1,enabled,fbaSales,merchantSales,errorAlerts,...categories,enabledAt:enabled && !old?.enabled ? now() : old?.enabledAt || null,updatedAt:now()};
     },{expectedRevision});
   }
-  function enqueue(state,{key,subject,text,targets=[],eventIds=[],kind="sales",notificationMode="daily"}) {
+  function enqueue(state,{key,subject,text,html,targets=[],eventIds=[],kind="sales",notificationMode="daily"}) {
     const outbox=state.mailOutbox ||= [];
     const existing=outbox.find(record=>record.key===key);
     if(existing){
       if(existing.status!=='cancelled')return existing;
       if(existing.attempts>=3)return null;
       (existing.requeueHistory||=[]).push({at:now(),cancelledFor:existing.cancelledFor||'settings_changed',subject:existing.subject,text:existing.text,finishedAt:existing.finishedAt||null});
-      Object.assign(existing,{subject,text,targets,eventIds,kind,notificationMode,status:existing.attempts?'failed':'pending',requeuedAt:now()});
-      for(const field of ['cancelledFor','cancelledAt','cancelledAlertIds','error','finishedAt'])delete existing[field];
+      Object.assign(existing,{subject,text,...(html?{html}:{}),targets,eventIds,kind,notificationMode,status:existing.attempts?'failed':'pending',requeuedAt:now()});
+      for(const field of ['cancelledFor','cancelledAt','cancelledAlertIds','stoppedAlertIds','error','finishedAt'])delete existing[field];
       return existing;
     }
     if(outbox.length>=5000)throw fail("メール記録の保存上限です。履歴を保全して確認してください");
-    outbox.push({id:randomUUID(),key,kind,subject,text,targets,eventIds,status:"pending",attempts:0,createdAt:now(),automation:true,notificationMode});
+    outbox.push({id:randomUUID(),key,kind,subject,text,...(html?{html}:{}),targets,eventIds,status:"pending",attempts:0,createdAt:now(),automation:true,notificationMode});
     return outbox.at(-1);
   }
   async function drain({testOnly=false,kinds,notificationMode}={}) {
@@ -52,16 +53,18 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       for(const item of state.mailOutbox || [])if(item.automation && item.status==="sending" && Date.parse(item.lastAttemptAt)+120000<=Date.parse(now())){
         item.status="uncertain";item.error="送信結果が不明です。受信箱を確認してください。自動再送はしません";
       }
-      if(!testOnly&&alertStates)for(const item of state.mailOutbox||[])if(item.kind==='product_alerts'&&['pending','failed'].includes(item.status)&&item.alertIds?.length){const ended=item.alertIds.filter(id=>alertStates[id]===false);if(ended.length){item.status='cancelled';item.cancelledFor='conditions_changed';item.cancelledAlertIds=ended;item.error='警告条件が解消・変更されたため送信を取り消しました';}else if(item.alertIds.some(id=>alertStates[id]!==true))held.add(item.id);}
+      if(!testOnly&&alertStates)for(const item of state.mailOutbox||[])if(item.kind==='product_alerts'&&['pending','failed'].includes(item.status)&&item.alertIds?.length){const ended=item.alertIds.filter(id=>alertStates[id]===false);if(ended.length){item.status='cancelled';item.cancelledFor='conditions_changed';item.cancelledAlertIds=ended;item.stoppedAlertIds=ended.filter(id=>context?.conditions?.[id]!==false);item.error='警告条件の解消・変更または再案内の解除により送信を取り消しました';}else if(item.alertIds.some(id=>alertStates[id]!==true))held.add(item.id);
+        else if(context?.alerts&&item.noticeNumbers){for(const id of item.alertIds){const current=context.alerts.find(a=>a.id===id),number=item.noticeNumbers[id]||1;if(current?.deliveredCount>=number){item.status='cancelled';item.cancelledFor='already_delivered';}else if(number>1&&(!current?.nextOn||current.nextOn>noticeDay(now())||current.blocked))held.add(item.id);}}
+      }
       const item=(state.mailOutbox || []).find(item=>item.automation && !held.has(item.id) && (!notificationMode||item.notificationMode===notificationMode) && (!kinds||kinds.includes(item.kind)) && (testOnly ? item.kind==="automation_test" : state.salesAutomation?.enabled && item.kind!=="automation_test") &&
         (item.status==="pending" || !testOnly && item.status==="failed" && item.attempts<3 && Date.parse(item.lastAttemptAt)+3600000<=Date.parse(now())));
       if(!item)return null;
       if(item.kind==='automation_error'&&!state.salesAutomation.errorAlerts){item.status='cancelled';item.cancelledFor='settings_changed';item.cancelledAt=now();return null;}
       if(item.kind==='product_alerts'&&context?.alerts){
-        const refreshed=item.alertIds.map(id=>context.alerts.find(a=>a.id===id));
+        const refreshed=item.alertIds.map(id=>{const a=context.alerts.find(a=>a.id===id);return a?{...a,notificationNumber:item.noticeNumbers?.[id]||1,isReminder:(item.noticeNumbers?.[id]||1)>1}:a;});
         if(refreshed.some(a=>!a))return null;
-        const text=productAlertsMail(refreshed,{mode:item.notificationMode||'daily',at:now()});
-        if(item.text!==text){(item.contentHistory||=[]).push({text:item.text,at:item.contentCheckedAt||item.createdAt,attempts:item.attempts});item.text=text;}
+        const options={mode:item.notificationMode||'daily',at:now()},text=productAlertsMail(refreshed,options),html=productAlertsHtml(refreshed,options),subject=productAlertsSubject(refreshed,options);
+        if(item.text!==text||item.html!==html||item.subject!==subject){(item.contentHistory||=[]).push({text:item.text,html:item.html,subject:item.subject,at:item.contentCheckedAt||item.createdAt,attempts:item.attempts});Object.assign(item,{text,html,subject});}
         item.contentCheckedAt=now();
       }
       item.status="sending";item.attempts++;item.attemptId ||= randomUUID();item.lastAttemptAt=now();
@@ -148,12 +151,13 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
   async function queueProductAlerts(alerts,notificationMode="daily"){
     return store.update(state=>{
       if(!state.salesAutomation?.enabled)return {acceptedAlertIds:[]};
-      const existing=new Set((state.mailOutbox||[]).filter(r=>r.status!=='cancelled').flatMap(r=>r.alertIds||[]));
-      const eligible=alerts.filter(a=>state.salesAutomation[a.category]),accepted=eligible.filter(a=>existing.has(a.id)).map(a=>a.id),fresh=eligible.filter(a=>!existing.has(a.id));if(!fresh.length)return {acceptedAlertIds:accepted};
-      const ids=fresh.map(a=>a.id).sort(),key=`product-alerts:${hash(ids.join(","))}`;
-      const record=enqueue(state,{key,kind:"product_alerts",notificationMode,subject:`【在庫管理ツール】${notificationMode==='risk'?'在庫・出品の警告':'在庫・出品・見直しの確認'} ${fresh.length}件`,targets:fresh.filter(a=>a.asin).map(a=>({asin:a.asin})),
-        text:productAlertsMail(fresh,{mode:notificationMode,at:now()})});
-      if(record){record.alertIds=ids;accepted.push(...ids);}
+      const exists=a=>(state.mailOutbox||[]).some(r=>r.status!=='cancelled'&&r.alertIds?.includes(a.id)&&(r.noticeNumbers?.[a.id]||1)===(a.notificationNumber||1));
+      const eligible=alerts.filter(a=>state.salesAutomation[a.category]),accepted=eligible.filter(exists).map(a=>a.id),fresh=eligible.filter(a=>!exists(a));if(!fresh.length)return {acceptedAlertIds:accepted};
+      const ids=fresh.map(a=>a.id).sort(),numbers=Object.fromEntries(fresh.map(a=>[a.id,a.notificationNumber||1]));
+      const token=ids.every(id=>numbers[id]===1)?ids.join(','):ids.map(id=>`${id}:${numbers[id]}`).join(','),key=`product-alerts:${hash(token)}`,options={mode:notificationMode,at:now()};
+      const record=enqueue(state,{key,kind:"product_alerts",notificationMode,subject:productAlertsSubject(fresh,options),targets:fresh.filter(a=>a.asin).map(a=>({asin:a.asin})),
+        text:productAlertsMail(fresh,options),html:productAlertsHtml(fresh,options)});
+      if(record){record.alertIds=ids;record.noticeNumbers=numbers;accepted.push(...ids);}
       return {acceptedAlertIds:accepted};
     });
   }

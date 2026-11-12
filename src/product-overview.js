@@ -13,6 +13,7 @@ import {productChannels} from "./product-channels.js";
 import {attachAvailability,skuOptions} from './product-availability.js';
 import {resolvedLinkSku,resolvedLinkCondition,productWorkspace,conditionFamily} from './product-workspace.js';
 import {replenishmentView} from './replenishment.js';
+import {validateNoticePolicy} from './product-notice-policy.js';
 export const WATCH_TAGS={watch:"監視対象",overstock:"在庫過多",large:"大型",heavy:"重量物"};
 const fail=(m,status=400)=>Object.assign(new Error(m),{status});
 const uuid=v=>/^[0-9a-f-]{36}$/i.test(v||"");
@@ -24,7 +25,7 @@ export function validateProductWatch(state){
   if(state?.version!==1||!Array.isArray(state.rules)||!Array.isArray(state.receipts)||!state.observations||!state.signals)throw fail("商品監視の保存形式を確認してください");
   if(state.rules.length>2000||state.receipts.length>10000||new Set(state.rules.map(r=>r.key)).size!==state.rules.length||Buffer.byteLength(JSON.stringify(state))>8*1024*1024)throw fail("商品監視の保存上限を確認してください");
   for(const rule of state.rules){if(rule.lowStock!==undefined)riskSettings(rule.lowStock);if(rule.relistStockSource!==undefined&&!['','merchant','home','container'].includes(rule.relistStockSource))throw fail('再出品候補の残数参照元を確認してください');}
-  return state;
+  return validateNoticePolicy(state);
 }
 export function ruleFields(input,at){
   const key=text(input.key,100);if(!/^(stock|link|plan|draft|watch):[A-Za-z0-9_-]{1,80}$/.test(key))throw fail("対象商品を確認してください");

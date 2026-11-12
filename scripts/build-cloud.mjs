@@ -18,6 +18,7 @@ files.push("cloud-photos-view.html","shared-photos.js","shared-photo-images.js",
 files.push("cloud-planning-view.html","sales-planning.css","product-access.js","product-access.css");
 files.push("tile-size.js","fba-alarm.js","fba-status.js","draft-board.js","draft-workbench.css","extension-helper.html");
 files.push("cloud-overview-view.html","overview-filters.js","product-overview.js","product-overview.css","workspace-drafts.png","workspace-stock.png","workspace-planning.png","workspace-overview.png","cockpit-mark.svg");
+files.push('product-notices.js');
 await build({entryPoints:[path.join(root,"public","sales-planning.js")],outfile:path.join(output,"sales-planning.js"),bundle:true,format:"esm",target:["es2022"],platform:"browser",minify:true,external:["./monitor-http.js","./catalog-view.js"],logLevel:"warning"});
 await build({entryPoints:[path.join(root,"public","product-workspace.js")],outfile:path.join(output,"product-workspace.js"),bundle:true,format:"esm",target:["es2022"],platform:"browser",minify:true,logLevel:"warning"});
 await build({entryPoints:[path.join(root,"public","inventory-panel.js")],outfile:path.join(output,"inventory-panel.js"),bundle:true,format:"esm",target:["es2022"],platform:"browser",minify:true,logLevel:"warning"});
