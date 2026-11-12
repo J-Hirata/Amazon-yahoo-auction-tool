@@ -99,4 +99,8 @@ docs/**
 !public/shared-photos.js
 !public/shared-photo-images.js
 !public/shared-photos.css
+!public/draft-workspace.js
+!public/photo-listing-drafts.js
+!public/photo-listing-drafts.css
+!public/photo-draft-zip.js
 !public/yahoo-helper.html

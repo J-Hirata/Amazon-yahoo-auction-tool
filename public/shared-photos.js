@@ -1,5 +1,7 @@
 import {monitorRequest} from './monitor-http.js';
 import {sharedPhotoUrl} from './shared-photo-images.js';
+import {openPhotoDraft} from './photo-listing-drafts.js';
+import {DRAFTS_HOME} from './draft-workspace.js';
 const node=(tag,text,className)=>{const n=document.createElement(tag);if(text!==undefined)n.textContent=text;if(className)n.className=className;return n;};
 export async function openSharedPhotos({readOnly=false,enabled=true}={}){
  const $=s=>document.querySelector(s),host=$('#sharedPhotosItems'),status=$('#sharedPhotosStatus'),dialog=$('#sharedPhotoDialog');
@@ -67,7 +69,10 @@ export async function openSharedPhotos({readOnly=false,enabled=true}={}){
    const submit=node('button','この在庫に写真を関連付ける');submit.type='submit';submit.disabled=busy||readOnly;select.disabled=busy||readOnly;use.disabled=busy||readOnly;
    form.append(stockLabel,useLabel,submit);
    form.onsubmit=e=>{e.preventDefault();if(select.value)void save({operationId:crypto.randomUUID(),stockId:select.value,stockRevision:data.stockRevision,action:'attach',packageId:p.packageId,assetId:selected,useAsMain:use.checked});};
-   card.append(details,form);
+   const start=node('button',data.listingDrafts?.some(d=>d.sourceItemId===item.itemId)?'この商品の下書きを開く':'この写真で下書きを準備','photo-draft-start');start.type='button';start.dataset.write='';start.disabled=readOnly||busy;
+   start.onclick=()=>void openPhotoDraft({packet:p,readOnly,onSaved:saved=>{location.href=DRAFTS_HOME+'#photo-draft-saved='+saved.id;}}).catch(e=>message(e.message,true));
+   const inventory=node('details',undefined,'shared-photo-inventory'),inventoryHeading=node('summary','在庫の写真にも使う（任意）');inventory.open=Boolean(stockContext);inventory.append(inventoryHeading,form);
+   card.append(start,details,inventory);
    const ids=new Set(data.packages.filter(v=>v.productId===p.productId&&v.sourceWorkspaceId===p.sourceWorkspaceId).map(v=>v.packageId));
    for(const link of data.links.filter(l=>ids.has(l.packageId))){
     const linked=node('div',undefined,'shared-photo-linked'),stock=data.stocks.find(s=>s.id===link.stockId),a=node('a',stock?.title||'在庫商品を確認');

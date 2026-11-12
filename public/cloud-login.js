@@ -1,6 +1,7 @@
 import {createAuthClient} from "@neondatabase/auth";
 import {configureMonitorRequest} from "./monitor-http.js";
 import {workspaceNavigation, stockWorkflowContext} from "./workspace-navigation.js";
+import {mountDraftWorkspace,SHARED_PHOTOS_HOME} from "./draft-workspace.js";
 import {COCKPIT_BRAND,cockpitHeader} from "./cockpit-brand.js";
 
 const form = document.querySelector("#loginForm");
@@ -40,11 +41,13 @@ async function openApplication() {
   if (!response.ok) {showLogin(); message("このアカウントには利用権限がありません。"); return;}
   if (opened) {location.replace("/"); return;}
   const session = await response.json();
-  const drafts = new URLSearchParams(location.search).get("view") === "drafts";
+  const params=new URLSearchParams(location.search),legacyPhotos=params.get("view")==="photos";
+  const drafts = params.get("view") === "drafts" || legacyPhotos;
   const stock = new URLSearchParams(location.search).get("view") === "stock";
   const planning = new URLSearchParams(location.search).get("view") === "planning";
   const overview = new URLSearchParams(location.search).get("view") === "overview";
-  const photos = new URLSearchParams(location.search).get("view") === "photos";
+  const photos = legacyPhotos || drafts&&params.get("section")==="photos";
+  if(legacyPhotos)history.replaceState(null,"",SHARED_PHOTOS_HOME+location.hash);
   const htmlResponse = await fetch(photos ? "/cloud-photos-view.html" : overview ? "/cloud-overview-view.html" : planning ? "/cloud-planning-view.html" : stock ? "/cloud-stock-view.html" : drafts ? "/cloud-drafts-view.html" : "/cloud-view.html", {cache: "no-store"});
   if (!htmlResponse.ok) throw new Error("画面を読み込めませんでした。");
   const main = new DOMParser().parseFromString(await htmlResponse.text(), "text/html").querySelector("main");
@@ -68,16 +71,18 @@ async function openApplication() {
   main.classList.add('cockpit-content');
   panel.append(account, main);
   configureMonitorRequest(authenticatedRequest);
+  if(drafts)mountDraftWorkspace(main,{photos,photoLibrary:session.photoLibrary});
   if (photos) {const {openSharedPhotos}=await import("./shared-photos.js");await openSharedPhotos({readOnly:session.readOnly,enabled:session.photoLibrary});}
   else if (overview) {const {openOverview}=await import("./product-overview.js");await openOverview({userId:session.userId,readOnly:session.readOnly});}
   else if (planning) {const {openPlanning}=await import("./sales-planning.js");await openPlanning({userId:session.userId,readOnly:session.readOnly});}
   else if (stock) {const {openStock} = await import("./physical-stock.js"); await openStock({userId: session.userId, readOnly: session.readOnly});}
-  else await import(drafts ? "./app.js" : "./link-monitor.js");
+  else if(drafts){await import("./app.js");if(session.photoLibrary){const {mountPhotoDraftBoard}=await import("./photo-listing-drafts.js");await mountPhotoDraftBoard(main,{readOnly:session.readOnly});}}
+  else await import("./link-monitor.js");
   if (!stock && !planning && !overview && !photos && session.physicalStock) {
     try {await stockWorkflowContext({drafts,main,request:authenticatedRequest});}
     catch (error) {const warning=document.createElement("p");warning.className="workspace-context-error";warning.setAttribute("role","alert");warning.textContent=error.message;main.prepend(warning);}
   }
-  document.title = `${photos?"共有写真":overview?"全商品一覧":planning ? "販売の監視・見直し" : stock ? "コンテナ・自社在庫" : drafts ? "ヤフオク出品下書きツール" : "商品紐付けツール"} | ${COCKPIT_BRAND.title}`;
+  document.title = `${photos?"写真仕分けナビ共有写真｜ヤフオク出品下書きツール":overview?"全商品一覧":planning ? "販売の監視・見直し" : stock ? "コンテナ・自社在庫" : drafts ? "ヤフオク出品下書きツール" : "商品紐付けツール"} | ${COCKPIT_BRAND.title}`;
   document.querySelector("#loginPanel").hidden = true;
   document.querySelector("#authLoading").hidden = true;
   panel.hidden = false;

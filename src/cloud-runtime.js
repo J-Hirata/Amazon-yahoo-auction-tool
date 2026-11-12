@@ -32,6 +32,7 @@ import {createProductMonitoring} from "./product-monitoring.js";
 import {createPhotoLibrary,validatePhotoLibrary} from './photo-library.js';
 
 const fileTypes = {
+  "draft-workspace.js":"text/javascript; charset=utf-8","photo-listing-drafts.js":"text/javascript; charset=utf-8","photo-listing-drafts.css":"text/css; charset=utf-8","photo-draft-zip.js":"text/javascript; charset=utf-8",
   "cloud-photos-view.html":"text/html; charset=utf-8","shared-photos.js":"text/javascript; charset=utf-8","shared-photo-images.js":"text/javascript; charset=utf-8","shared-photos.css":"text/css; charset=utf-8",
   "product-workspace.js":"text/javascript; charset=utf-8",
   "product-workspace-editor.js":"text/javascript; charset=utf-8","product-access.js":"text/javascript; charset=utf-8","inventory-panel.js":"text/javascript; charset=utf-8","product-access.css":"text/css; charset=utf-8",

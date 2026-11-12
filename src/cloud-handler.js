@@ -60,7 +60,7 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
       if (url.origin !== config.origin) return reply({error: "公開先が一致しません"}, 403);
       if (request.headers.get("origin") && request.headers.get("origin") !== config.origin) return reply({error: "同じ管理画面から操作してください"}, 403);
       if (request.headers.get("sec-fetch-site") === "cross-site") return reply({error: "別サイトからは操作できません"}, 403);
-      const draftPage = request.method === "GET" && url.pathname === "/" && ["?view=drafts", "?view=stock", "?view=planning","?view=overview","?view=photos"].includes(url.search);
+      const draftPage = request.method === "GET" && url.pathname === "/" && ["?view=drafts", "?view=stock", "?view=planning","?view=overview","?view=photos","?view=drafts&section=photos","?section=photos&view=drafts"].includes(url.search);
       if ((url.search && !draftPage) || url.hash || /%2f|%5c/i.test(url.pathname)) return reply({error: "未対応のURLです"}, 404);
       if (request.method === "GET" && url.pathname === "/api/cloud-config") return reply({authUrl: config.authUrl, setupEnabled: Boolean(ownerAccess)});
       if (request.method === "GET" && assets.has(url.pathname)) {
@@ -86,6 +86,14 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
       if (owner.status !== 200) return reply({error: owner.status === 403 ? "このアカウントには利用権限がありません" : "ログインが必要です"}, owner.status);
       if (request.method === "GET" && url.pathname === "/api/session") return reply({userId: owner.userId, readOnly: config.readOnly, physicalStock: Boolean(stock),salesPlanning:Boolean(planning),productOverview:Boolean(overview),photoLibrary:Boolean(photoLibrary)});
       if(photoLibrary&&request.method==='GET'&&url.pathname==='/api/photo-library')return reply(await photoLibrary.view());
+      if(photoLibrary?.listingDrafts&&request.method==='GET'&&url.pathname==='/api/photo-listing-drafts')return reply(await photoLibrary.listingDrafts.view());
+      const photoExport=url.pathname.match(/^\/api\/photo-listing-drafts\/([0-9a-f-]{36})\/export\/(0|[1-9][0-9]{0,14})$/i);
+      if(photoLibrary?.listingDrafts&&photoExport&&request.method==='GET')return reply(await photoLibrary.listingDrafts.exportData(photoExport[1],Number(photoExport[2])));
+      if(photoLibrary?.listingDrafts&&url.pathname==='/api/photo-listing-drafts'&&request.method==='POST'){
+        if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
+        const match=request.headers.get('if-match');if(!/^"(?:0|[1-9][0-9]{0,14})"$/.test(match||''))return reply({error:'下書き一覧を更新してください'},428);
+        const data=await jsonBody(request);return reply(await photoLibrary.listingDrafts.save(data,{expectedRevision:Number(match.slice(1,-1)),actor:owner.userId}));
+      }
       const sharedImage=url.pathname.match(/^\/api\/photo-library\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})\/(preview|image)$/i);
       if(photoLibrary&&sharedImage&&request.method==='GET')return photoLibrary.image(sharedImage[1],sharedImage[2],sharedImage[3]);
       if(photoLibrary&&request.method==='POST'&&url.pathname==='/api/photo-library/link'){
