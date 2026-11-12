@@ -38,7 +38,7 @@ export async function jsonBody(request) {
   catch {throw fail("入力データを読み取れません", 400);}
 }
 
-export function createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, notices, photoLibrary, photoBridgeKey, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
+export function createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, notices, photoLibrary, research, photoBridgeKey, productLinks, ownerAccess, fba, mail, sales, automation, verifyIdentity, verifyOwner, assets = new Map()}) {
   const headers = {
     "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
     "Content-Security-Policy": `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob: https://*.yimg.jp https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://images-fe.ssl-images-amazon.com; connect-src 'self' ${new URL(config.authUrl).origin}; frame-src ${new URL(config.authUrl).origin}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'; object-src 'none'`,
@@ -81,6 +81,27 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
         if(!verifyBridge(request,photoBridgeKey,raw))return reply({error:'写真共有の認証を確認できません'},401);
         let input;try{input=JSON.parse(raw);}catch{return reply({error:'共有内容を読み取れません'},400);}
         return reply(await photoLibrary.receive(input));
+      }
+      if(photoLibrary?.receiveResearch&&request.method==='POST'&&url.pathname==='/api/research/context'){
+        if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
+        const raw=await rawJSON(request);
+        if(!verifyBridge(request,photoBridgeKey,raw))return reply({error:'リサーチの接続認証を確認できません'},401);
+        let input;try{input=JSON.parse(raw);}catch{return reply({error:'入力形式を確認してください'},400);}
+        return reply(await photoLibrary.receiveResearch(input));
+      }
+      if(research&&url.pathname.startsWith('/api/research/')){
+        if(request.method==='GET'&&url.pathname==='/api/research/capabilities'){
+          if(!verifyBridge(request,photoBridgeKey,''))return reply({error:'リサーチの接続認証を確認できません'},401);
+          return reply(research.capabilities());
+        }
+        if(request.method==='POST'&&url.pathname==='/api/research/query'){
+          if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
+          const raw=await rawJSON(request);
+          if(!verifyBridge(request,photoBridgeKey,raw))return reply({error:'リサーチの接続認証を確認できません'},401);
+          let input;try{input=JSON.parse(raw);}catch{return reply({error:'入力形式を確認してください'},400);}
+          return reply(await research.query(input));
+        }
+        return reply({error:'対応していないリサーチ操作です'},404);
       }
       const owner = await verifyOwner(request);
       if (owner.status !== 200) return reply({error: owner.status === 403 ? "このアカウントには利用権限がありません" : "ログインが必要です"}, owner.status);

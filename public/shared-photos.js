@@ -89,5 +89,7 @@ export async function openSharedPhotos({readOnly=false,enabled=true}={}){
  $('#sharedPhotosSearch').oninput=render;$('#sharedPhotosRefresh').onclick=()=>{if(!busy)void load().catch(e=>message(e.message,true));};
  if(!enabled){message('写真ナビとの接続準備中です。既存機能は引き続き使えます。');return;}
  await load();
+ const contextId=new URLSearchParams(location.hash.slice(1)).get('research'),context=(data.researchContexts||[]).find(c=>c.id===contextId),packet=context&&data.packages.find(p=>p.packageId===context.packageId);
+ if(packet)await openPhotoDraft({packet,readOnly,onSaved:async()=>{await load();message('リサーチ内容から下書きを保存しました。');}});
  try{const pending=JSON.parse(sessionStorage.getItem('photo-library-pending')||'null');if(pending){pendingInput=pending;retry.hidden=false;message('前の写真関連付けの保存結果が不明です。一覧を確認し、必要なら同じ操作を再試行してください。');}}catch{}
 }

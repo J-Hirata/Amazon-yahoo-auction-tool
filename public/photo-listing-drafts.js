@@ -22,6 +22,8 @@ export async function downloadPhotoDraft(d){
 export async function openPhotoDraft({packet,readOnly=false,onSaved=()=>{}}){
  const data=await request();let draft=data.items.find(d=>d.package.sourceWorkspaceId===packet.sourceWorkspaceId&&d.package.productId===packet.productId&&d.channel==='yahoo');
  if(draft?.archived)readOnly=true;
+ const context=(data.researchContexts||[]).filter(c=>c.packageId===(draft?.packageId||packet.packageId)).sort((a,b)=>b.recordVersion-a.recordVersion)[0];
+ let appliedContext=draft?.researchContextId||(!draft&&context?context.id:null);
  let p=draft?.package||packet,selected=[...(draft?.assetIds||(p.mainAssetId?[p.mainAssetId]:[]))],pending=null,saving=false;
  const dialog=node('dialog',undefined,'photo-draft-editor'),form=node('form'),header=node('header'),h=node('h2','写真からヤフオク下書きを準備'),close=node('button','閉じる');close.type='button';header.append(h,close);
  const message=node('p',draft?.archived?'アーカイブ中です。「出品下書き」でアーカイブを表示して戻すと編集できます。':'','photo-draft-message');message.setAttribute('role','status');
@@ -29,9 +31,15 @@ export async function openPhotoDraft({packet,readOnly=false,onSaved=()=>{}}){
  inputs.disabled=readOnly;
  function field(label,tag,value){const l=node('label',label),n=node(tag);n.value=value;l.append(n);fields.append(l);return n;}
  const title=field('商品名','input',draft?.title||packet.name);title.required=true;title.maxLength=500;
- const price=field('開始価格（円・未定なら空欄）','input',draft?.price??'');price.type='number';price.min='1';price.max='100000000';price.step='1';
- const description=field('出品する商品説明','textarea',draft?.description||'');description.rows=7;description.maxLength=20000;
+ const price=field('開始価格（円・未定なら空欄）','input',draft?draft.price??'':context?.decision.price??'');price.type='number';price.min='1';price.max='100000000';price.step='1';
+ const description=field('出品する商品説明','textarea',draft?draft.description:context?.description||'');description.rows=7;description.maxLength=20000;
  const note=field('作業メモ（出品文面には含めません）','textarea',draft?.note||[packet.note,packet.reviewNote].filter(Boolean).join('\n').slice(0,2000));note.rows=3;note.maxLength=2000;
+ if(context){
+  const info=node('p','リサーチ確認情報あり：'+context.input.model+' ／ '+(context.decision.candidateAsin||'ASIN未採用')+'。商品状態と付属品は本人の入力から作成。');
+  const source=node('a','写真仕分けナビで確認 ↗');source.href='https://photo-sorting-research.vercel.app/research?ids='+encodeURIComponent(context.productId);source.target='_blank';source.rel='noopener noreferrer';fields.append(info,source);
+  if(draft){const apply=node('button','確認済みリサーチ内容を説明・価格に読み込む');apply.type='button';apply.disabled=readOnly;fields.append(apply);apply.onclick=()=>{if(p.packageId!==context.packageId){message.textContent='同じ写真セットで使ってください。';return;}description.value=context.description;price.value=context.decision.price??'';appliedContext=context.id;message.textContent='編集欄に読み込みました。内容を確認して下書きを保存してください。';};}
+  const refs=node('div');for(const ref of context.decision.references){const a=node('a',(ref.relation==='same'?'同一候補':'類似')+'の参考出品 ↗');a.href=ref.url;a.target='_blank';a.rel='noopener noreferrer';refs.append(a,node('p',ref.difference||'仕様・付属品の比較は本人確認。'));}fields.append(refs);
+ }
  const count=node('p'),grid=node('div',undefined,'photo-draft-picker-grid');photos.append(node('h3','使う写真を選ぶ'),node('p','代表写真がある場合は選択済みです。使う写真を選び、タグだけの写真、暗い写真、重複した写真は外してください。最大10枚。'),count,grid);
  let observer;function renderPhotos(){
   observer?.disconnect();grid.replaceChildren();count.textContent=selected.length+' / 10枚を使用（1枚目が代表写真）';
@@ -44,14 +52,14 @@ export async function openPhotoDraft({packet,readOnly=false,onSaved=()=>{}}){
    main.onclick=()=>{selected=[a.id,...selected.filter(v=>v!==a.id)];renderPhotos();};item.append(img,label,main);grid.append(item);observer.observe(img);
   }
  }
- if(draft&&draft.packageId!==packet.packageId){const change=node('button','今回共有した写真セットに切り替える');change.type='button';change.disabled=readOnly;fields.append(node('p','この下書きは以前の写真セットを使っています。変更する場合は写真を選び直してください。'),change);change.onclick=()=>{p=packet;selected=p.mainAssetId?[p.mainAssetId]:[];change.disabled=true;renderPhotos();};}
+ if(draft&&draft.packageId!==packet.packageId){const change=node('button','今回共有した写真セットに切り替える');change.type='button';change.disabled=readOnly;fields.append(node('p','この下書きは以前の写真セットを使っています。変更する場合は写真を選び直してください。'),change);change.onclick=()=>{p=packet;appliedContext=null;selected=p.mainAssetId?[p.mainAssetId]:[];change.disabled=true;renderPhotos();};}
  layout.append(fields,photos);inputs.append(layout);const footer=node('footer'),save=node('button','下書きを保存'),cancel=node('button','キャンセル');save.type='submit';save.disabled=readOnly||!!draft?.archived;save.dataset.write='';cancel.type='button';footer.append(cancel,save);
  form.append(header,node('p','出品に使う写真を選び、商品説明と価格を入力してください。保存した下書きから写真と文面をまとめて取得できます。'),inputs,message,footer);dialog.append(form);dialog.setAttribute('aria-label','写真からの出品下書き');document.body.append(dialog);
  function dismiss(){if(!saving)dialog.close();}
  close.onclick=dismiss;cancel.onclick=dismiss;dialog.addEventListener('click',e=>{if(e.target===dialog)dismiss();});dialog.addEventListener('cancel',e=>{if(saving)e.preventDefault();});dialog.addEventListener('close',()=>{observer?.disconnect();dialog.remove();});
  form.onsubmit=async e=>{
   e.preventDefault();if(saving||readOnly)return;
-  const base={action:'save',packageId:p.packageId,version:draft?.version||0,values:{title:title.value,price:price.value===''?null:Number(price.value),description:description.value,note:note.value,assetIds:selected}};
+  const base={action:'save',packageId:p.packageId,version:draft?.version||0,values:{title:title.value,price:price.value===''?null:Number(price.value),description:description.value,note:note.value,assetIds:selected,researchContextId:appliedContext}};
   const signature=JSON.stringify(base);if(!pending||pending.signature!==signature)pending={signature,input:{operationId:crypto.randomUUID(),...base}};
   saving=true;inputs.disabled=true;save.disabled=true;cancel.disabled=true;close.disabled=true;message.textContent='下書きを保存しています…';
   try{

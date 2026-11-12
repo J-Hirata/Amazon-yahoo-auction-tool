@@ -13,6 +13,7 @@ export function validatePhotoListingDrafts(state){
    !text(d.title,500)||!d.title.trim()||!text(d.description,20000)||!text(d.note,2000)||!(d.price===null||Number.isSafeInteger(d.price)&&d.price>0&&d.price<=100000000)||
    !Array.isArray(d.assetIds)||!d.assetIds.length||d.assetIds.length>10||new Set(d.assetIds).size!==d.assetIds.length||d.assetIds.some(a=>!p.assets.some(v=>v.id===a))||typeof d.archived!=='boolean'||!Array.isArray(d.history)||!Number.isFinite(Date.parse(d.createdAt))||!Number.isFinite(Date.parse(d.updatedAt)))throw fail('下書きの商品と写真の対応を確認してください');
  }
+ for(const d of drafts)if(d.researchContextId&&!(state.researchContexts||[]).some(c=>c.id===d.researchContextId&&c.packageId===d.packageId))throw fail('下書きとリサーチの写真セットが一致しません');
  if(ops.some(o=>!id(o?.id)||!id(o.draftId)||typeof o.actor!=='string'||!/^[a-f0-9]{64}$/.test(o.digest)))throw fail('下書きの保存記録を確認してください');
  return state;
 }
@@ -24,7 +25,7 @@ export function createPhotoListingDrafts({store,sourceOrigin,now=()=>new Date().
  }
  async function view(){
   const saved=await store.readSnapshot();validatePhotoListingDrafts(saved.state);
-  return {revision:saved.revision,items:(saved.state.listingDrafts||[]).map(d=>display(d,saved.state)).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),yahooSellerUrl:CONFIG.yahooSellerUrl};
+  return {researchContexts:saved.state.researchContexts||[],revision:saved.revision,items:(saved.state.listingDrafts||[]).map(d=>display(d,saved.state)).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt)),yahooSellerUrl:CONFIG.yahooSellerUrl};
  }
  async function save(input,{expectedRevision,actor}){
   if(!input||!id(input.operationId)||!['save','archive','restore'].includes(input.action)||!Number.isSafeInteger(input.version)||input.version<0)throw fail('下書きの保存内容を確認してください');
@@ -44,8 +45,10 @@ export function createPhotoListingDrafts({store,sourceOrigin,now=()=>new Date().
     if(!values||!text(values.title,500)||!values.title.trim()||!text(values.description,20000)||!text(values.note,2000)||!(values.price===null||Number.isSafeInteger(values.price)&&values.price>0&&values.price<=100000000)||
      !Array.isArray(values.assetIds)||values.assetIds.length<1||values.assetIds.length>10||new Set(values.assetIds).size!==values.assetIds.length||values.assetIds.some(a=>!p.assets.some(v=>v.id===a)))throw fail('商品名・価格・使う写真（1〜10枚）を確認してください');
     if(new Set(values.assetIds.map(a=>p.assets.find(v=>v.id===a).sha256)).size!==values.assetIds.length)throw fail('同じ内容の写真が重複しています。1枚だけ選んでください');
+    const researchContextId=Object.hasOwn(values,'researchContextId')?values.researchContextId:(previous?.packageId===p.packageId?previous.researchContextId:null)??null;
+    if(researchContextId&&!(state.researchContexts||[]).some(c=>c.id===researchContextId&&c.packageId===p.packageId))throw fail('同じ写真セットのリサーチ結果を選んでください');
     if(previous?.archived)throw fail('アーカイブから戻してから編集してください',409);
-    const next={id:resultId,sourceItemId:stableItemId(p.sourceWorkspaceId,p.productId),packageId:p.packageId,channel:'yahoo',title:values.title.trim(),description:values.description,note:values.note,price:values.price,assetIds:values.assetIds,archived:false,version:(previous?.version||0)+1,createdAt:previous?.createdAt||at,updatedAt:at,
+    const next={id:resultId,sourceItemId:stableItemId(p.sourceWorkspaceId,p.productId),packageId:p.packageId,channel:'yahoo',researchContextId,title:values.title.trim(),description:values.description,note:values.note,price:values.price,assetIds:values.assetIds,archived:false,version:(previous?.version||0)+1,createdAt:previous?.createdAt||at,updatedAt:at,
      history:[...(previous?.history||[]),{action:'saved',at,actor,packageId:p.packageId,assetIds:values.assetIds,version:(previous?.version||0)+1}]};
     if(previous)Object.assign(previous,next);else state.listingDrafts.push(next);
    }else{

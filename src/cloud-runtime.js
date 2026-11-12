@@ -1,3 +1,5 @@
+import {createResearchProvider} from './research-provider.js';
+import {createResearchApi} from './research-api.js';
 import {createDraftCatalog} from './draft-catalog.js';
 import {createYahooRelisting} from './yahoo-relisting.js';
 import {createYahooMailReader} from './yahoo-mail-reader.js';
@@ -74,6 +76,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const stockAmazon = stockStore && env.ASIN_AMAZON_CLIENT_ID ? createStockAmazonRefresh({store:stockStore,monitorStore:store,config:cloudAmazonConfig(env)}) : undefined;
   const photoLibrary=config.fullWorkspace&&env.PHOTO_BRIDGE_KEY&&env.PHOTO_BRIDGE_SOURCE_ORIGIN&&env.PHOTO_BRIDGE_WORKSPACE_ID?createPhotoLibrary({store:createPostgresDocumentStore({pool,key:'photo-library',validate:validatePhotoLibrary}),stockStore,sourceOrigin:env.PHOTO_BRIDGE_SOURCE_ORIGIN,sourceWorkspaceId:env.PHOTO_BRIDGE_WORKSPACE_ID,key:env.PHOTO_BRIDGE_KEY,linkTransaction:createDocumentTransaction({pool,validators:{'photo-library':validatePhotoLibrary,'physical-stock':validatePhysicalStock}}),allowLocal:env.PHOTO_BRIDGE_ALLOW_LOCAL==='1'}):undefined;
   const ownerAccess = config.ownerFromDatabase ? createOwnerAccess({pool}) : undefined;
+  const research=env.PHOTO_BRIDGE_KEY&&env.PHOTO_BRIDGE_WORKSPACE_ID?createResearchApi({workspaceId:env.PHOTO_BRIDGE_WORKSPACE_ID,provider:createResearchProvider({amazon:env.ASIN_AMAZON_CLIENT_ID?cloudAmazonConfig(env):null,keepaKey:env.RESEARCH_KEEPA_API_KEY||env.KEEPA_API_KEY||''})}):undefined;
   const fba = env.ASIN_AMAZON_CLIENT_ID ? createCloudFba({store, config: cloudAmazonConfig(env)}) : undefined;
   const readTargets=async()=>{
     const [monitor,physical,plans,watch,drafts]=await Promise.all([store.read(),stockStore?.read(),planningStore?.read(),watchStore?.read(),draftStore?.read()]);
@@ -96,7 +99,7 @@ export async function createCloudRuntime({assetDirectory, env = process.env} = {
   const productLinks=overview?createProductLinkEditor({transaction:createDocumentTransaction({pool,validators:{"link-monitor":validateMonitorState,"physical-stock":validatePhysicalStock,"sales-planning":validateSalesPlanning,"product-watch":validateProductWatch,"draft-items":validateDraftItems}}),overview,readMerchantListings:env.ASIN_AMAZON_CLIENT_ID?readOwnAmazonListings:undefined,amazonConfig:env.ASIN_AMAZON_CLIENT_ID?cloudAmazonConfig(env):undefined,refresh:monitoring?(options={})=>monitoring.run({inventoryOnly:options.inventoryOnly===true,refreshListings:true,settings:{stockAlerts:false,yahooAlerts:false,reviewAlerts:false,errorAlerts:false}}):undefined}):undefined;
   const automation=sales && transport ? createCloudSalesAutomation({store,sales,transport,monitoring,readAlertStates:monitoring?.alertStates,readAlertContext:monitoring?.deliveryContext,readInventory:overview?()=>overview.view():undefined}) : undefined;
   const notices=overview?createProductNotices({overview,watchStore}):undefined;
-  const handler = createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, notices, photoLibrary, photoBridgeKey:env.PHOTO_BRIDGE_KEY, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
+  const handler = createCloudHandler({config, store, draftStore, draftCatalog, stock, stockPhotos, stockAmazon, planning, overview, notices, photoLibrary, research, photoBridgeKey:env.PHOTO_BRIDGE_KEY, ownerAccess, fba, mail, sales, automation, verifyIdentity: createIdentityVerifier(config), assets: await loadCloudAssets(assetDirectory),
     productLinks,verifyOwner: createOwnerVerifier({...config, ...(ownerAccess ? {resolveOwnerUserId: ownerAccess.ownerUserId} : {})})});
   return {config, handler, pool,sales,automation,overview,productLinks,runSalesAutomation:automation ? ()=>automation.run() : undefined};
 }
