@@ -32,7 +32,7 @@ export function emittedInputs(metafile) {
 export async function inspectAuthBrowserBoundary(root) {
   const result=await build({entryPoints:[path.join(root,'public','cloud-login.js')],bundle:true,write:false,metafile:true,
     format:'esm',target:['es2022'],platform:'browser',minify:true,logLevel:'silent',
-    external:['./monitor-http.js','./link-monitor.js','./physical-stock.js','./app.js','./sales-planning.js','./product-overview.js']});
+    external:['./monitor-http.js','./link-monitor.js','./physical-stock.js','./app.js','./sales-planning.js','./product-overview.js','./shared-photos.js','./photo-listing-drafts.js']});
   const inputs=emittedInputs(result.metafile);
   return {inputCount:inputs.length,bundleHash:createHash('sha256').update(result.outputFiles[0].contents).digest('hex'),violations:authBoundaryViolations(inputs,'browser')};
 }

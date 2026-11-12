@@ -78,6 +78,7 @@ docs/**
 !public/product-access.js
 !public/product-overview.css
 !public/product-overview.js
+!public/product-notices.js
 !public/product-workspace-editor.js
 !public/product-workspace.js
 !public/start-helper.html
