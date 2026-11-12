@@ -10,11 +10,11 @@ await mkdir(output, {recursive: true});
 const {extensionArchive}=await import('./build-extension.mjs');
 await copyFile(extensionArchive,path.join(output,'chrome-extension.zip'));
 await build({entryPoints: [path.join(root, "public", "cloud-login.js")], outfile: path.join(output, "cloud-login.js"), bundle: true,
-  format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./link-monitor.js", "./physical-stock.js", "./app.js", "./sales-planning.js","./product-overview.js","./shared-photos.js"], logLevel: "warning"});
+  format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./link-monitor.js", "./physical-stock.js", "./app.js", "./sales-planning.js","./product-overview.js","./shared-photos.js","./photo-listing-drafts.js"], logLevel: "warning"});
 await build({entryPoints: [path.join(root, "public", "physical-stock.js")], outfile: path.join(output, "physical-stock.js"), bundle: true,
   format: "esm", target: ["es2022"], platform: "browser", minify: true, external: ["./monitor-http.js", "./catalog-view.js"], logLevel: "warning"});
 const files = ["cloud-login.html", "cloud-login.css", "cloud-demo.js", "app.js", "monitor-http.js", "link-monitor.js", "link-monitor.css", "physical-stock.css", "cloud-stock-view.html", "styles.css", "extension-logo.png"];
-files.push("cloud-photos-view.html","shared-photos.js","shared-photo-images.js","shared-photos.css");
+files.push("cloud-photos-view.html","shared-photos.js","shared-photo-images.js","shared-photos.css","draft-workspace.js","photo-listing-drafts.js","photo-listing-drafts.css","photo-draft-zip.js");
 files.push("cloud-planning-view.html","sales-planning.css","product-access.js","product-access.css");
 files.push("tile-size.js","fba-alarm.js","fba-status.js","draft-board.js","draft-workbench.css","extension-helper.html");
 files.push("cloud-overview-view.html","overview-filters.js","product-overview.js","product-overview.css","workspace-drafts.png","workspace-stock.png","workspace-planning.png","workspace-overview.png","cockpit-mark.svg");

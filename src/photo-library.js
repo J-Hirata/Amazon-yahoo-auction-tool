@@ -1,11 +1,12 @@
 import {PROTOCOL,id,parsePackage,stableItemId,bridgeFetch,bridgeOrigin,bridgeKey,hash} from '../shared/photo-bridge.mjs';
+import {createPhotoListingDrafts,validatePhotoListingDrafts} from './photo-listing-drafts.js';
 const fail=(m,status=400)=>Object.assign(new Error(m),{status});
 export function emptyPhotoLibrary(){return {version:1,packages:[],links:[],operations:[]};}
 export function validatePhotoLibrary(state){
  if(!state||state.version!==1||!['packages','links','operations'].every(k=>Array.isArray(state[k]))||new Set(state.packages.map(p=>p.packageId)).size!==state.packages.length||new Set(state.links.map(l=>l.stockId)).size!==state.links.length)throw fail('共有写真の保存形式を確認してください');
  for(const p of state.packages)parsePackage(p);
  if(state.links.some(l=>!id(l.stockId)||typeof l.useAsMain!=='boolean'||l.active!==true&&l.active!==false||!state.packages.some(p=>p.packageId===l.packageId&&p.assets.some(a=>a.id===l.assetId))))throw fail('在庫と写真の対応が一致しません');
- return state;
+ return validatePhotoListingDrafts(state);
 }
 export function createPhotoLibrary({store,stockStore,sourceOrigin,sourceWorkspaceId,key,fetchImpl=fetch,allowLocal=false,linkTransaction}){
  const origin=bridgeOrigin(sourceOrigin,allowLocal);bridgeKey(key);if(!id(sourceWorkspaceId))throw fail('写真共有の接続元を確認してください');
@@ -22,7 +23,7 @@ export function createPhotoLibrary({store,stockStore,sourceOrigin,sourceWorkspac
  async function view(){
   const [saved,stocks]=await Promise.all([store.readSnapshot(),stockStore.readSnapshot()]),latest=new Map();
   for(const p of saved.state.packages){const itemId=stableItemId(p.sourceWorkspaceId,p.productId),current=latest.get(itemId);if(!current||p.revision>current.latest.revision)latest.set(itemId,{itemId,latest:p,sourceUrl:origin+'/products/'+p.productId+'/photos'});}
-  return {items:[...latest.values()].sort((a,b)=>b.latest.revision-a.latest.revision),packages:saved.state.packages,links:saved.state.links.filter(l=>l.active),revision:saved.revision,stockRevision:stocks.revision,
+  return {items:[...latest.values()].sort((a,b)=>b.latest.revision-a.latest.revision),packages:saved.state.packages,listingDrafts:saved.state.listingDrafts||[],links:saved.state.links.filter(l=>l.active),revision:saved.revision,stockRevision:stocks.revision,
    stocks:stocks.state.products.map(s=>({id:s.id,title:s.title,asin:s.asin||'',sku:s.sellerSku||'',hasPhoto:!!s.imageUrl})),sourceOrigin:origin};
  }
  async function link(input,{expectedRevision,actor}){
@@ -71,5 +72,5 @@ export function createPhotoLibrary({store,stockStore,sourceOrigin,sourceWorkspac
   return {...data,rows:data.rows.map(r=>{const matches=saved.links.filter(l=>l.active&&(r.stockIds||[]).includes(l.stockId));const l=matches.length===1?matches[0]:null;
    return {...r,...(l?{sharedPhoto:{packageId:l.packageId,assetId:l.assetId,useAsMain:l.useAsMain}}:{})};})};
  }
- return {receive,view,link,image,decorateStock,decorateOverview};
+ return {receive,view,link,image,decorateStock,decorateOverview,listingDrafts:createPhotoListingDrafts({store,sourceOrigin:origin})};
 }

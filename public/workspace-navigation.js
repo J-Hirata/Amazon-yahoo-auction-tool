@@ -15,11 +15,10 @@ export function workspaceNavigation({drafts, stock, planning, overview, photos, 
     if (selected) a.setAttribute("aria-current","page"); return a;
   }
   const context = contextId(), hash = context ? "#stock=" + context : "";
-  nav.append(item("商品紐付けツール","/"+hash,!drafts&&!stock&&!planning&&!overview&&!photos,'/extension-logo.png','links','Amazon・ヤフオクを紐付け'),item("ヤフオク出品下書きツール","/?view=drafts"+hash,drafts,'/workspace-drafts.png','drafts','ヤフオクへの出品準備'));
+  nav.append(item("商品紐付けツール","/"+hash,!drafts&&!stock&&!planning&&!overview&&!photos,'/extension-logo.png','links','Amazon・ヤフオクを紐付け'),item("ヤフオク出品下書きツール","/?view=drafts"+hash,drafts||photos,'/workspace-drafts.png','drafts','ヤフオクへの出品準備'));
   if (physicalStock) nav.append(item("コンテナ・自社在庫","/?view=stock",stock,'/workspace-stock.png','stock','保管場所と実数を管理'));
   if (salesPlanning) nav.append(item("販売の監視・見直し","/?view=planning",planning,'/workspace-planning.png','planning','売れ行き・次の方針を確認'));
   if (productOverview) nav.append(item('全商品一覧','/?view=overview',overview,'/workspace-overview.png','overview','販路と在庫をまとめて確認'));
-  if(photoLibrary)nav.append(item('共有写真','/?view=photos',photos,'/catalog-image.svg','photos','写真ナビから受け取り・在庫に関連付け'));
   nav.style.setProperty('--workspace-tool-count',String(nav.children.length));
   nav.dataset.count=String(nav.children.length);
   return nav;
