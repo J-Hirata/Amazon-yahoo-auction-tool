@@ -11,6 +11,8 @@
 - POST /api/research/context：research-context/v1。先に受け取った写真セットのworkspace/product/package ID・digestと一致した場合だけ受領する。
 - 既存の本人認証、同一Origin確認、readOnly設定、写真の非公開取得・ハッシュ検証は保持する。
 
+価格APIのレートヘッダー・Retry-Afterに合わせて待機し、429は全体26秒の取得期限内で各状態最大2回再試行する。次のジョブにも待機間隔を渡す。失敗した価格を0円で埋めず、追加Keepa要求の再実行はしない。
+
 Amazonは日本のCatalog Items/Item Offersを読み、一般購入者の新品/中古を分ける。Summaryに複数状態があっても要求状態で絞る。中古価格の代わりに新品価格やプライマリ価格を使わない。出品可否をカタログ存在から推定しない。Keepaは保存済みのNEW/USEDだけを参考表示し、送料は未確認・成約価格とは扱わない。
 
 ## 既存下書き

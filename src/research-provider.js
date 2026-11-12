@@ -34,15 +34,16 @@ async function boundedData(response){
  try{return JSON.parse(Buffer.concat(chunks).toString('utf8'));}catch{throw fault('INVALID_RESPONSE','応答形式を確認できません。');}
 }
 export function createResearchProvider({amazon=null,keepaKey='',fetchImpl=fetch,now=()=>Date.now(),sleep=ms=>new Promise(r=>setTimeout(r,ms))}={}){
- let token=null,lastPrice=0;
+ let token=null,lastPrice=0,pricingInterval=2200;
  const capabilities=()=>({amazon:Boolean(amazon?.clientId&&amazon?.clientSecret&&amazon?.refreshToken&&amazon.marketplaceId===MARKET),keepa:Boolean(keepaKey),googleApi:false,imagesAutomatic:false,soldAutomatic:false,keepaMode:'既存データのみ・追加offersなし・最大1トークン/要求'});
  async function query(raw){
   const input=inputValues(raw.input),settings=settingsValues(raw.settings),at=new Date(now()).toISOString(),links=searchLinks(input,settings),result={candidates:[],prices:[],issues:[],links,checkedAt:at,keepaTokens:0,keepaRequests:0,listingEligibility:{status:'not_checked',message:'カタログの有無と本人の出品可否は別です。'},mode:'manual'};
   const deadline=now()+26000;
-  const request=async(url,options={})=>{
+  const request=async(url,options={},observe)=>{
    const remain=Math.min(7000,deadline-now());if(remain<300)throw fault('TIMEOUT','取得時間の上限です。再開できます。');
    let r;try{r=await fetchImpl(url,{...options,redirect:'error',signal:AbortSignal.timeout(remain)});}catch{throw fault('CONNECTION','接続を確認できません。再試行できます。');}
-   if(!r.ok){await r.body?.cancel();throw fault('HTTP_'+r.status,r.status===403?'APIの権限を確認してください。':r.status===429?'取得上限です。時間をおいて再試行してください。':r.status===404?'取得対象が見つかりませんでした。':'APIから取得できませんでした。');}
+   observe?.(r.headers);
+   if(!r.ok){await r.body?.cancel();const error=fault('HTTP_'+r.status,r.status===403?'APIの権限を確認してください。':r.status===429?'取得上限です。時間をおいて再試行してください。':r.status===404?'取得対象が見つかりませんでした。':'APIから取得できませんでした。');error.retryMs=Math.min(10000,Math.max(0,Number(r.headers.get('retry-after'))||0)*1000);throw error;}
    return boundedData(r);
   };
   const issue=(stage,e)=>result.issues.push({stage,code:e.code||'UNAVAILABLE',message:e.message||'取得できませんでした。'});
@@ -51,8 +52,18 @@ export function createResearchProvider({amazon=null,keepaKey='',fetchImpl=fetch,
     const t=await request('https://api.amazon.com/auth/o2/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'refresh_token',client_id:amazon.clientId,client_secret:amazon.clientSecret,refresh_token:amazon.refreshToken})});
     if(typeof t.access_token!=='string'||!t.access_token)throw fault('AUTH','Amazon認証を確認してください。');token={value:t.access_token,until:now()+Math.max(60,Number(t.expires_in)||3600)*1000-60000};
    }
-   if(pricing){const delay=Math.max(0,lastPrice+2100-now());if(delay){if(now()+delay>deadline)throw fault('TIMEOUT','価格の取得待ちです。');await sleep(delay);}lastPrice=now();}
-   return request('https://sellingpartnerapi-fe.amazon.com'+path,{headers:{'x-amz-access-token':token.value}});
+   for(let attempt=0;;attempt++){
+    if(pricing){const delay=Math.max(0,lastPrice+pricingInterval-now());if(delay){if(now()+delay>deadline)throw fault('TIMEOUT','価格の取得待ちです。');await sleep(delay);}lastPrice=now();}
+    try{return await request('https://sellingpartnerapi-fe.amazon.com'+path,{headers:{'x-amz-access-token':token.value}},pricing?headers=>{
+     const rate=Number(headers.get('x-amzn-ratelimit-limit'));if(rate>0&&rate<=100)pricingInterval=Math.max(2200,Math.min(10000,Math.ceil(1000/rate)+200));
+    }:undefined);}
+    catch(e){
+     if(!pricing||e.code!=='HTTP_429'||attempt>=2)throw e;
+     const wait=Math.max(3500,e.retryMs||0,pricingInterval*(attempt+1));
+     if(now()+wait+1000>deadline)throw e;
+     await sleep(wait);
+    }
+   }
   };
   const amazonWanted=settings.priority.includes('amazon')||settings.compare.includes('amazon');
   const canSearch=amazonWanted&&capabilities().amazon&&settings.discovery==='direct'&&settings.priority[0]==='amazon';
@@ -88,6 +99,7 @@ export function createResearchProvider({amazon=null,keepaKey='',fetchImpl=fetch,
    else result.issues.push({stage:'Keepa',code:'NO_DATA',message:'Keepaの保存データはありません。0円ではありません。'});
   }catch(e){issue('Keepa',e);}
   else if(settings.useKeepa&&code&&!keepaAllowed)result.issues.push({stage:'Keepa',code:'NOT_AVAILABLE',message:capabilities().keepa?'この回のKeepa要求上限に達したため省略しました。':'Keepaキーが未設定です。'});
+  result.nextRequestDelayMs=Math.min(10000,Math.max(0,lastPrice+pricingInterval-now()));
   result.nextSites=settings.priority.filter(m=>m!=='amazon'||!result.candidates.length);
   result.status=result.candidates.length?'needs_review':result.issues.some(i=>['CONNECTION','AUTH','TIMEOUT','NOT_CONFIGURED','NOT_AVAILABLE','UNAVAILABLE','INVALID_RESPONSE','RESPONSE_LIMIT'].includes(i.code)||i.code.startsWith('HTTP_')&&i.code!=='HTTP_404')?'unavailable':result.mode==='manual'?'manual_search':'not_found';
   return result;

@@ -5,6 +5,32 @@ import {createResearchProvider,amazonPrice,keepaPrices} from '../src/research-pr
 import {createResearchApi} from '../src/research-api.js';
 import {createCloudHandler} from '../src/cloud-handler.js';
 import {signedHeaders} from '../shared/photo-bridge.mjs';
+
+test('Amazon throttle headers pace requests, retry within deadline and never repeat Keepa paid reads',async()=>{
+ let time=Date.parse(at),newCalls=0,usedCalls=0;const waits=[];
+ const p=createResearchProvider({amazon,now:()=>time,sleep:async ms=>{waits.push(ms);time+=ms;},fetchImpl:async(url)=>{
+  const u=String(url);if(u.includes('/auth/'))return Response.json({access_token:'private',expires_in:3600});if(u.includes('/catalog/'))return Response.json(catalog);
+  if(new URL(url).searchParams.get('ItemCondition')==='New'){
+   newCalls++;if(newCalls===1)return Response.json({error:'private-upstream-body'},{status:429,headers:{'x-amzn-ratelimit-limit':'0.2','retry-after':'1'}});
+   return Response.json({payload:{ASIN:asin,Summary:{LowestPrices:[]}}});
+  }
+  usedCalls++;return Response.json({payload:{ASIN:asin,Summary:{LowestPrices:[{condition:'used',ListingPrice:money(4200),Shipping:money(0),LandedPrice:money(4200)}]}}});
+ }});
+ const r=await p.query({input:{asin},settings:{useKeepa:false},keepaBudget:0});
+ assert.equal(newCalls,2);assert.equal(usedCalls,1);assert.equal(r.prices[0].item,4200);assert.ok(waits.every(v=>v>=5200));assert.equal(r.keepaRequests,0);assert.equal(r.nextRequestDelayMs,5200);
+ assert.ok(!r.issues.some(i=>i.code==='HTTP_429'));assert.ok(!JSON.stringify(r).includes('private-upstream-body'));
+});
+test('persistent throttling stops within the request budget and leaves unknown prices empty',async()=>{
+ let time=Date.parse(at),calls=0;
+ const p=createResearchProvider({amazon,now:()=>time,sleep:async ms=>{time+=ms;},fetchImpl:async(url)=>{
+  if(String(url).includes('/auth/'))return Response.json({access_token:'private'});
+  if(String(url).includes('/catalog/'))return Response.json(catalog);
+  calls++;return Response.json({}, {status:429,headers:{'x-amzn-ratelimit-limit':'0.2'}});
+ }});
+ const r=await p.query({input:{asin},settings:{useKeepa:false},keepaBudget:0});
+ assert.ok(calls<=6);assert.ok(time-Date.parse(at)<=26000);assert.equal(r.prices.length,0);assert.ok(r.issues.some(i=>i.code==='HTTP_429'));assert.equal(r.keepaRequests,0);
+});
+
 const asin='B001234567',market='A1VC38T7YXB528',at='2026-11-13T00:00:00Z',money=v=>({CurrencyCode:'JPY',Amount:v}),amazon={clientId:'id',clientSecret:'do-not-expose',refreshToken:'do-not-expose',marketplaceId:market};
 const catalog={asin,summaries:[{marketplaceId:market,itemName:'メーカー AA-01',brandName:'メーカー'}],attributes:{model_number:[{value:'AA-01'}],manufacturer:[{value:'メーカー'}]},identifiers:[{marketplaceId:market,identifiers:[{identifierType:'EAN',identifier:'0491234567894'}]}]};
 test('Amazon prices filter requested condition and respect JPY, shipping zero and absent prices',()=>{
