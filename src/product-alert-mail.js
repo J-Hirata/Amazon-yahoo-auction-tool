@@ -69,8 +69,8 @@ export function productAlertsSubject(alerts,{mode='daily'}={}){
   const {fresh,repeat}=parts(alerts);
   return `【販売コックピット】${mode==='risk'?'在庫・出品の警告：':''}${[fresh.length?`新しい案内 ${fresh.length}件`:'',repeat.length?`再案内 ${repeat.length}件`:''].filter(Boolean).join('・')||'確認のお知らせ'}`;
 }
-export function productAlertsMail(alerts,{at}={}){
-  const {fresh,repeat}=parts(alerts),lines=['販売コックピット',groups.map(([key,label])=>{const n=alerts.filter(a=>productAlertGroup(a)===key).length;return n?`${label} ${n}件`:'';}).filter(Boolean).join(' ／ '),`確認：${stamp(at||alerts[0]?.at)}`,''];
+export function productAlertsMail(alerts,{at,embedded=false}={}){
+  const {fresh,repeat}=parts(alerts),lines=embedded?[]:['販売コックピット',groups.map(([key,label])=>{const n=alerts.filter(a=>productAlertGroup(a)===key).length;return n?`${label} ${n}件`:'';}).filter(Boolean).join(' ／ '),`確認：${stamp(at||alerts[0]?.at)}`,''];
   for(const [items,heading]of [[fresh,'新しい案内'],[repeat,'再案内（3日ごと）']]){
     if(!items.length)continue;lines.push(`【${heading}】`);
     for(const [kind,label]of groups){const selected=items.filter(a=>productAlertGroup(a)===kind);if(!selected.length)continue;
@@ -82,10 +82,10 @@ export function productAlertsMail(alerts,{at}={}){
       });
     }
   }
-  lines.push('再案内を止めるには、上のリンク先で「この件の再案内を止める」にチェックしてください。','残数の警告設定や見直し日も、同じ画面から変更できます。');
+  if(!embedded)lines.push('再案内を止めるには、上のリンク先で「この件の再案内を止める」にチェックしてください。','残数の警告設定や見直し日も、同じ画面から変更できます。');
   return lines.join('\n');
 }
-export function productAlertsHtml(alerts,{at}={}){
+export function productAlertsHtml(alerts,{at,embedded=false}={}){
   const {fresh,repeat}=parts(alerts),checked=stamp(at||alerts[0]?.at),textStyle='font-family:Arial,Meiryo,sans-serif;font-size:15px;line-height:1.65;color:#202b3c;';
   function section(items,heading){
     if(!items.length)return '';
@@ -97,5 +97,6 @@ export function productAlertsHtml(alerts,{at}={}){
       }html+='</table>';
     }return html;
   }
+  if(embedded)return section(fresh,'新しい案内')+section(repeat,'再案内（3日ごと）');
   return `<div style="${textStyle}max-width:660px;margin:0 auto;padding:16px;"><div style="font-size:21px;font-weight:bold;">販売コックピット</div><div style="font-size:13px;color:#59687a;">確認 ${esc(checked)}</div>${section(fresh,'新しい案内')}${section(repeat,'再案内（3日ごと）')}<p style="font-size:13px;color:#59687a;margin-top:22px;">各商品のリンクから「この件の再案内を止める」にチェックできます。残数の警告設定・見直し日も同じ画面から変更できます。</p></div>`;
 }

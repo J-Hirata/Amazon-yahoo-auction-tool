@@ -57,7 +57,7 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
     if(inventoryOnly)return {status:errors.length?'partial':'complete',errors,pendingAlerts:0};
     const current=await overview.inputs();
     const pending=await watchStore.update(state=>{
-      for(const record of current.monitor.mailOutbox||[])if(record.status==='cancelled')for(const p of state.pendingAlerts||[])if(record.alertIds?.includes(p.id)&&p.queuedAt){delete p.queuedAt;if(record.cancelledFor==='conditions_changed'&&record.cancelledAlertIds?.includes(p.id)&&!record.stoppedAlertIds?.includes(p.id))p.dismissedAt=now();}
+      for(const record of current.monitor.mailOutbox||[])if(record.cancelledFor!=='merged_into_digest'&&(record.status==='cancelled'||record.excludedAlertIds?.length))for(const p of state.pendingAlerts||[])if((record.status==='cancelled'?record.alertIds:record.excludedAlertIds)?.includes(p.id)&&p.queuedAt){delete p.queuedAt;if((record.cancelledFor==='conditions_changed'||record.excludedAlertIds?.includes(p.id))&&record.cancelledAlertIds?.includes(p.id)&&!record.stoppedAlertIds?.includes(p.id))p.dismissedAt=now();}
       recordIncomingReflections(state,productOverview({...current,watch:state},now()));
       recordReplenishmentBaselines(state,productOverview({...current,watch:state},now()),now());
       const rows=productOverview({...current,watch:state},now());
