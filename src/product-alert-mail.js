@@ -50,10 +50,12 @@ export function alertMailDetails(row,kind,at,extra={}){
   if(kind==='replenish')return {...result,kind:'stock',lines:[`補充を検討：FBA${row.fba.source==='estimate'?'推定残数':'販売可能数'} ${row.fba.quantity}個 ／ 手元使用可能数 ${row.localAvailable??'未確認'}個`,...(row.replenishmentInfo?.byRatio?[`基準${row.replenishmentInfo.baseline}個の${row.replenishmentInfo.percent}%以下`]:[]),...(row.locations?.length?[(row.locations||[]).map(l=>`${l.locationId==='container'?'コンテナ':'会社・自宅'}：${l.usable===null?'未確認':l.usable+'個'}`).join(' ／ ')]:[]),...(row.incoming?.some(p=>p.remaining>0)?['納品予定 '+row.incoming.filter(p=>p.remaining>0).map(p=>p.remaining+'個'+(p.expectedOn?'・'+p.expectedOn:'')).join('／')]:[])]};
   return {...result,...extra};
 }
-const groups=[['relist','ヤフオク再出品'],['stock','残数警告・補充'],['review','販売見直し'],['yahoo','ヤフオク終了・要確認'],['other','その他の確認']];
+const groups=[['yahoo','ヤフオク終了'],['stock','残数警告'],['review','販売の監視'],['other','その他の確認']];
+const categoryColors={stock:['#9d2525','#ffe5e5','#e5b2b2'],review:['#74520b','#fff5cd','#dfc366'],yahoo:['#644399','#f0e9ff','#c8b0e6'],other:['#334155','#eef2f6','#cbd5e1']};
 const clean=value=>String(value??'').replace(/[\r\n]+/g,' ').trim();
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function productAlertGroup(alert){
+  if(alert.mailDetails?.kind==='relist')return 'yahoo';
   if(groups.some(([key])=>key===alert.mailDetails?.kind))return alert.mailDetails.kind;
   if(alert.category==='stockAlerts')return 'stock';
   if(alert.category==='reviewAlerts')return 'review';
@@ -91,7 +93,8 @@ export function productAlertsHtml(alerts,{at,embedded=false}={}){
     if(!items.length)return '';
     let html=`<h2 style="font-size:18px;margin:28px 0 12px;color:#244d86;">${esc(heading)} <span style="font-size:14px;font-weight:normal;">${items.length}件</span></h2>`;
     for(const [kind,label]of groups){const selected=items.filter(a=>productAlertGroup(a)===kind);if(!selected.length)continue;
-      html+=`<h3 style="font-size:15px;margin:20px 0 4px;">${esc(label)}（${selected.length}件）</h3><table role="presentation" style="border-collapse:collapse;width:100%;">`;
+      const [color,background,border]=categoryColors[kind];
+      html+=`<h3 style="font-size:15px;margin:20px 0 4px;"><span style="display:inline-block;padding:1px 8px;border:1px solid ${border};border-radius:999px;color:${color};background:${background};">${esc(label)}</span>（${selected.length}件）</h3><table role="presentation" style="border-collapse:collapse;width:100%;">`;
       for(const a of selected){const meta=a.isReminder?`<div style="font-size:13px;color:#59687a;margin-top:4px;">通知${a.notificationNumber}回目・前回 ${esc(noticeDay(a.lastSentAt)||'確認待ち')}・次回 ${esc(nextDay(at,a))}</div>`:'';
         html+=`<tr><td style="padding:12px 0;border-bottom:1px solid #dce3eb;${textStyle}"><div style="font-weight:bold;">${esc(clean(a.title))}</div><div>${alertLines(a).map(esc).join('<br>')}</div>${meta}<div style="margin-top:6px;"><a href="${esc(alertLink(a))}" style="color:#2458a6;text-decoration:underline;">${esc(actionLabel(a))} ↗</a></div><div style="font-size:12px;color:#59687a;">${esc(a.asin||'')}</div></td></tr>`;
       }html+='</table>';

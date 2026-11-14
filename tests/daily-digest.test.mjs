@@ -58,10 +58,10 @@ test('unknown or disabled category does not paint a false stock alert',async()=>
  const f=fixture();await f.engine.run();f.failure(true);await f.engine.run();let row=(await f.overview.view()).rows[0];assert.equal(row.alerts.length,0);assert.ok(row.alertUnknown.length);await f.monitor.update(m=>{m.salesAutomation.stockAlerts=false;});assert.equal((await f.overview.view()).rows[0].alerts.length,0);
 });
 test('review alerts show both the stored actual start and due date',async()=>{
- const f=fixture();await f.watchStore.update(w=>{w.rules=[{key:'link:'+f.linkId,tags:[],replenishEnabled:false,startedOn:'2026-10-31',reviewDays:14}];});await f.engine.run();assert.match(f.sent[0].text,/見直し期間 2026-10-31 → 2026-11-14/);assert.match(f.sent[0].html,/見直し期間 2026-10-31 → 2026-11-14/);const review=(await f.overview.view()).rows[0].alerts.find(a=>a.kind==='review');assert.deepEqual(review.period,{startsOn:'2026-10-31',endsOn:'2026-11-14'});
+ const f=fixture();await f.watchStore.update(w=>{w.rules=[{key:'link:'+f.linkId,tags:[],replenishEnabled:false,startedOn:'2026-10-31',reviewDays:14}];});await f.engine.run();assert.match(f.sent[0].text,/販売監視期間 2026-10-31 → 2026-11-14 ／ 販売監視期間過ぎました/);assert.match(f.sent[0].html,/販売監視期間 2026-10-31 → 2026-11-14/);const review=(await f.overview.view()).rows[0].alerts.find(a=>a.kind==='review');assert.deepEqual(review.period,{startsOn:'2026-10-31',endsOn:'2026-11-14'});
 });
 test('a dated manual review does not manufacture a missing start date',async()=>{
- const f=fixture();await f.planningStore.update(s=>s.plans.push({id:randomUUID(),source:{kind:'link',id:f.linkId},title:'手動見直し',asin,sellerSku:sku,condition:'unknown',status:'active',kind:'review',availableOn:'',reviewOn:'2026-11-14',durationDays:14}));await f.engine.run();assert.match(f.sent[0].text,/見直し期間 開始日未設定 → 2026-11-14/);
+ const f=fixture();await f.planningStore.update(s=>s.plans.push({id:randomUUID(),source:{kind:'link',id:f.linkId},title:'手動見直し',asin,sellerSku:sku,condition:'unknown',status:'active',kind:'review',availableOn:'',reviewOn:'2026-11-14',durationDays:14}));await f.engine.run();assert.match(f.sent[0].text,/販売監視期間 開始日未設定 → 2026-11-14/);
 });
 test('mail links explicitly select active alerts and disregard unrelated old filters',()=>{
  assert.deepEqual(overviewLinkFilter('#alerts=active'),{keys:['alert'],mode:'all',sort:'alert'});assert.equal(overviewLinkFilter('#alerts=old'),null);assert.equal(overviewLinkFilter('#notice=test'),null);assert.equal(matchesOverviewFilters({alerts:[],attention:['未確認']},['alert']),false);
