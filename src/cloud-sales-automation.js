@@ -4,6 +4,7 @@ import {noticeDay} from './product-notice-policy.js';
 import {randomUUID,createHash} from "node:crypto";
 import {NOTIFICATION_ADDRESS} from "./notification-settings.js";
 import {catchUpSales} from './sales-catchup.js';
+import {dailyMail} from './daily-mail.js';
 
 const fail=(message,status=409)=>Object.assign(new Error(message),{status});
 const hash=value=>createHash("sha256").update(value).digest("hex");
@@ -53,14 +54,34 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       for(const item of state.mailOutbox || [])if(item.automation && item.status==="sending" && Date.parse(item.lastAttemptAt)+120000<=Date.parse(now())){
         item.status="uncertain";item.error="送信結果が不明です。受信箱を確認してください。自動再送はしません";
       }
-      if(!testOnly&&alertStates)for(const item of state.mailOutbox||[])if(item.kind==='product_alerts'&&['pending','failed'].includes(item.status)&&item.alertIds?.length){const ended=item.alertIds.filter(id=>alertStates[id]===false);if(ended.length){item.status='cancelled';item.cancelledFor='conditions_changed';item.cancelledAlertIds=ended;item.stoppedAlertIds=ended.filter(id=>context?.conditions?.[id]!==false);item.error='警告条件の解消・変更または再案内の解除により送信を取り消しました';}else if(item.alertIds.some(id=>alertStates[id]!==true))held.add(item.id);
+      if(!testOnly)for(const item of state.mailOutbox||[])if(item.dailyDigest&&['pending','failed'].includes(item.status)){
+        const originalIds=item.alertIds||[],saved=item.dailyDigest.alerts||[],kept=[],excluded=[],deferred=[],ended=[],stopped=[];
+        for(const id of originalIds){
+          const current=context?.alerts?.find(a=>a.id===id)||saved.find(a=>a.id===id),number=item.noticeNumbers?.[id]||1;
+          if(alertStates&&alertStates[id]===false){excluded.push(id);ended.push(id);if(context?.conditions?.[id]!==false)stopped.push(id);continue;}
+          if(current?.deliveredCount>=number){excluded.push(id);continue;}
+          if(alertStates&&alertStates[id]!==true||number>1&&(current?.blocked||!current?.nextOn||current.nextOn>noticeDay(now()))){excluded.push(id);deferred.push(id);continue;}
+          if(current)kept.push({...current,notificationNumber:number,isReminder:number>1});else excluded.push(id);
+        }
+        const errors=state.salesAutomation.errorAlerts?(item.dailyDigest.errors||[]):[],hasSales=Boolean(item.eventIds?.length&&item.dailyDigest.sales?.length);
+        if(!kept.length&&!hasSales&&!errors.length){
+          if(deferred.length){held.add(item.id);continue;}
+          item.status='cancelled';item.cancelledFor=ended.length?'conditions_changed':'already_delivered';item.cancelledAlertIds=ended;item.stoppedAlertIds=stopped;continue;
+        }
+        if(excluded.length){item.excludedAlertIds=[...new Set([...(item.excludedAlertIds||[]),...excluded])];item.cancelledAlertIds=[...new Set([...(item.cancelledAlertIds||[]),...ended])];item.stoppedAlertIds=[...new Set([...(item.stoppedAlertIds||[]),...stopped])];}
+        item.alertIds=kept.map(a=>a.id);item.noticeNumbers=Object.fromEntries(kept.map(a=>[a.id,a.notificationNumber]));item.dailyDigest.alerts=kept;
+        const formatted=dailyMail({...item.dailyDigest,alerts:kept,errors});
+        if(item.text!==formatted.text||item.html!==formatted.html||item.subject!==formatted.subject){(item.contentHistory||=[]).push({text:item.text,html:item.html,subject:item.subject,at:item.contentCheckedAt||item.createdAt,attempts:item.attempts});Object.assign(item,formatted);}
+        item.contentCheckedAt=now();
+      }
+      if(!testOnly&&alertStates)for(const item of state.mailOutbox||[])if(!item.dailyDigest&&item.kind==='product_alerts'&&['pending','failed'].includes(item.status)&&item.alertIds?.length){const ended=item.alertIds.filter(id=>alertStates[id]===false);if(ended.length){item.status='cancelled';item.cancelledFor='conditions_changed';item.cancelledAlertIds=ended;item.stoppedAlertIds=ended.filter(id=>context?.conditions?.[id]!==false);item.error='警告条件の解消・変更または再案内の解除により送信を取り消しました';}else if(item.alertIds.some(id=>alertStates[id]!==true))held.add(item.id);
         else if(context?.alerts&&item.noticeNumbers){for(const id of item.alertIds){const current=context.alerts.find(a=>a.id===id),number=item.noticeNumbers[id]||1;if(current?.deliveredCount>=number){item.status='cancelled';item.cancelledFor='already_delivered';}else if(number>1&&(!current?.nextOn||current.nextOn>noticeDay(now())||current.blocked))held.add(item.id);}}
       }
       const item=(state.mailOutbox || []).find(item=>item.automation && !held.has(item.id) && (!notificationMode||item.notificationMode===notificationMode) && (!kinds||kinds.includes(item.kind)) && (testOnly ? item.kind==="automation_test" : state.salesAutomation?.enabled && item.kind!=="automation_test") &&
         (item.status==="pending" || !testOnly && item.status==="failed" && item.attempts<3 && Date.parse(item.lastAttemptAt)+3600000<=Date.parse(now())));
       if(!item)return null;
       if(item.kind==='automation_error'&&!state.salesAutomation.errorAlerts){item.status='cancelled';item.cancelledFor='settings_changed';item.cancelledAt=now();return null;}
-      if(item.kind==='product_alerts'&&context?.alerts){
+      if(!item.dailyDigest&&item.kind==='product_alerts'&&context?.alerts){
         const refreshed=item.alertIds.map(id=>{const a=context.alerts.find(a=>a.id===id);return a?{...a,notificationNumber:item.noticeNumbers?.[id]||1,isReminder:(item.noticeNumbers?.[id]||1)>1}:a;});
         if(refreshed.some(a=>!a))return null;
         const options={mode:item.notificationMode||'daily',at:now()},text=productAlertsMail(refreshed,options),html=productAlertsHtml(refreshed,options),subject=productAlertsSubject(refreshed,options);
@@ -109,8 +130,25 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       }
       if(!events.length)return;
       const ids=events.map(e=>e.id).sort(),summary=salesMailSummary({state,events,inventory,at:now()});
-      const record=enqueue(state,{key:`sales:${hash(ids.join(","))}`,subject:"【在庫管理ツール】Amazonの販売・訂正のお知らせ",eventIds:ids,targets:summary.targets,text:summary.text});
+      const digest={version:1,at:now(),sales:summary.products,alerts:[],errors:[]},formatted=dailyMail(digest);
+      const record=enqueue(state,{key:`sales:${hash(ids.join(","))}`,...formatted,eventIds:ids,targets:summary.targets});
+      if(record&&['pending','failed'].includes(record.status)&&!record.attempts)record.dailyDigest=digest;
       if(record)for(const event of t.events)if(ids.includes(event.id))event.delivery=['pending','sending'].includes(record.status)?'queued':record.status;
+    });
+  }
+  async function combineDaily(){
+    await store.update(state=>{
+      const pending=(state.mailOutbox||[]).filter(r=>r.automation&&r.dailyDigest&&r.notificationMode==='daily'&&r.status==='pending'&&!r.attempts&&noticeDay(r.dailyDigest.at)===noticeDay(now()));
+      if(pending.length<2)return;
+      const base=pending.find(r=>r.kind==='product_alerts')||pending.find(r=>r.kind==='sales')||pending[0];
+      const alerts=[...new Map(pending.flatMap(r=>r.dailyDigest.alerts||[]).map(a=>[a.id,a])).values()],sales=pending.flatMap(r=>r.dailyDigest.sales||[]),errors=[...new Set(pending.flatMap(r=>r.dailyDigest.errors||[]))];
+      base.eventIds=[...new Set(pending.flatMap(r=>r.eventIds||[]))];base.alertIds=[...new Set(pending.flatMap(r=>r.alertIds||[]))];base.noticeNumbers=Object.assign({},...pending.map(r=>r.noticeNumbers||{}));
+      base.targets=[...new Map(pending.flatMap(r=>r.targets||[]).map(t=>[JSON.stringify(t),t])).values()];
+      base.dailyDigest={version:1,at:now(),sales,alerts,errors};Object.assign(base,dailyMail(base.dailyDigest));
+      base.kind=base.alertIds.length?'product_alerts':base.eventIds.length?'sales':'automation_error';
+      base.mergedSourceIds=pending.filter(r=>r!==base).map(r=>r.id);
+      base.key='daily-digest:'+hash(pending.map(r=>r.key).sort().join(','));
+      for(const record of pending)if(record!==base){record.status='cancelled';record.cancelledFor='merged_into_digest';record.mergedInto=base.id;record.cancelledAt=now();}
     });
   }
   async function runCycle({mode,send}) {
@@ -141,9 +179,11 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       state[jobKey]={...state[jobKey],mode,status,finishedAt:now(),error:notificationError,monitoring:monitoringResult,...(salesProgress?{sales:salesProgress,note:salesProgress.note||null}:{})};
       if(notificationError && send && state.salesAutomation.errorAlerts){
         state[incidentKey] ||= {id:randomUUID(),startedAt:now()};
-        enqueue(state,{key:`incident:${mode==='risk'?'risk:':''}${state[incidentKey].id}`,kind:"automation_error",notificationMode:mode,subject:mode==='risk'?"【在庫管理ツール】リスク確認が止まっています":"【在庫管理ツール】販売・在庫の自動確認に未完了があります",text:notificationError+"\nhttps://amazon-yahoo-inventory.vercel.app/"});
+        const record=enqueue(state,{key:`incident:${mode==='risk'?'risk:':''}${state[incidentKey].id}`,kind:"automation_error",notificationMode:mode,subject:mode==='risk'?"【在庫管理ツール】リスク確認が止まっています":"【在庫管理ツール】販売・在庫の自動確認に未完了があります",text:notificationError+"\nhttps://amazon-yahoo-inventory.vercel.app/"});
+        if(mode==='daily'&&record?.status==='pending'&&!record.attempts){record.dailyDigest={version:1,at:now(),sales:[],alerts:[],errors:[notificationError]};Object.assign(record,dailyMail(record.dailyDigest));}
       }else if(!notificationError)state[incidentKey]=null;
     });
+    if(mode==='daily'&&send)await combineDaily();
     // At most 3 pending messages per invocation; SMTP ambiguity is never retried.
     if(send)for(let i=0;i<3;i++){if(performance.now()-started>250000)break;if(!await drain(mode==='risk'?{kinds:['product_alerts','automation_error'],notificationMode:'risk'}:{}))break;}
     return {status};
@@ -157,7 +197,7 @@ export function createCloudSalesAutomation({store,sales,transport,monitoring,rea
       const token=ids.every(id=>numbers[id]===1)?ids.join(','):ids.map(id=>`${id}:${numbers[id]}`).join(','),key=`product-alerts:${hash(token)}`,options={mode:notificationMode,at:now()};
       const record=enqueue(state,{key,kind:"product_alerts",notificationMode,subject:productAlertsSubject(fresh,options),targets:fresh.filter(a=>a.asin).map(a=>({asin:a.asin})),
         text:productAlertsMail(fresh,options),html:productAlertsHtml(fresh,options)});
-      if(record){record.alertIds=ids;record.noticeNumbers=numbers;accepted.push(...ids);}
+      if(record){record.alertIds=ids;record.noticeNumbers=numbers;if(notificationMode==='daily'&&['pending','failed'].includes(record.status)&&!record.attempts){record.dailyDigest={version:1,at:now(),sales:[],alerts:fresh,errors:[]};Object.assign(record,dailyMail(record.dailyDigest));}accepted.push(...ids);}
       return {acceptedAlertIds:accepted};
     });
   }

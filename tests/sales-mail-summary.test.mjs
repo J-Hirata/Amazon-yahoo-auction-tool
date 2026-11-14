@@ -55,11 +55,11 @@ test('read-only formatting leaves events, quantities and dates byte-identical',(
 test('daily run uses refreshed inventory and durable replay/retry keeps the original grouped mail',async()=>{
  const f=fixture();let rows=[],sent=[],revision=0;const store={read:async()=>structuredClone(f.state),update:async fn=>{const copy=structuredClone(f.state);const r=await fn(copy);f.state=copy;revision++;return r;}};
  const engine=createCloudSalesAutomation({store,now:()=>at,sales:{start:async()=>{},check:async()=>{}},monitoring:{run:async()=>{rows=f.inventory.rows;return{status:'complete'};}},readInventory:async()=>({rows}),transport:{send:async mail=>{sent.push(structuredClone(mail));return{status:'smtp_accepted'};}}});
- await engine.run();await engine.run();assert.equal(sent.length,1);assert.match(sent[0].text,/注文確定 5個/);assert.match(sent[0].text,/このSKU）：87個/);assert.equal(f.state.mailOutbox[0].eventIds.length,5);assert.equal(f.state.mailOutbox[0].targets.length,1);
+ await engine.run();await engine.run();assert.equal(sent.length,1);assert.match(sent[0].text,/注文確定 5個/);assert.match(sent[0].text,/FBA在庫 87個/);assert.equal(f.state.mailOutbox[0].eventIds.length,5);assert.equal(f.state.mailOutbox[0].targets.length,1);
 });
 test('inventory read failure preserves sale notification with explicit missing counts',async()=>{
  const f=fixture(),sent=[];const store={read:async()=>structuredClone(f.state),update:async fn=>fn(f.state)};
- const engine=createCloudSalesAutomation({store,now:()=>at,readInventory:async()=>{throw new Error('private failure');},transport:{send:async m=>{sent.push(m);return{status:'smtp_accepted'};}}});await engine.queueSales();await engine.drain();assert.equal(sent.length,1);assert.match(sent[0].text,/取得値なし/);assert.match(sent[0].text,/在庫情報の読取に失敗/);assert.doesNotMatch(sent[0].text,/private failure|関連付けなし/);
+ const engine=createCloudSalesAutomation({store,now:()=>at,readInventory:async()=>{throw new Error('private failure');},transport:{send:async m=>{sent.push(m);return{status:'smtp_accepted'};}}});await engine.queueSales();await engine.drain();assert.equal(sent.length,1);assert.match(sent[0].text,/FBA在庫 未確認/);assert.match(sent[0].text,/自社・自宅：取得できず/);assert.doesNotMatch(sent[0].text,/private failure|関連付けなし/);
 });
 
 test('compact morning summary keeps separate order dates, source quantities and SKU in four lines per product',()=>{

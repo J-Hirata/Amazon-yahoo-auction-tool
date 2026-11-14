@@ -4,10 +4,11 @@ import {planningToday} from "./sales-planning.js";
 import {stockRisk,quantityEvidence} from "./stock-risk.js";
 import {yahooEndMessage,alertMailDetails} from "./product-alert-mail.js";
 
-export function collectProductAlerts(state,rows,settings,at,{onObserve}={}){
+export function collectProductAlerts(state,rows,settings,at,{onObserve,observeOnly=false}={}){
   const signals=state.signals ||= {},pending=state.pendingAlerts ||= [],observed=new Set(),decisions=new Map();
   function observe(key,value,category,row,message,mailFormat,mailDetails){
     onObserve?.({key,value,category,row,message,mailFormat,mailDetails});
+    if(observeOnly)return;
     observed.add(key);decisions.set(key,value);
     if(!settings[category])return;
     if(value===null){if(signals[key])signals[key].known=false;return;}
@@ -35,7 +36,8 @@ export function collectProductAlerts(state,rows,settings,at,{onObserve}={}){
       if(!fbaKeys.has(fbaKey)){
         fbaKeys.add(fbaKey);
         const local=row.localAvailable===null?"手元在庫：未確認":`手元の使用可能在庫：${row.localAvailable}個`;
-        observe(`fba-zero:${fbaKey}`,risk.conflict?null:risk.configured&&risk.source==="fba"?false:row.fba.status==="complete"?row.fba.quantity===0:null,"stockAlerts",row,`FBAの${row.fba.source==='estimate'?'推定残数':'販売可能数'}が0個です。${local}。自己発送の在庫とは別です。併売の継続・補充を確認してください。`,undefined,alertMailDetails(row,'zero',at));
+        // A saved FBA-ineligible product can retain an old zero-quantity SKU.
+        observe(`fba-zero:${fbaKey}`,row.fbaEligibility==='not_possible'?false:risk.conflict?null:risk.configured&&risk.source==="fba"?false:row.fba.status==="complete"?row.fba.quantity===0:null,"stockAlerts",row,`FBAの${row.fba.source==='estimate'?'推定残数':'販売可能数'}が0個です。${local}。自己発送の在庫とは別です。併売の継続・補充を確認してください。`,undefined,alertMailDetails(row,'zero',at));
       }
       observe(`replenish:${row.key}`,row.rule.replenishEnabled&&row.fba.status==="complete"&&row.localAvailable!==null&&(row.rule.minimumSales7===0||row.sales.fbaQuantity7!==null)?row.replenishment:row.rule.replenishEnabled?null:false,"stockAlerts",row,
         `追加納品を検討してください。FBA${row.fba.source==='estimate'?'推定残数':'販売可能'}${row.fba.quantity}個、手元使用可能${row.localAvailable}個。${row.replenishmentInfo?.byRatio?`基準${row.replenishmentInfo.baseline}個の${row.replenishmentInfo.percent}%以下です。`:''}${(row.locations||[]).map(l=>`${l.locationId==='container'?'コンテナ':'会社・自宅'}：${l.usable===null?'未確認':l.usable+'個'}`).join(' ／ ')}。FBAの直近7日販売${row.sales.fbaQuantity7??"未確認"}個、残り${row.daysRemaining??"未確認"}日分。納品中：${(row.transfers||[]).filter(t=>t.to==="fba").reduce((n,t)=>n+t.remaining,0)}個（台帳記録）。納品予定：${(row.incoming||[]).filter(p=>p.remaining>0).map(p=>p.remaining+'個'+(p.expectedOn?'・'+p.expectedOn+'到着予定':'')).join(' ／ ')||'登録なし'}。納品手配前に実数と受領状況を確認してください。`,undefined,alertMailDetails(row,'replenish',at));
@@ -49,13 +51,13 @@ export function collectProductAlerts(state,rows,settings,at,{onObserve}={}){
       const url=`https://amazon-yahoo-inventory.vercel.app/?view=planning#id=${p.id}`;
       for(const a of p.actionSchedules||[]){
         const message=`${a.label} ／ 開始日：${a.startsOn||"未設定"} ／ 締切日：${a.endsOn||"未設定"}。${a.conditionLabel}。${a.note}\n結果を記録して次の方針を確認してください。\n${url}`;
-        const details=alertMailDetails(row,'review',at,{planId:p.id,lines:[`${a.label} ／ 開始 ${a.startsOn||'未設定'} ／ 締切 ${a.endsOn||'未設定'}`,a.conditionLabel,a.note].filter(Boolean)});
+        const details=alertMailDetails(row,'review',at,{planId:p.id,period:{startsOn:a.startsOn||'',endsOn:a.endsOn||''},lines:[`${a.label} ／ 販売監視期間 ${a.startsOn||'開始日未設定'} → ${a.endsOn||'締切未設定'}`,a.conditionLabel,a.note].filter(Boolean)});
         if(a.startsOn)observe(`action-start:${p.id}:${a.id}:${a.startsOn}`,Boolean(a.startDue&&!a.endDue),"reviewAlerts",row,`アクションの開始時期です。${message}`,undefined,details);
         if(a.endsOn)observe(`action-end:${p.id}:${a.id}:${a.endsOn}`,Boolean(a.endDue),"reviewAlerts",row,`アクションの締切です。${message}`,undefined,details);
       }
-      if(!(p.actionSchedules||[]).some(a=>a.startsOn||a.endsOn)&&p.schedule.dueOn)observe(`review-plan:${p.id}:${p.schedule.dueOn}`,p.schedule.stage==="due","reviewAlerts",row,`販売の見直し時期です。確認日：${p.schedule.dueOn}。期間内の売れ行き、価格、広告、併売、追加納品を検討してください。\n${url}`,undefined,alertMailDetails(row,'review',at,{planId:p.id,lines:[`見直し日 ${p.schedule.dueOn} ／ 売れ行き・価格・次の方針を確認してください。`]}));
+      if(!(p.actionSchedules||[]).some(a=>a.startsOn||a.endsOn)&&p.schedule.dueOn){const startsOn=p.schedule.startedOn||p.availableOn||'';observe(`review-plan:${p.id}:${p.schedule.dueOn}`,p.schedule.stage==="due","reviewAlerts",row,`販売監視期間過ぎました。終了日：${p.schedule.dueOn}。期間内の売れ行き、価格、広告、併売、追加納品を検討してください。\n${url}`,undefined,alertMailDetails(row,'review',at,{planId:p.id,period:{startsOn,endsOn:p.schedule.dueOn},lines:[`販売監視期間 ${startsOn||'開始日未設定'} → ${p.schedule.dueOn} ／ 販売監視期間過ぎました`]}));}
     }
-    if(row.watchDue&&!row.plans.some(p=>p.schedule.dueOn===row.watchDue))observe(`review-watch:${row.rule.key}:${row.watchDue}`,row.watchDue<=planningToday(at),"reviewAlerts",row,`監視商品の見直し時期です。確認日：${row.watchDue}。タグ：${row.tags.join("・")}。${row.rule.note}`,undefined,alertMailDetails(row,'review',at,{lines:[`見直し日 ${row.watchDue}`,row.rule.note].filter(Boolean)}));
+    if(row.watchDue&&!row.plans.some(p=>p.schedule.dueOn===row.watchDue))observe(`review-watch:${row.rule.key}:${row.watchDue}`,row.watchDue<=planningToday(at),"reviewAlerts",row,`販売監視期間過ぎました。終了日：${row.watchDue}。タグ：${row.tags.join("・")}。${row.rule.note}`,undefined,alertMailDetails(row,'review',at,{period:{startsOn:row.rule.startedOn||'',endsOn:row.watchDue},lines:[`販売監視期間 ${row.rule.startedOn||'開始日未設定'} → ${row.watchDue} ／ 販売監視期間過ぎました`,row.rule.note].filter(Boolean)}));
   }
   for(const p of pending)if(/^(action-|review-|low-stock:|yahoo-ended:|fba-zero:|replenish:)/.test(p.key||"")&&!observed.has(p.key)&&!p.queuedAt)p.dismissedAt=at;
   for(const key of Object.keys(signals))if((key.startsWith('low-stock:')||key.startsWith('yahoo-ended:'))&&!observed.has(key))signals[key]={active:false,known:true,at};

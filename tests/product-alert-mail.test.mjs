@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
-import {yahooEndMessage,productAlertsMail} from '../src/product-alert-mail.js';
+import {yahooEndMessage,productAlertsMail,productAlertsHtml} from '../src/product-alert-mail.js';
 import {relistingAssessment} from '../src/stock-risk.js';
 import {collectProductAlerts} from '../src/product-alerts.js';
 import {emptyProductWatch,productOverview,createProductOverview} from '../src/product-overview.js';
@@ -13,6 +13,11 @@ const settings={enabled:true,yahooAlerts:true,stockAlerts:false,reviewAlerts:fal
 const ended=(patch={})=>({listingId:'d1000000001',status:'ended',verified:true,reason:'sold',unitsPerListing:1,checkedAt:at,...patch});
 function row(){const y=ended();return {key:'link:logos',title:'再出品テスト用チェア',asin,sellerSku:sku,condition:'used',sources:['link'],sourceKeys:['link:logos'],stockIds:[],linkConflicts:[],locations:[],unit:'個',rule:{key:'link:logos'},fba:{status:'complete',quantity:8,sellerSku:sku,checkedAt:at},yahoo:[y],plans:[],tags:[],sales:{},localAvailable:null};}
 const memory=initial=>{let state=structuredClone(initial);return {read:async()=>structuredClone(state),readSnapshot:async()=>({state:structuredClone(state),revision:0}),update:async fn=>fn(state)};};
+
+test('relist and other ended notices share one Yahoo category without losing either instruction',()=>{
+ const alerts=['relist','yahoo'].map((kind,i)=>({id:randomUUID(),key:'yahoo-ended:d100000000'+i,title:'商品'+i,asin,mailDetails:{kind,lines:[i?'出品状況を確認':'再出品してください']}}));
+ const text=productAlertsMail(alerts,{at}),html=productAlertsHtml(alerts,{at});assert.equal(text.match(/■ ヤフオク終了/g)?.length,1);assert.match(text,/ヤフオク終了（2件）/);assert.match(text,/再出品してください/);assert.match(text,/出品状況を確認/);for(const a of alerts)assert.ok(html.includes(a.id));
+});
 
 test('ended-listing example says sold ending, eight FBA units and relist, with one inventory link per section',()=>{
  const r=row(),before=structuredClone(r),message=yahooEndMessage(r,r.yahoo[0],at);

@@ -14,6 +14,7 @@ import {attachAvailability,skuOptions} from './product-availability.js';
 import {resolvedLinkSku,resolvedLinkCondition,productWorkspace,conditionFamily} from './product-workspace.js';
 import {replenishmentView} from './replenishment.js';
 import {validateNoticePolicy} from './product-notice-policy.js';
+import {withAlertIndicators} from './product-alert-indicators.js';
 export const WATCH_TAGS={watch:"監視対象",overstock:"在庫過多",large:"大型",heavy:"重量物"};
 const fail=(m,status=400)=>Object.assign(new Error(m),{status});
 const uuid=v=>/^[0-9a-f-]{36}$/i.test(v||"");
@@ -135,7 +136,7 @@ export function productOverview({monitor,physical,planning,drafts=[],watch},at=n
 }
 export function createProductOverview({monitorStore,stockStore,planningStore,draftStore,watchStore,ruleTransaction,now=()=>new Date().toISOString()}){
   async function inputs(){const [monitor,physical,planning,drafts,watch]=await Promise.all([monitorStore.read(),stockStore.read(),planningStore.read(),draftStore?draftStore.read():[],watchStore.readSnapshot()]);return {monitor,physical,planning,drafts,watch:watch.state,revision:watch.revision};}
-  async function view(){const data=await inputs(),at=now();return{revision:data.revision,checkedAt:at,rows:productOverview(data,at),monitoring:data.watch.observations.job||{status:"not_run"},relisting:data.monitor.yahooRelisting||null,automation:data.monitor.salesAutomation||null,mail:(data.monitor.mailOutbox||[]).slice(-10).map(({kind,status,createdAt,subject})=>({kind,status,createdAt,subject}))};}
+  async function view(){const data=await inputs(),at=now();return{revision:data.revision,checkedAt:at,rows:withAlertIndicators(productOverview(data,at),data.watch,data.monitor.salesAutomation||{},at),monitoring:data.watch.observations.job||{status:"not_run"},relisting:data.monitor.yahooRelisting||null,automation:data.monitor.salesAutomation||null,mail:(data.monitor.mailOutbox||[]).slice(-10).map(({kind,status,createdAt,subject})=>({kind,status,createdAt,subject}))};}
   async function commit(command,{expectedRevision,actor}){
     if(!uuid(command?.operationId))throw fail("操作IDを確認してください");const digest=createHash("sha256").update(JSON.stringify(command)).digest("hex");
     function apply(state,data){
