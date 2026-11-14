@@ -94,12 +94,12 @@ export function createCloudHandler({config, store, draftStore, draftCatalog, sto
           if(!verifyBridge(request,photoBridgeKey,''))return reply({error:'リサーチの接続認証を確認できません'},401);
           return reply(research.capabilities());
         }
-        if(request.method==='POST'&&url.pathname==='/api/research/query'){
+        if(request.method==='POST'&&['/api/research/query','/api/research/page'].includes(url.pathname)){
           if(config.readOnly)return reply({error:'現在は閲覧のみです'},403);
           const raw=await rawJSON(request);
           if(!verifyBridge(request,photoBridgeKey,raw))return reply({error:'リサーチの接続認証を確認できません'},401);
           let input;try{input=JSON.parse(raw);}catch{return reply({error:'入力形式を確認してください'},400);}
-          return reply(await research.query(input));
+          return reply(url.pathname.endsWith('/page')?await research.page(input):await research.query(input));
         }
         return reply({error:'対応していないリサーチ操作です'},404);
       }

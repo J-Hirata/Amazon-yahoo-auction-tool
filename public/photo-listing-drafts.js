@@ -19,23 +19,23 @@ export async function downloadPhotoDraft(d){
  entries.push(['出品下書き.txt',photoDraftText(result.text)],['作業メモ.txt',photoDraftText(result.note)],['写真対応.json',photoDraftText(JSON.stringify(result,null,2))]);
  download(photoDraftZip(entries),d.title.replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,60)+'_下書き.zip');
 }
-export async function openPhotoDraft({packet,readOnly=false,onSaved=()=>{}}){
- const data=await request();let draft=data.items.find(d=>d.package.sourceWorkspaceId===packet.sourceWorkspaceId&&d.package.productId===packet.productId&&d.channel==='yahoo');
+export async function openPhotoDraft({packet,channel='yahoo',contextId=null,readOnly=false,onSaved=()=>{}}){
+ const data=await request();let draft=data.items.find(d=>d.package.sourceWorkspaceId===packet.sourceWorkspaceId&&d.package.productId===packet.productId&&d.channel===channel);
  if(draft?.archived)readOnly=true;
- const context=(data.researchContexts||[]).filter(c=>c.packageId===(draft?.packageId||packet.packageId)).sort((a,b)=>b.recordVersion-a.recordVersion)[0];
+ const context=(data.researchContexts||[]).filter(c=>c.packageId===(draft?.packageId||packet.packageId)&&c.decision.channel===channel&&(!contextId||c.id===contextId)).sort((a,b)=>b.recordVersion-a.recordVersion)[0];
  let appliedContext=draft?.researchContextId||(!draft&&context?context.id:null);
- let p=draft?.package||packet,selected=[...(draft?.assetIds||(p.mainAssetId?[p.mainAssetId]:[]))],pending=null,saving=false;
- const dialog=node('dialog',undefined,'photo-draft-editor'),form=node('form'),header=node('header'),h=node('h2','写真からヤフオク下書きを準備'),close=node('button','閉じる');close.type='button';header.append(h,close);
+ let p=draft?.package||packet,selected=[...(draft?.assetIds||context?.decision.photoIds?.filter(id=>p.assets.some(a=>a.id===id))||(p.mainAssetId?[p.mainAssetId]:[]))],pending=null,saving=false;
+ const dialog=node('dialog',undefined,'photo-draft-editor'),form=node('form'),header=node('header'),h=node('h2','写真から'+(channel==='mercari'?'メルカリ':'ヤフオク')+'下書きを準備'),close=node('button','閉じる');close.type='button';header.append(h,close);
  const message=node('p',draft?.archived?'アーカイブ中です。「出品下書き」でアーカイブを表示して戻すと編集できます。':'','photo-draft-message');message.setAttribute('role','status');
  const inputs=node('fieldset'),layout=node('div',undefined,'photo-draft-layout'),fields=node('div',undefined,'photo-draft-fields'),photos=node('section',undefined,'photo-draft-picker');
  inputs.disabled=readOnly;
  function field(label,tag,value){const l=node('label',label),n=node(tag);n.value=value;l.append(n);fields.append(l);return n;}
- const title=field('商品名','input',draft?.title||packet.name);title.required=true;title.maxLength=500;
- const price=field('開始価格（円・未定なら空欄）','input',draft?draft.price??'':context?.decision.price??'');price.type='number';price.min='1';price.max='100000000';price.step='1';
+ const title=field('商品名','input',draft?.title||context?.title||packet.name);title.required=true;title.maxLength=500;
+ const price=field((channel==='mercari'?'販売価格':'開始価格')+'（円・未定なら空欄）','input',draft?draft.price??'':context?.decision.price??'');price.type='number';price.min='1';price.max='100000000';price.step='1';
  const description=field('出品する商品説明','textarea',draft?draft.description:context?.description||'');description.rows=7;description.maxLength=20000;
  const note=field('作業メモ（出品文面には含めません）','textarea',draft?.note||[packet.note,packet.reviewNote].filter(Boolean).join('\n').slice(0,2000));note.rows=3;note.maxLength=2000;
  if(context){
-  const info=node('p','リサーチ確認情報あり：'+context.input.model+' ／ '+(context.decision.candidateAsin||'ASIN未採用')+'。商品状態と付属品は本人の入力から作成。');
+  const info=node('p','リサーチ確認情報あり：'+context.input.model+' ／ '+(context.decision.candidateAsin||'ASIN未採用')+'。商品状態と付属品は自分の写真からの候補と本人の入力から作成。');
   const source=node('a','写真仕分けナビで確認 ↗');source.href='https://photo-sorting-research.vercel.app/research?ids='+encodeURIComponent(context.productId);source.target='_blank';source.rel='noopener noreferrer';fields.append(info,source);
   if(draft){const apply=node('button','確認済みリサーチ内容を説明・価格に読み込む');apply.type='button';apply.disabled=readOnly;fields.append(apply);apply.onclick=()=>{if(p.packageId!==context.packageId){message.textContent='同じ写真セットで使ってください。';return;}description.value=context.description;price.value=context.decision.price??'';appliedContext=context.id;message.textContent='編集欄に読み込みました。内容を確認して下書きを保存してください。';};}
   const refs=node('div');for(const ref of context.decision.references){const a=node('a',(ref.relation==='same'?'同一候補':'類似')+'の参考出品 ↗');a.href=ref.url;a.target='_blank';a.rel='noopener noreferrer';refs.append(a,node('p',ref.difference||'仕様・付属品の比較は本人確認。'));}fields.append(refs);
@@ -59,7 +59,7 @@ export async function openPhotoDraft({packet,readOnly=false,onSaved=()=>{}}){
  close.onclick=dismiss;cancel.onclick=dismiss;dialog.addEventListener('click',e=>{if(e.target===dialog)dismiss();});dialog.addEventListener('cancel',e=>{if(saving)e.preventDefault();});dialog.addEventListener('close',()=>{observer?.disconnect();dialog.remove();});
  form.onsubmit=async e=>{
   e.preventDefault();if(saving||readOnly)return;
-  const base={action:'save',packageId:p.packageId,version:draft?.version||0,values:{title:title.value,price:price.value===''?null:Number(price.value),description:description.value,note:note.value,assetIds:selected,researchContextId:appliedContext}};
+  const base={action:'save',channel,packageId:p.packageId,version:draft?.version||0,values:{title:title.value,price:price.value===''?null:Number(price.value),description:description.value,note:note.value,assetIds:selected,researchContextId:appliedContext}};
   const signature=JSON.stringify(base);if(!pending||pending.signature!==signature)pending={signature,input:{operationId:crypto.randomUUID(),...base}};
   saving=true;inputs.disabled=true;save.disabled=true;cancel.disabled=true;close.disabled=true;message.textContent='下書きを保存しています…';
   try{
@@ -85,13 +85,13 @@ export async function mountPhotoDraftBoard(main,{readOnly=false,enabled=true}={}
   if(!items.length){grid.append(node('p','写真からの下書きはまだありません。「写真仕分けナビ共有写真」で使う商品を選んでください。'));return;}
   for(const d of items){
    const card=node('article',undefined,'photo-draft-card'),img=node('img');card.dataset.photoDraftId=d.id;img.alt=d.title;img.loading='lazy';void sharedPhotoUrl({packageId:d.packageId,assetId:d.assetIds[0]}).then(url=>img.src=url).catch(e=>img.alt=e.message);
-   card.append(img,node('h3',d.title),node('small',(d.archived?'アーカイブ':d.ready?'下書き内容入力済み':'商品説明・価格を入力')+' ／ '+d.assetIds.length+'枚 ／ '+(d.price===null?'価格未定':d.price.toLocaleString('ja-JP')+'円')),node('small',[d.projectName,d.batchTitle].filter(Boolean).join(' ／ ')));
+   card.append(img,node('h3',d.title),node('small',(d.archived?'アーカイブ':d.ready?'下書き内容入力済み':'商品説明・価格を入力')+' ／ '+(d.channel==='mercari'?'メルカリ':'ヤフオク')+' ／ '+d.assetIds.length+'枚 ／ '+(d.price===null?'価格未定':d.price.toLocaleString('ja-JP')+'円')),node('small',[d.projectName,d.batchTitle].filter(Boolean).join(' ／ ')));
    const actions=node('div',undefined,'photo-draft-actions');
-   const edit=node('button','詳細・写真を編集');edit.type='button';edit.onclick=()=>void openPhotoDraft({packet:d.package,readOnly:readOnly||d.archived,onSaved:async saved=>{data=saved;render();message('下書きをツール内に保存しました。');}}).catch(e=>message(e.message));
-   const zip=node('button','写真・文面をまとめて取得');zip.type='button';zip.disabled=busy;zip.onclick=async()=>{if(busy)return;busy=true;zip.disabled=true;message('選択した写真と保存済み文面をまとめています…');try{await downloadPhotoDraft(d);message('写真と文面のZIPを作成しました。ヤフオクでは写真ファイルと文面を入力できます。');}catch(e){message(e.message);}finally{busy=false;zip.disabled=false;}};
-   const yahoo=node('a','ヤフオクの入力画面へ ↗');yahoo.href=data.yahooSellerUrl;yahoo.target='_blank';yahoo.rel='noopener noreferrer';
+   const edit=node('button','詳細・写真を編集');edit.type='button';edit.onclick=()=>void openPhotoDraft({packet:d.package,channel:d.channel,readOnly:readOnly||d.archived,onSaved:async saved=>{data=saved;render();message('下書きをツール内に保存しました。');}}).catch(e=>message(e.message));
+   const zip=node('button','写真・文面をまとめて取得');zip.type='button';zip.disabled=busy;zip.onclick=async()=>{if(busy)return;busy=true;zip.disabled=true;message('選択した写真と保存済み文面をまとめています…');try{await downloadPhotoDraft(d);message('写真と文面のZIPを作成しました。選んだ販売先で写真ファイルと文面を入力できます。');}catch(e){message(e.message);}finally{busy=false;zip.disabled=false;}};
+   const yahoo=node('a',(d.channel==='mercari'?'メルカリ':'ヤフオク')+'の入力画面へ ↗');yahoo.href=d.channel==='mercari'?data.mercariSellerUrl:data.yahooSellerUrl;yahoo.target='_blank';yahoo.rel='noopener noreferrer';
    const archive=node('button',d.archived?'アーカイブから戻す':'アーカイブ');archive.type='button';archive.dataset.write='';archive.disabled=readOnly||busy;
-   archive.onclick=async()=>{if(busy||readOnly)return;busy=true;archive.disabled=true;try{await request('',{method:'POST',headers:{'Content-Type':'application/json','If-Match':'"'+data.revision+'"'},body:JSON.stringify({operationId:crypto.randomUUID(),action:d.archived?'restore':'archive',packageId:d.packageId,version:d.version})});await load();message(d.archived?'下書きを戻しました。':'下書きをアーカイブしました。写真は保持しています。');}catch(e){message(e.message);}finally{busy=false;render();}};
+   archive.onclick=async()=>{if(busy||readOnly)return;busy=true;archive.disabled=true;try{await request('',{method:'POST',headers:{'Content-Type':'application/json','If-Match':'"'+data.revision+'"'},body:JSON.stringify({operationId:crypto.randomUUID(),action:d.archived?'restore':'archive',channel:d.channel,packageId:d.packageId,version:d.version})});await load();message(d.archived?'下書きを戻しました。':'下書きをアーカイブしました。写真は保持しています。');}catch(e){message(e.message);}finally{busy=false;render();}};
    actions.append(edit,zip,yahoo,archive);card.append(actions);grid.append(card);
   }
  }

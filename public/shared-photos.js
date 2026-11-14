@@ -69,10 +69,10 @@ export async function openSharedPhotos({readOnly=false,enabled=true}={}){
    const submit=node('button','この在庫に写真を関連付ける');submit.type='submit';submit.disabled=busy||readOnly;select.disabled=busy||readOnly;use.disabled=busy||readOnly;
    form.append(stockLabel,useLabel,submit);
    form.onsubmit=e=>{e.preventDefault();if(select.value)void save({operationId:crypto.randomUUID(),stockId:select.value,stockRevision:data.stockRevision,action:'attach',packageId:p.packageId,assetId:selected,useAsMain:use.checked});};
-   const start=node('button',data.listingDrafts?.some(d=>d.sourceItemId===item.itemId)?'この商品の下書きを開く':'この写真で下書きを準備','photo-draft-start');start.type='button';start.dataset.write='';start.disabled=readOnly||busy;
+   const start=node('button',data.listingDrafts?.some(d=>d.sourceItemId===item.itemId&&d.channel==='yahoo')?'この商品の下書きを開く':'この写真で下書きを準備','photo-draft-start');start.type='button';start.dataset.write='';start.disabled=readOnly||busy;
    start.onclick=()=>void openPhotoDraft({packet:p,readOnly,onSaved:saved=>{location.href=DRAFTS_HOME+'#photo-draft-saved='+saved.id;}}).catch(e=>message(e.message,true));
    const inventory=node('details',undefined,'shared-photo-inventory'),inventoryHeading=node('summary','在庫の写真にも使う（任意）');inventory.open=Boolean(stockContext);inventory.append(inventoryHeading,form);
-   card.append(start,details,inventory);
+   const mercari=node('button','メルカリの写真下書きを準備','photo-draft-start');mercari.type='button';mercari.disabled=readOnly||busy;mercari.onclick=()=>void openPhotoDraft({packet:p,channel:'mercari',readOnly,onSaved:saved=>{location.href=DRAFTS_HOME+'#photo-draft-saved='+saved.id;}}).catch(e=>message(e.message,true));card.append(start,mercari,details,inventory);
    const ids=new Set(data.packages.filter(v=>v.productId===p.productId&&v.sourceWorkspaceId===p.sourceWorkspaceId).map(v=>v.packageId));
    for(const link of data.links.filter(l=>ids.has(l.packageId))){
     const linked=node('div',undefined,'shared-photo-linked'),stock=data.stocks.find(s=>s.id===link.stockId),a=node('a',stock?.title||'在庫商品を確認');
@@ -90,6 +90,6 @@ export async function openSharedPhotos({readOnly=false,enabled=true}={}){
  if(!enabled){message('写真ナビとの接続準備中です。既存機能は引き続き使えます。');return;}
  await load();
  const contextId=new URLSearchParams(location.hash.slice(1)).get('research'),context=(data.researchContexts||[]).find(c=>c.id===contextId),packet=context&&data.packages.find(p=>p.packageId===context.packageId);
- if(packet)await openPhotoDraft({packet,readOnly,onSaved:async()=>{await load();message('リサーチ内容から下書きを保存しました。');}});
+ if(packet)await openPhotoDraft({packet,channel:context.decision.channel,contextId:context.id,readOnly,onSaved:async()=>{await load();message('リサーチ内容から下書きを保存しました。');}});
  try{const pending=JSON.parse(sessionStorage.getItem('photo-library-pending')||'null');if(pending){pendingInput=pending;retry.hidden=false;message('前の写真関連付けの保存結果が不明です。一覧を確認し、必要なら同じ操作を再試行してください。');}}catch{}
 }

@@ -13,6 +13,7 @@ export function inputValues(raw={}){
  if(r.asin&&!/^[A-Z0-9]{10}$/.test(r.asin))fail('ASINは英数字10文字です。');
  if(!['','unknown','tested','untested','faulty'].includes(r.operation))fail('動作確認を選んでください。');
  r.operation ||= 'unknown';r.identifiersConfirmed=raw.identifiersConfirmed===true;
+ const query=clean(raw.query??'',200);if(query)r.query=query;
  return r;
 }
 const list=(v,max=4)=>{if(!Array.isArray(v)||!v.length||v.length>max||v.some(x=>!MARKETS.includes(x))||new Set(v).size!==v.length)fail('検索先・比較先を選んでください。');return [...v];};
@@ -26,7 +27,7 @@ export function settingsValues(raw={}){
  return {discovery,priority,compare,days,minimum,limit,keepaLimit,useKeepa:raw.useKeepa!==false,shipping,grades};
 }
 export function searchLinks(input,settings){
- const q=[input.manufacturer,input.model||input.jan||input.name].filter(Boolean).join(' ').trim(),e=encodeURIComponent;
+ const q=input.query?.trim()||[input.manufacturer,input.model||input.jan||input.name].filter(Boolean).join(' ').trim(),e=encodeURIComponent;
  const links={amazon:'https://www.amazon.co.jp/s?k='+e(input.jan||q),yahoo:'https://auctions.yahoo.co.jp/search/search?p='+e(q),
  mercari:'https://jp.mercari.com/search?keyword='+e(q),aucfan:'https://aucfan.com/search1/q-'+e(q)+'/s-mix/'};
  return {query:q,first:settings.discovery==='lens'?'https://lens.google/':settings.discovery==='google'?'https://www.google.com/search?q='+e(q+' site:'+({amazon:'amazon.co.jp',yahoo:'auctions.yahoo.co.jp',mercari:'jp.mercari.com',aucfan:'aucfan.com'}[settings.priority[0]])):links[settings.priority[0]],
@@ -110,7 +111,8 @@ export function decisionValues(raw={}){
  if(!Array.isArray(raw.references??[])||(raw.references??[]).length>3)fail('参考出品は最大3件です。');
  const references=(raw.references??[]).map(v=>{if(!['same','similar'].includes(v.relation))fail('同一商品・類似商品を選んでください。');return {url:marketUrl(v.url),relation:v.relation,difference:clean(v.difference??'',500)};});
  if(new Set(references.map(r=>r.url)).size!==references.length)fail('参考URLが重複しています。');
- return {candidateAsin:asin,candidateConfirmed:raw.candidateConfirmed===true,channel,price,references,note:clean(raw.note??'',2000)};
+ const result={candidateAsin:asin,candidateConfirmed:raw.candidateConfirmed===true,channel,price,references,note:clean(raw.note??'',2000)};
+ if(raw.photoIds!==undefined){if(!Array.isArray(raw.photoIds)||raw.photoIds.length>10||new Set(raw.photoIds).size!==raw.photoIds.length||raw.photoIds.some(v=>typeof v!=='string'||!/^[a-f0-9-]{36}$/i.test(v)))fail('下書き写真は重複せず10枚以内で選んでください。');result.photoIds=[...raw.photoIds];}return result;
 }
 
 export function ownDescription(input){return [input.manufacturer&&'メーカー：'+input.manufacturer,input.model&&'型番：'+input.model,input.spec&&'仕様：'+input.spec,'','【現物の状態】',input.condition||'状態の詳細は本人確認待ちです。',input.operation==='tested'?'動作確認：本人が確認済み':input.operation==='faulty'?'動作：不具合あり':input.operation==='untested'?'動作確認：未実施':'動作確認：本人確認待ち','', '【付属品】',input.accessories||'付属品は写真と本人確認に基づき追記してください。'].filter((v,i,a)=>v!==''||a[i-1]!=='').join('\n');}
