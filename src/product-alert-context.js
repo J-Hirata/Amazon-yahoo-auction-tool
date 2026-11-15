@@ -6,7 +6,7 @@ import {noticeSchedule} from './product-notice-policy.js';
 // transitions or changing the durable watch. Accepted mail remains immutable.
 export function productAlertContext(input,at){
  const watch=structuredClone(input.watch),settings=input.monitor.salesAutomation||{},assessments=new Map();
- collectProductAlerts(watch,productOverview({...input,watch},at),settings,at,{onObserve:a=>assessments.set(a.key,a)});
+ collectProductAlerts(watch,productOverview({...input,watch},at),settings,at,{monitor:input.monitor,onObserve:a=>assessments.set(a.key,a)});
  const states={},conditions={},alerts=[];
  for(const p of input.watch.pendingAlerts||[]){
   const a=assessments.get(p.key),signal=p.key?watch.signals[p.key]:p.eventKey?.startsWith('product:fetch-error:')?watch.signals.fetchError:null;

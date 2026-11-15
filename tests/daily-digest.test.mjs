@@ -90,3 +90,11 @@ test('operational errors and product alerts share the daily message without inve
  const f=fixture();await f.monitor.update(m=>{m.salesTracking.events[0].delivery='historical';m.salesAutomation.errorAlerts=true;});f.sales.check=async()=>{throw Error('注文確認を取得できません');};
  await f.engine.run();assert.equal(f.sent.length,1);assert.match(f.sent[0].text,/確認できない項目/);assert.doesNotMatch(f.sent[0].text,/注文確定 0個/);assert.ok(f.sent[0].alertIds.length);assert.equal((await f.monitor.read()).mailOutbox.filter(r=>r.status==='smtp_accepted').length,1);
 });
+
+test('period totals and owner memos are refreshed before sending and match the notice and overview',async()=>{
+ const f=fixture();await f.monitor.update(m=>{Object.assign(m.salesTracking,{accountKey:'own',sellerId:'OWN',marketplaceId:'A1VC38T7YXB528'});m.salesTracking.orders=[{orderId:'period-order',itemId:'period-item',asin,sellerSku:sku,createdAt:'2026-11-05T00:00:00Z',status:'SHIPPED',fulfillment:'AMAZON',confirmedQuantity:3}];});
+ await f.watchStore.update(w=>{Object.assign(w.rules[0],{startedOn:'2026-11-02',reviewDays:10,note:'変更前の目的'});});let changed=false;
+ f.hook(async()=>{if(changed)return;changed=true;await f.watchStore.update(w=>{w.rules[0].note='一個も売れなければ小物へ\n本人が判断';});await f.monitor.update(m=>{m.salesTracking.orders[0].confirmedQuantity=4;});});
+ const stock=await f.stockStore.read();await f.engine.run();assert.equal(f.sent.length,1);assert.match(f.sent[0].text,/期間中販売個数 4個/);assert.ok(f.sent[0].text.includes('一個も売れなければ小物へ\n本人が判断'));assert.doesNotMatch(f.sent[0].text,/変更前の目的/);assert.deepEqual(await f.stockStore.read(),stock);
+ assert.ok((await f.overview.view()).rows[0].alerts.some(a=>a.lines.some(l=>l.includes('期間中販売個数 4個'))));assert.ok((await f.notices.view()).notices.some(n=>n.summary.lines.some(l=>l.includes('期間中販売個数 4個'))));
+});

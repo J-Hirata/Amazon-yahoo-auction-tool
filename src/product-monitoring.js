@@ -61,7 +61,7 @@ export function createProductMonitoring({overview,watchStore,config,readInventor
       recordIncomingReflections(state,productOverview({...current,watch:state},now()));
       recordReplenishmentBaselines(state,productOverview({...current,watch:state},now()),now());
       const rows=productOverview({...current,watch:state},now());
-      const standard=collectProductAlerts(state,rows,settings,now()).filter(p=>!p.key?.startsWith('yahoo-quantity:'));
+      const standard=collectProductAlerts(state,rows,settings,now(),{monitor:current.monitor}).filter(p=>!p.key?.startsWith('yahoo-quantity:'));
       const pending=[...standard,...collectYahooQuantityAlerts(state,rows,settings,now(),previous)];
       if(errors.length&&settings.errorAlerts){
         if(!state.signals.fetchError?.active){const eventId=randomUUID();state.pendingAlerts.push({id:eventId,eventKey:`product:fetch-error:${eventId}`,category:"errorAlerts",title:"在庫・出品の取得状況",message:errors.join("\n"),at:now()});state.signals.fetchError={active:true,alertId:eventId};}

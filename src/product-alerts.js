@@ -3,10 +3,12 @@ import {randomUUID} from "node:crypto";
 import {planningToday} from "./sales-planning.js";
 import {stockRisk,quantityEvidence} from "./stock-risk.js";
 import {yahooEndMessage,alertMailDetails} from "./product-alert-mail.js";
+import {alertEvidence} from './alert-evidence.js';
 
-export function collectProductAlerts(state,rows,settings,at,{onObserve,observeOnly=false}={}){
+export function collectProductAlerts(state,rows,settings,at,{onObserve,observeOnly=false,monitor}={}){
   const signals=state.signals ||= {},pending=state.pendingAlerts ||= [],observed=new Set(),decisions=new Map();
   function observe(key,value,category,row,message,mailFormat,mailDetails){
+    mailDetails=alertEvidence(row,mailDetails,monitor,at);
     onObserve?.({key,value,category,row,message,mailFormat,mailDetails});
     if(observeOnly)return;
     observed.add(key);decisions.set(key,value);
@@ -51,7 +53,7 @@ export function collectProductAlerts(state,rows,settings,at,{onObserve,observeOn
       const url=`https://amazon-yahoo-inventory.vercel.app/?view=planning#id=${p.id}`;
       for(const a of p.actionSchedules||[]){
         const message=`${a.label} ／ 開始日：${a.startsOn||"未設定"} ／ 締切日：${a.endsOn||"未設定"}。${a.conditionLabel}。${a.note}\n結果を記録して次の方針を確認してください。\n${url}`;
-        const details=alertMailDetails(row,'review',at,{planId:p.id,period:{startsOn:a.startsOn||'',endsOn:a.endsOn||''},lines:[`${a.label} ／ 販売監視期間 ${a.startsOn||'開始日未設定'} → ${a.endsOn||'締切未設定'}`,a.conditionLabel,a.note].filter(Boolean)});
+        const details=alertMailDetails(row,'review',at,{planId:p.id,actionId:a.id,period:{startsOn:a.startsOn||'',endsOn:a.endsOn||''},lines:[`${a.label} ／ 販売監視期間 ${a.startsOn||'開始日未設定'} → ${a.endsOn||'締切未設定'}`,a.conditionLabel].filter(Boolean)});
         if(a.startsOn)observe(`action-start:${p.id}:${a.id}:${a.startsOn}`,Boolean(a.startDue&&!a.endDue),"reviewAlerts",row,`アクションの開始時期です。${message}`,undefined,details);
         if(a.endsOn)observe(`action-end:${p.id}:${a.id}:${a.endsOn}`,Boolean(a.endDue),"reviewAlerts",row,`アクションの締切です。${message}`,undefined,details);
       }

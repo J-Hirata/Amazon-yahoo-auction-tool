@@ -1,5 +1,6 @@
 import {riskQuantity,relistingAssessment} from './stock-risk.js';
 import {addNoticeDays,noticeDay,recurringNotice} from './product-notice-policy.js';
+import {endedListingUrl} from './alert-evidence.js';
 
 const origin='https://amazon-yahoo-inventory.vercel.app/';
 const count=v=>Number.isSafeInteger(v)&&v>=0;
@@ -65,7 +66,7 @@ export function productAlertGroup(alert){
 const alertLink=alert=>origin+'?view=overview'+(alert.id&&recurringNotice(alert)?'#notice='+encodeURIComponent(alert.id):'');
 const actionLabel=alert=>alert.id&&recurringNotice(alert)?'確認・再案内の解除':'管理画面を開く';
 const nextDay=(at,alert)=>noticeDay(at||alert.at)?addNoticeDays(noticeDay(at||alert.at)):'確認待ち';
-function alertLines(alert){return alert.mailDetails?.lines?.length?alert.mailDetails.lines.map(clean).filter(Boolean):String(alert.message||'').split('\n').filter(Boolean);}
+function alertLines(alert){return alert.mailDetails?.lines?.length?alert.mailDetails.lines.map(line=>String(line??'').replace(/\r\n/g,'\n').trim()).filter(Boolean):String(alert.message||'').split('\n').filter(Boolean);}
 function parts(alerts){return {fresh:alerts.filter(a=>!a.isReminder),repeat:alerts.filter(a=>a.isReminder)};}
 export function productAlertsSubject(alerts,{mode='daily'}={}){
   const {fresh,repeat}=parts(alerts);
@@ -80,6 +81,7 @@ export function productAlertsMail(alerts,{at,embedded=false}={}){
       selected.forEach((a,i)=>{
         lines.push(`${i+1}. ${clean(a.title)}${a.asin?` ／ ${a.asin}`:''}`,...alertLines(a).map(line=>'   '+line));
         if(a.isReminder)lines.push(`   通知${a.notificationNumber}回目 ／ 前回 ${noticeDay(a.lastSentAt)||'確認待ち'} ／ 次回 ${nextDay(at,a)}の日次確認`);
+        const listingUrl=endedListingUrl(a.mailDetails);if(listingUrl)lines.push(`   ヤフオク!再販：${listingUrl}`);
         lines.push(`   ${actionLabel(a)}：${alertLink(a)}`,'');
       });
     }
@@ -96,7 +98,8 @@ export function productAlertsHtml(alerts,{at,embedded=false}={}){
       const [color,background,border]=categoryColors[kind];
       html+=`<h3 style="font-size:15px;margin:20px 0 4px;"><span style="display:inline-block;padding:1px 8px;border:1px solid ${border};border-radius:999px;color:${color};background:${background};">${esc(label)}</span>（${selected.length}件）</h3><table role="presentation" style="border-collapse:collapse;width:100%;">`;
       for(const a of selected){const meta=a.isReminder?`<div style="font-size:13px;color:#59687a;margin-top:4px;">通知${a.notificationNumber}回目・前回 ${esc(noticeDay(a.lastSentAt)||'確認待ち')}・次回 ${esc(nextDay(at,a))}</div>`:'';
-        html+=`<tr><td style="padding:12px 0;border-bottom:1px solid #dce3eb;${textStyle}"><div style="font-weight:bold;">${esc(clean(a.title))}</div><div>${alertLines(a).map(esc).join('<br>')}</div>${meta}<div style="margin-top:6px;"><a href="${esc(alertLink(a))}" style="color:#2458a6;text-decoration:underline;">${esc(actionLabel(a))} ↗</a></div><div style="font-size:12px;color:#59687a;">${esc(a.asin||'')}</div></td></tr>`;
+        const listingUrl=endedListingUrl(a.mailDetails),listing=listingUrl?`<div style="margin-top:7px;"><a href="${esc(listingUrl)}" style="font-weight:bold;color:#644399;text-decoration:underline;">ヤフオク!再販 ↗</a></div>`:'';
+        html+=`<tr><td style="padding:12px 0;border-bottom:1px solid #dce3eb;${textStyle}"><div style="font-weight:bold;">${esc(clean(a.title))}</div><div>${alertLines(a).map(line=>esc(line).replace(/\n/g,'<br>')).join('<br>')}</div>${meta}${listing}<div style="margin-top:6px;"><a href="${esc(alertLink(a))}" style="color:#2458a6;text-decoration:underline;font-size:13px;">${esc(actionLabel(a))} ↗</a></div><div style="font-size:12px;color:#59687a;">${esc(a.asin||'')}</div></td></tr>`;
       }html+='</table>';
     }return html;
   }
