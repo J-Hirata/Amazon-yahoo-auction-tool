@@ -29,6 +29,10 @@ test('the same ASIN on another SKU, unrelated source or another account is exclu
  const f=fixture();f.tracking.orders=[order('own',{confirmedQuantity:3}),order('other',{sellerSku:'OTHER',confirmedQuantity:40})];f.tracking.trackers.push({...f.tracking.trackers[0],sellerSku:'OTHER',sourceId:'stock:other'});assert.equal(periodSales(f.row,f.monitor,period,at).quantity,3);f.monitor.amazonSellerId='DIFFERENT';assert.equal(periodSales(f.row,f.monitor,period,at).quantity,null);
 });
 
+test('conflicting product references or a conflicting known condition hold the total',()=>{
+ for(const change of ['reference','link','condition']){const f=fixture();f.tracking.orders=[order('one',{confirmedQuantity:3})];if(change==='reference')f.row.referenceIssue=true;if(change==='link')f.row.linkConflicts=['different'];if(change==='condition')f.tracking.trackers[0].condition='NewItem';assert.equal(periodSales(f.row,f.monitor,period,at).quantity,null);}
+});
+
 test('whole product totals require an explicit condition and retain unique related SKUs',()=>{
  const f=fixture();f.row.sellerSku='';f.tracking.trackers.push({...f.tracking.trackers[0],sourceId:'link:one'},{...f.tracking.trackers[0],sellerSku:'SECOND'},{...f.tracking.trackers[0],sellerSku:'NEW',condition:'NewItem'});f.tracking.orders=[order('first'),order('second',{sellerSku:'SECOND',confirmedQuantity:2}),order('new',{sellerSku:'NEW',confirmedQuantity:40})];assert.equal(periodSales(f.row,f.monitor,period,at).quantity,3);f.row.condition='unknown';assert.equal(periodSales(f.row,f.monitor,period,at).quantity,null);
 });

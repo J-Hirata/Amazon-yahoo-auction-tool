@@ -18,10 +18,11 @@ export function periodSales(row,monitor={},period={},at,{sellerSku}={}){
  const tracking=monitor.salesTracking;
  if(!tracking)return unknown('販売履歴未取得');
  if(!Array.isArray(tracking.orders)||!Array.isArray(tracking.trackers))return unknown('販売履歴未取得');
+ if(row.referenceIssue||row.linkConflicts?.length)return unknown('商品の関連付けを確認');
  if(!monitor.amazonAccountKey||!monitor.amazonSellerId||tracking.accountKey!==monitor.amazonAccountKey||tracking.sellerId!==monitor.amazonSellerId||tracking.marketplaceId!=='A1VC38T7YXB528')return unknown('販売履歴の接続先を確認');
  const selectedSku=sellerSku||row.sellerSku||'',keys=new Set(row.sourceKeys||[]),links=new Set(row.linkIds||[]);
  if(!selectedSku&&!['new','used'].includes(row.condition))return unknown('対象SKU・状態未確定');
- const targets=(tracking.trackers||[]).filter(t=>t.asin===row.asin&&(keys.has(t.sourceId)||links.has(t.linkId))&&(selectedSku?t.sellerSku===selectedSku:family(t.condition)===row.condition));
+ const targets=(tracking.trackers||[]).filter(t=>t.asin===row.asin&&(keys.has(t.sourceId)||links.has(t.linkId))&&(selectedSku?t.sellerSku===selectedSku:family(t.condition)===row.condition)&&(!['new','used'].includes(row.condition)||family(t.condition)==='unknown'||family(t.condition)===row.condition));
  const skus=[...new Set(targets.map(t=>t.sellerSku).filter(Boolean))];result.skus=skus;
  if(!skus.length)return unknown('対象SKU未追跡');
  const through=time(tracking.checkedThrough),until=Math.min(end,now,through);
