@@ -82,6 +82,7 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
  async function work(fn){if(busy||readOnly())return;busy=true;controls();try{await fn();}catch(e){dialog.querySelector('[data-status]').textContent=e.message;}finally{busy=false;controls();}}
  function selectedStock(){return entry.editor.stockId?entry.editor:entry.editor.candidates.find(c=>c.id===form.elements.stockId.value);}
  function sync(){
+  workspaceFields.sync();
   const f=form.elements;for(const id of ['container','home'])f[id+'Quantity'].disabled=false;
   form.querySelector('[data-stock-choice]').hidden=!f.alsoStock.checked||Boolean(entry.editor.stockId);
   const linked=entry.editor.linkIds.length>0;
@@ -132,9 +133,9 @@ export function createProductWorkspaceEditor({readOnly=()=>false,onChanged=async
    pickers.push(createProductPicker(form.querySelector('[data-stock-picker]'),{label:'登録済みのコンテナ・自社在庫',products:()=>entry.editor.candidates.map(c=>({...c,detail:c.locations.map(l=>(l.locationId==='container'?'コンテナ':'自宅・会社')+' '+(l.usable??'未確認')).join(' ／ ')})),source:current,selected:()=>[f.stockId.value].filter(Boolean),onSelect:c=>{
     f.stockId.value=c.id;fillMissing(c);for(const id of ['container','home'])if(!editedLocations.has(id+'Quantity'))f[id+'Quantity'].value=c.locations.find(l=>l.locationId===id)?.usable??'';
     const relatedMerchant=entries['stock:'+c.id]?.editor.merchant;if(relatedMerchant?.sellerSku||relatedMerchant?.conflict){if(merchantSku&&relatedMerchant.sellerSku&&merchantSku!==relatedMerchant.sellerSku){merchantSku='';form.querySelector('[data-merchant-help]').textContent='元の商品と選んだ在庫で自社発送SKUが異なります。正しい出品を選んでください。';}else merchantSku=relatedMerchant.sellerSku;f.alsoMerchant.checked=true;f.alsoMerchant.disabled=true;}
-    const plan=entries['stock:'+c.id]?.editor.plans.find(p=>p.status!=='closed');if(plan&&!entry.editor.plans.some(p=>p.status!=='closed')){f.alsoPlanning.checked=true;f.planId.value=plan.id;}refreshPickers();
+    const plan=entries['stock:'+c.id]?.editor.plans.find(p=>p.status!=='closed');if(plan&&!entry.editor.plans.some(p=>p.status!=='closed')){f.alsoPlanning.checked=true;f.planId.value=plan.id;workspaceFields.choosePlan(plan);}refreshPickers();
    }}));
-   pickers.push(createProductPicker(form.querySelector('[data-plan-picker]'),{label:'登録済みの販売監視',products:()=>planChoices,source:current,selected:()=>[f.planId.value].filter(Boolean),onSelect:c=>{f.planId.value=c.id;fillMissing(c);refreshPickers();}}));
+   pickers.push(createProductPicker(form.querySelector('[data-plan-picker]'),{label:'登録済みの販売監視',products:()=>planChoices,source:current,selected:()=>[f.planId.value].filter(Boolean),onSelect:c=>{f.planId.value=c.id;workspaceFields.choosePlan(c);fillMissing(c);refreshPickers();}}));
    const nav=form.querySelector('[data-related-pages]');nav.replaceChildren();const page=(label,url)=>{const a=el('a',label+' ↗');a.href=url;a.target='_blank';a.rel='noopener noreferrer';nav.append(a);};
    if(entry.editor.stockId)page('コンテナ・自社在庫','/?view=stock#item='+encodeURIComponent('stock:'+entry.editor.stockId));
    for(const id of entry.editor.linkIds)page('商品紐付け','/#item='+encodeURIComponent('link:'+id));

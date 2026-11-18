@@ -1,5 +1,6 @@
 import {current} from './product-availability.js';
 import {stockTotals} from './physical-stock.js';
+import {incomingDraftFor} from './fba-incoming.js';
 
 export const conditionFamily=value=>/^(new|新品)/i.test(value||'')?'new':/^(used|中古)/i.test(value||'')?'used':'unknown';
 const stockCondition=value=>value==='parts'?'parts':conditionFamily(value);
@@ -34,5 +35,5 @@ export function productWorkspace(row,{physical,monitor,watch,at}){
   return {drafts:row.drafts||[],key:row.key,sourceKeys:row.sourceKeys,stocks:stocks.map(p=>({id:p.id,title:p.title,sellerSku:p.sellerSku,unit:p.unit})),stockCandidates,
     links:row.linkIds.map(id=>monitor.links.find(l=>l.id===id)).filter(Boolean).map(l=>({id:l.id,listingId:l.listingId})),
     linkCandidates:monitor.links.filter(l=>l.verified&&!l.observationConflict&&!row.linkIds.includes(l.id)&&(l.asin||monitor.catalog.find(p=>p.id===l.catalogId)?.asin)===row.asin&&(!sku||!resolvedLinkSku(l,monitor,watch,at)||sku===resolvedLinkSku(l,monitor,watch,at))&&compatibleCondition(stockCondition(row.condition),stockCondition(resolvedLinkCondition(l,monitor,watch,at)))).map(l=>({id:l.id,listingId:l.listingId})),
-    plans:row.plans.map(p=>({id:p.id,title:p.title,status:p.status,stage:p.schedule.stage,dueOn:p.schedule.dueOn})),replenishment:row.replenishmentInfo};
+    plans:row.plans.map(p=>({id:p.id,title:p.title,status:p.status,kind:p.kind,availableOn:p.availableOn||'',adStartedOn:p.adStartedOn||'',reviewOn:p.reviewOn||'',durationDays:p.durationDays,note:p.note||'',actionCount:p.actions?.length||0,stage:p.schedule.stage,dueOn:p.schedule.dueOn})),notificationNote:row.rule?.note||'',incomingDraft:incomingDraftFor(row,monitor),replenishment:row.replenishmentInfo};
 }

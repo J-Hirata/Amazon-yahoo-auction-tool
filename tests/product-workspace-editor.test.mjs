@@ -20,6 +20,15 @@ function fixture(){
 }
 function cmd(key,extra={}){return {operationId:randomUUID(),kind:'workspace',key,product:{},workspace:{},linkIds:[],registration:{stock:false,merchant:false,yahoo:false,planning:true,yahooUrl:''},...extra};}
 function options(d){return {actor,at,confirmed:true,expectedRevision:d['link-monitor'].revision,sourceRevisions:Object.fromEntries(Object.entries(d).map(([k,v])=>[k,v.revision]))};}
+test('shared editor saves monitoring fields and notification memo without another page or overwriting plan policy',async()=>{
+ const f=fixture(),before=f.read(),original=before['sales-planning'].state.plans[0];
+ const c=cmd('plan:'+f.planId,{workspace:{planning:{planId:f.planId,availableOn:'2026-11-02',durationDays:14,note:'監視の目的をこの画面から変更'},alarmNote:'残数が少なければ追加納品を検討'}});
+ const p=await f.editor.preview(c,options(before));assert.deepEqual(f.read(),before);assert.match(p.receipt.registrationSummary.join('\n'),/2026-11-02 → 2026-11-16/);
+ await f.editor.save(c,options(before));const d=f.read(),plan=d['sales-planning'].state.plans[0];
+ assert.equal(plan.availableOn,'2026-11-02');assert.equal(plan.note,c.workspace.planning.note);for(const k of ['id','source','actions','decisions','createdAt','sellerSku','condition'])assert.deepEqual(plan[k],original[k]);
+ assert.equal(d['product-watch'].state.rules[0].note,c.workspace.alarmNote);assert.equal(d['product-watch'].state.rules[0].lowStock,undefined);assert.deepEqual(d['physical-stock'],before['physical-stock']);
+ const entry=(await f.editor.list()).entries[c.key];assert.equal(entry.live.workspace.plans[0].durationDays,14);assert.equal(entry.live.workspace.notificationNote,c.workspace.alarmNote);
+});
 test('monitoring editor adds stock and Yahoo URL atomically while retaining the same plan, policy, dates and memo',async()=>{
  const f=fixture(),before=f.read(),plan=before['sales-planning'].state.plans[0],c=cmd('plan:'+f.planId,{workspace:{counts:{container:50,home:2},manualFbaQuantity:20,alarmThreshold:10,incoming:[{quantity:120,stage:'transit',expectedOn:'2026-11-17',reference:'FBA120'}]},registration:{stock:true,merchant:true,yahoo:true,planning:true,yahooUrl:'https://auctions.yahoo.co.jp/jp/auction/h1248825083'}});
  const p=await f.editor.preview(c,options(before));assert.ok(p.receipt.stockId);assert.deepEqual(f.read(),before);

@@ -8,6 +8,8 @@ import {emptySalesPlanning,validateSalesPlanning} from '../src/sales-planning.js
 import {validateMonitorState,validateDraftItems} from '../src/storage-validation.js';
 import {createCloudStock} from '../src/cloud-stock.js';
 import {addDrafts} from '../src/cloud-drafts.js';
+import {productOverview} from '../src/product-overview.js';
+import {alertEvidence} from '../src/alert-evidence.js';
 const at='2026-11-10T02:00:00.000Z',actor='registration-test',asin='B000TEST01';
 function fixture(){
  let docs={'physical-stock':{state:emptyPhysicalStock(),revision:0},'link-monitor':{state:emptyMonitor(),revision:0},'sales-planning':{state:emptySalesPlanning(),revision:0},'draft-items':{state:[],revision:0},'product-watch':{state:emptyProductWatch(),revision:0}};
@@ -79,3 +81,49 @@ test('unchanged FBA baseline and incoming plans keep their timestamps when only 
 });
 test('choosing a registered Yahoo link reuses its listing URL without a manual URL or a duplicate draft',async()=>{const f=fixture();let link;await f.transaction.update(d=>{link=registerPageLink(d['link-monitor'].state,{amazon:asin,yahoo:'https://auctions.yahoo.co.jp/jp/auction/h1248825083',submitted:true},at);});const c=command({merchant:false,yahoo:true,planning:false,yahooUrl:''});c.product.linkedLinkIds=[link.id];const result=await save(f,c),d=f.read();assert.equal(d['draft-items'].state.length,0);assert.equal(d['link-monitor'].state.links.length,1);assert.deepEqual(d['physical-stock'].state.products[0].linkedLinkIds,[link.id]);assert.deepEqual(result.receipt.yahooUrls,['https://auctions.yahoo.co.jp/jp/auction/h1248825083']);});
 test('the stock API accepts a complete pasted ASIN and never shortens an incomplete ASIN to save it',async()=>{const f=fixture(),c=command({merchant:false,yahoo:false,planning:false,yahooUrl:''});c.product.asin='　Ｂ０Ｂ８ＸＹ１Ｑ７Ｖ　';await save(f,c);assert.equal(f.read()['physical-stock'].state.products[0].asin,'B0B8XY1Q7V');const bad=command({merchant:false,yahoo:false,planning:false,yahooUrl:''});bad.product.asin='B0B8XY1Q7';const before=f.read();await assert.rejects(()=>f.stock.preview(bad,{expectedRevision:before['physical-stock'].revision,actor}),/現在9文字/);assert.deepEqual(f.read(),before);});
+
+test('new inventory saves a warning memo, monitoring period and quantity-undecided delivery draft in one confirmation',async()=>{
+ const f=fixture(),c=command({merchant:false,yahoo:false,planning:true,yahooUrl:''});c.initialCounts={container:null,home:100};
+ c.workspace={alarmThreshold:90,alarmNote:'90個以下なら追加納品\n先に自宅の数量を確認',planning:{availableOn:'2026-11-01',durationDays:10,note:'売れなければ古物市場を検討'},incomingDraft:{stage:'packing',expectedOn:'2026-11-18',reference:'納品数は後で決める'}};
+ const before=f.read(),preview=await f.stock.preview(c,{expectedRevision:0,actor});assert.deepEqual(f.read(),before);
+ assert.match(preview.receipt.registrationSummary.join('\n'),/数量未定の下書き/);
+ const options={actor,expectedRevision:preview.revision,sourceRevisions:preview.sourceRevisions,confirmed:true};await f.stock.commit(c,options);
+ const d=f.read(),plan=d['sales-planning'].state.plans[0],watch=d['product-watch'].state;
+ assert.deepEqual(d['physical-stock'].state.balances.map(b=>b.usable),[null,100]);assert.equal(watch.rules[0].lowStock.threshold,90);assert.equal(watch.rules[0].note,c.workspace.alarmNote);
+ assert.equal(plan.availableOn,'2026-11-01');assert.equal(plan.durationDays,10);assert.equal(plan.note,c.workspace.planning.note);
+ assert.equal(d['link-monitor'].state.fbaIncoming?.length||0,0);assert.equal(d['link-monitor'].state.fbaIncomingDrafts[0].reference,'納品数は後で決める');
+ const row=productOverview({monitor:d['link-monitor'].state,physical:d['physical-stock'].state,planning:d['sales-planning'].state,watch,drafts:[]},at)[0];
+ assert.equal(row.workspace.notificationNote,c.workspace.alarmNote);assert.equal(row.workspace.plans[0].availableOn,'2026-11-01');assert.equal(row.workspace.incomingDraft.expectedOn,'2026-11-18');
+ const evidence=alertEvidence(row,{kind:'stock',lines:[]},d['link-monitor'].state,at);assert.ok(evidence.lines.some(l=>l.includes(c.workspace.alarmNote)));assert.ok(evidence.lines.some(l=>l.includes(c.workspace.planning.note)));
+ assert.equal((await f.stock.commit(c,options)).receipt.replayed,true);assert.deepEqual(f.read(),d);
+});
+
+test('quantity-undecided delivery becomes a real plan only when the quantity is supplied, without adding it to stock',async()=>{
+ const f=fixture(),c=command({merchant:false,yahoo:false,planning:false,yahooUrl:''});c.workspace={incomingDraft:{stage:'transit',expectedOn:'2026-11-18',reference:'下書きの番号'}};await save(f,c);
+ let d=f.read();const counts=d['physical-stock'].state.balances,p=d['physical-stock'].state.products[0];
+ const edit={operationId:randomUUID(),kind:'edit',productId:p.id,product:p,workspace:{incoming:[{quantity:50,stage:'transit',expectedOn:'2026-11-18',reference:'下書きの番号'}]}};
+ const preview=await f.stock.preview(edit,{actor,expectedRevision:d['physical-stock'].revision});await f.stock.commit(edit,{actor,confirmed:true,expectedRevision:preview.revision,sourceRevisions:preview.sourceRevisions});d=f.read();
+ assert.equal(d['link-monitor'].state.fbaIncoming[0].quantity,50);assert.deepEqual(d['link-monitor'].state.fbaIncomingDrafts,[]);assert.deepEqual(d['physical-stock'].state.balances,counts);
+});
+
+test('a notification memo alone does not enable a threshold or reset other monitoring settings',async()=>{
+ const f=fixture(),c=command({merchant:false,yahoo:false,planning:true,yahooUrl:''});await save(f,c);const before=f.read(),p=before['physical-stock'].state.products[0];
+ const edit={operationId:randomUUID(),kind:'edit',productId:p.id,product:p,workspace:{alarmNote:'追加納品前に状態を確認'}};
+ const preview=await f.stock.preview(edit,{actor,expectedRevision:before['physical-stock'].revision});await f.stock.commit(edit,{actor,confirmed:true,expectedRevision:preview.revision,sourceRevisions:preview.sourceRevisions});const d=f.read();
+ assert.equal(d['product-watch'].state.rules[0].note,edit.workspace.alarmNote);assert.equal(d['product-watch'].state.rules[0].lowStock,undefined);
+ assert.deepEqual(d['sales-planning'],before['sales-planning']);assert.deepEqual(d['link-monitor'],before['link-monitor']);assert.deepEqual(d['physical-stock'].state.balances,before['physical-stock'].state.balances);
+});
+
+test('monitoring date and memo edits reuse the same plan and preserve policies, actions and unedited fields',async()=>{
+ const f=fixture(),c=command({merchant:false,yahoo:false,planning:true,yahooUrl:''});await save(f,c);const before=f.read(),p=before['physical-stock'].state.products[0],old=before['sales-planning'].state.plans[0];
+ const edit={operationId:randomUUID(),kind:'edit',productId:p.id,product:p,registration:c.registration,workspace:{planning:{planId:old.id,availableOn:'2026-11-02',durationDays:14,note:'監視の目的を変更'}}};
+ const preview=await f.stock.preview(edit,{actor,expectedRevision:before['physical-stock'].revision});await f.stock.commit(edit,{actor,confirmed:true,expectedRevision:preview.revision,sourceRevisions:preview.sourceRevisions});const d=f.read(),plan=d['sales-planning'].state.plans[0];
+ assert.equal(d['sales-planning'].state.plans.length,1);for(const k of ['id','createdAt','source','decisions','actions','sellerSku','condition'])assert.deepEqual(plan[k],old[k]);assert.equal(plan.note,'監視の目的を変更');assert.equal(plan.durationDays,14);
+ assert.deepEqual(d['physical-stock'].state.balances,before['physical-stock'].state.balances);assert.deepEqual(d['product-watch'],before['product-watch']);
+});
+
+test('unrelated monitoring IDs or invalid draft dates leave every destination untouched',async()=>{
+ for(const workspace of [{planning:{planId:randomUUID(),note:'違う商品へ書かない'}},{incomingDraft:{stage:'packing',expectedOn:'2026-02-31',reference:'不正日'}}]){
+  const f=fixture(),c=command({merchant:false,yahoo:false,planning:true,yahooUrl:''});c.workspace=workspace;const before=f.read();await assert.rejects(()=>save(f,c));assert.deepEqual(f.read(),before);
+ }
+});

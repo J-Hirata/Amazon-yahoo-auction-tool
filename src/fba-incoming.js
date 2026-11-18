@@ -1,5 +1,12 @@
 const n=v=>Number.isSafeInteger(v)&&v>=0;
 const fail=m=>Object.assign(new Error(m),{status:400});
+export function incomingDraftFor(row,monitor){return (monitor.fbaIncomingDrafts||[]).find(p=>row.sourceKeys.includes(p.key)&&p.asin===row.asin)||null;}
+export function saveIncomingDraft(monitor,row,input,{actor,at}){
+ if(input!==null&&(!input||Array.isArray(input)||Object.keys(input).some(k=>!['stage','expectedOn','reference'].includes(k))||!['packing','transit'].includes(input.stage)||typeof input.expectedOn!=='string'||input.expectedOn&&(!/^\d{4}-\d{2}-\d{2}$/.test(input.expectedOn)||!Number.isFinite(Date.parse(input.expectedOn))||new Date(input.expectedOn+'T00:00:00Z').toISOString().slice(0,10)!==input.expectedOn)||typeof input.reference!=='string'||input.reference.length>200))throw fail('数量未定の納品メモ・日付を確認してください');
+ const previous=incomingDraftFor(row,monitor),key=previous?.key||row.key,list=(monitor.fbaIncomingDrafts||[]).filter(p=>p.key!==key);
+ if(input){if(list.length>=2000)throw fail('納品メモの保存上限です');list.push({key,asin:row.asin,sellerSku:row.sellerSku||'',...input,actor,updatedAt:at});}
+ monitor.fbaIncomingDrafts=list;
+}
 export function incomingFor(row,monitor,at,watch={}){
  return (monitor.fbaIncoming||[]).filter(p=>row.sourceKeys.includes(p.key)&&p.asin===row.asin).map(p=>{
   const raw=row.fba||{},actual=raw.status==='complete'&&raw.sellerSku===p.sellerSku?raw.quantity:raw.status==='ambiguous'?raw.variants?.find(v=>v.sellerSku===p.sellerSku)?.quantity:null;

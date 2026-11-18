@@ -169,7 +169,7 @@ export async function openStock({userId, readOnly}) {
       if (product) productForm.elements[field].value = product[field] || "";
       productForm.elements[field].disabled = Boolean(product && ["unit", "condition", "setContents"].includes(field));
     }
-    asinInput.refresh();syncRegistrationLinks();
+    asinInput.refresh();syncRegistrationLinks();workspaceFields.sync();
     if (reference) productForm.elements.title.value = reference[0];
     $("#stockProductDialog").showModal();$("#stockProductDialog").scrollTop=0;
   }

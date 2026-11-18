@@ -40,7 +40,7 @@ export async function applyStockRegistration(docs,command,{actor,at,expectedRevi
   if(r.planning){
     const planning=docs['sales-planning'].state,row=productOverview({monitor:docs['link-monitor'].state,physical:state,planning,watch:docs['product-watch']?.state||emptyProductWatch(),drafts:[]},at).find(row=>row.sourceKeys.includes('stock:'+p.id)),existing=row?.plans.find(plan=>plan.status!=='closed');
     if(!existing)applyPlanningCommand(planning,{operationId:command.operationId,kind:'create',planId:planId(command.operationId),plan:{title:p.title,asin:p.asin,sellerSku:p.sellerSku,condition:p.condition,setContents:p.setContents,imageUrl:p.imageUrl||'',source:{kind:'stock',id:p.id},kind:'amazon',status:'active',durationDays:10,availableOn:'',reviewOn:'',note:p.memo,decisions:['undecided'],linkedLinkIds:p.linkedLinkIds}},{actor,at,sources:[{kind:'stock',...p}]});
-    summary.push(existing?'登録済みの販売監視を利用':'販売監視に追加（販売開始日・方針は後で設定）');
+    summary.push(existing?'登録済みの販売監視を利用':'販売監視に追加（この画面で期間・メモも設定できます）');
   }
   if(wantsDraft){const plan=docs['sales-planning']?.state.plans.find(x=>x.status!=='closed'&&(x.workspaceStockId===p.id||x.source.kind==='stock'&&x.source.id===p.id));await associateDraft(docs,p,{stockId:p.id,planId:plan?.id,linkIds:p.linkedLinkIds},at);summary.push('ヤフオク出品下書きへ関連登録（既存の文面・作業状態は保持）');}
   await applyStockWorkspace(docs,command,p,receipt,{actor,at,summary});
